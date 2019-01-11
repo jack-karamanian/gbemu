@@ -17,13 +17,19 @@ namespace gb {
 
     std::array<Instruction, 256> instructions =
     {
-      { "NOOP", std::bind(&Cpu::noop, cpu) }
+      {
+        { "NOOP", std::bind(&Cpu::noop, cpu) }, // 0x01
+        { "LD BC, d16", std::bind(&Cpu::load_16, cpu, Cpu::Register::BC) }, // 0x02
+        { "LD (BC), A", std::bind(&Cpu::load_reg_to_addr, cpu, Cpu::Register::BC, Cpu::Register::A) }, // 0x03
+        { "INC BC", std::bind(&Cpu::inc_16, cpu, Cpu::Register::BC) }, // 0x04
+        { "INC B", std::bind(&Cpu::inc_8, cpu, Cpu::Register::B) } // 0x05
+      }
     };
 
     InstructionTable(Cpu &cpu) : cpu(&cpu) {}
   };
 
-  void Cpu::decode(Memory& memory) {
+  void Cpu::decode(const Memory& memory) {
     u8 opcode = fetch();
 
     switch (opcode) {
