@@ -1,6 +1,7 @@
 #pragma once
 #include <cstdint>
 #include <functional>
+#include <boost/integer_traits.hpp>
 #include "types.h"
 #include "memory.h"
 
@@ -68,8 +69,31 @@ struct Cpu {
     }
   }
 
-  void set_half_carry(const u16 &a, const u16 &b) {
-    bool half_carry = (((a & 0xf) + (b & 0xf)) & 0x10) == 0x10;
+  //void set_half_carry(const u8 &a, const u8 &b) {
+  //  bool half_carry = (((a & 0xf) + (b & 0xf)) & 0x10) == 0x10;
+  //  if (half_carry) {
+  //    set_flag(FLAG_HALF_CARRY);
+  //  } else {
+  //    clear_flag(FLAG_HALF_CARRY);
+  //  }
+  //}
+
+  //void set_half_carry_16(const u16 &a, const u16 &b) {
+  //  bool half_carry = (((a & 0xff) + (b & 0xff)) & 0x100) == 0x100;
+  //  if (half_carry) {
+  //   set_flag(FLAG_HALF_CARRY);
+  //  } else {
+  //    clear_flag(FLAG_HALF_CARRY);
+  //  }
+  //}
+
+  template<typename T>
+  void set_half_carry(const T &a, const T &b) {
+    // Hardcode max of 16 bit for now. Could support more with templates
+    constexpr T add_mask = 0xffff >> (16 - (sizeof(T) * 4));
+    constexpr T carry_mask = 0x1 << 4 * sizeof(T);
+
+    bool half_carry = (((a & add_mask) + (b & add_mask)) & carry_mask) == carry_mask;
     if (half_carry) {
       set_flag(FLAG_HALF_CARRY);
     } else {
@@ -77,16 +101,101 @@ struct Cpu {
     }
   }
 
-  void add_carry(u8 &dst, u8 val, bool carry) {
-    val += carry ? 1 : 0;
+  template<typename T>
+  void set_carry(const T &a, const T &b) {
+    typename next_largest_type<T>::type res = a + b;
+    //if (res > 0xff) {
+    if (res > boost::integer_traits<T>::const_max) {
+      set_flag(FLAG_CARRY);
+    } else {
+      clear_flag(FLAG_CARRY);
+    }
   }
 
-  void inc_8(const Register& reg) {
-    regs[reg]++;
+  void carried_add(u8 &dest, const u8 &a, const u8 &b) {
+    u8 carry = get_flag(FLAG_CARRY) ? 1 : 0;
+    u8 res = a + b + carry;
 
-    set_zero(regs[reg]);
+    set_carry(a, res);
+    set_half_carry(a, res);
+
+    dest = res;
+
+    set_zero(res);
     clear_flag(FLAG_SUBTRACT);
-    set_half_carry(regs[reg] - 1, regs[reg]);
+  }
+
+  void add(u8 &dest, const u8 &a, const u8 &b) {
+    u8 res = a + b;
+
+    set_carry(a, res);
+    set_half_carry(a, res);
+
+    dest = res;
+
+    set_zero(res);
+    clear_flag(FLAG_SUBTRACT);
+  }
+
+  // ADC A,[HL]
+  void add_carry_a_hl() {
+    u8 &a = regs[Register::A];
+    u16 hl = get_16(Register::HL);
+    u8 val = *memory.at(hl);
+
+    carried_add(a, a, val);
+  }
+
+  // ADC A,n8
+  void add_carry_a_d8() {
+    u8 &a = regs[Register::A];
+    u8 val = read_value();
+    
+    carried_add(a, a, val);
+  }
+
+  // ADC A,r8
+  void add_carry_a_r8(const Register &reg) {
+    u8 &a = regs[Register::A];
+    u8 &val = regs[reg];
+
+    carried_add(a, a, val);
+  }
+
+  // ADD A,r8
+  void add_a_r8(const Register &reg) {
+    u8 &a = regs[Register::A];
+    u8 &val = regs[reg];
+
+    add(a, a, val);
+  }
+
+  // ADD A,[HL]
+  void add_a_hl() {
+    u8 &a = regs[Register::A];
+    u16 addr = get_16(Register::HL);
+    u8 val = *memory.at(addr);
+
+    add(a, a, val);
+  }
+
+  // ADD A,n8
+  void add_a_d8() {
+    u8 &a = regs[Register::A];
+    u8 val = read_value();
+
+    add(a, a, val);
+  }
+
+  void inc_r8(const Register& reg) {
+    u8 &r = regs[reg];
+    u8 res = r + 1;
+
+    set_zero(res);
+    clear_flag(FLAG_SUBTRACT);
+    set_half_carry(r, res);
+
+    r = res;
   }
 
   void inc_at_hl() {
@@ -120,10 +229,22 @@ struct Cpu {
     *((u16 *) &regs[dst]) = val;
   }
 
-  void load_16(const Register& dst) {
+  template<typename T = u8>
+  T read_value() {
+    T val = *memory.at<T>(pc + 1);
+    pc += 1 + sizeof(T);
+    return val;
+  }
+
+  u16 read_short() {
     u16 val = *memory.at<u16>(pc + 1);
-    set_16(dst, val);
     pc += 3;
+    return val;
+  }
+
+  void load_16(const Register& dst) {
+    u16 val = read_short();
+    set_16(dst, val);
   }
 
   void load_reg_to_addr(const Register& dst, const Register& src) {

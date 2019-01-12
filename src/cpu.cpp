@@ -22,7 +22,7 @@ namespace gb {
         { "LD BC, d16", std::bind(&Cpu::load_16, cpu, Cpu::Register::BC) }, // 0x02
         { "LD (BC), A", std::bind(&Cpu::load_reg_to_addr, cpu, Cpu::Register::BC, Cpu::Register::A) }, // 0x03
         { "INC BC", std::bind(&Cpu::inc_16, cpu, Cpu::Register::BC) }, // 0x04
-        { "INC B", std::bind(&Cpu::inc_8, cpu, Cpu::Register::B) } // 0x05
+        { "INC B", std::bind(&Cpu::inc_r8, cpu, Cpu::Register::B) } // 0x05
       }
     };
 
