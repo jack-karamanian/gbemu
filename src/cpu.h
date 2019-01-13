@@ -1,39 +1,26 @@
 #pragma once
+#include <boost/integer_traits.hpp>
 #include <cstdint>
 #include <functional>
-#include <boost/integer_traits.hpp>
-#include "types.h"
 #include "memory.h"
+#include "types.h"
 
-#define FLAG_ZERO       0x80
-#define FLAG_SUBTRACT   0x40
+#define FLAG_ZERO 0x80
+#define FLAG_SUBTRACT 0x40
 #define FLAG_HALF_CARRY 0x20
-#define FLAG_CARRY      0x10
-
+#define FLAG_CARRY 0x10
 
 namespace gb {
-  namespace JumpCondition {
-    enum {
-      NZ = 0,
-      Z,
-      NC,
-      C,
-    };
-  };
+namespace JumpCondition {
+enum {
+  NZ = 0,
+  Z,
+  NC,
+  C,
+};
+};
 struct Cpu {
-  enum Register {
-    C = 0,
-    B,
-    E,
-    D,
-    L,
-    H,
-    F,
-    A,
-    BC = 0,
-    DE = 1,
-    HL = 2
-  };
+  enum Register { C = 0, B, E, D, L, H, F, A, BC = 0, DE = 1, HL = 2 };
   u8 regs[8];
 
   u16 sp;
@@ -43,36 +30,26 @@ struct Cpu {
 
   bool interrupts = true;
 
-  Memory &memory;
+  Memory& memory;
 
-  Cpu(Memory &memory) : memory(memory) {}
+  Cpu(Memory& memory) : memory(memory) {}
 
-  u8 fetch() {
-    return memory.memory[pc++];
-  }
+  u8 fetch() { return memory.memory[pc++]; }
 
-  void decode(const Memory &memory);
+  void decode(const Memory& memory);
 
   inline void noop() const {}
 
-  inline bool get_carry() {
-    return regs[Register::F] & 0x10;
-  }
+  inline bool get_carry() { return regs[Register::F] & 0x10; }
 
-  inline bool get_flag(u8 flag) const {
-    return regs[Register::F] & flag;
-  }
+  inline bool get_flag(u8 flag) const { return regs[Register::F] & flag; }
 
-  inline void set_flag(u8 flag) {
-    regs[Register::F] |= flag;
-  }
+  inline void set_flag(u8 flag) { regs[Register::F] |= flag; }
 
-  inline void clear_flag(u8 flag) {
-    regs[Register::F] &= ~flag;
-  }
+  inline void clear_flag(u8 flag) { regs[Register::F] &= ~flag; }
 
-  template<typename T>
-  void set_zero(const T &val) {
+  template <typename T>
+  void set_zero(const T& val) {
     if (val == 0) {
       set_flag(FLAG_ZERO);
     } else {
@@ -80,7 +57,7 @@ struct Cpu {
     }
   }
 
-  //void set_half_carry(const u8 &a, const u8 &b) {
+  // void set_half_carry(const u8 &a, const u8 &b) {
   //  bool half_carry = (((a & 0xf) + (b & 0xf)) & 0x10) == 0x10;
   //  if (half_carry) {
   //    set_flag(FLAG_HALF_CARRY);
@@ -89,7 +66,7 @@ struct Cpu {
   //  }
   //}
 
-  //void set_half_carry_16(const u16 &a, const u16 &b) {
+  // void set_half_carry_16(const u16 &a, const u16 &b) {
   //  bool half_carry = (((a & 0xff) + (b & 0xff)) & 0x100) == 0x100;
   //  if (half_carry) {
   //   set_flag(FLAG_HALF_CARRY);
@@ -98,13 +75,14 @@ struct Cpu {
   //  }
   //}
 
-  template<typename T, typename U = T>
-  void set_half_carry(const T &a, const U &b) {
+  template <typename T, typename U = T>
+  void set_half_carry(const T& a, const U& b) {
     // Hardcode max of 16 bit for now. Could support more with templates
     constexpr T add_mask = 0xffff >> (16 - (sizeof(T) * 4));
     constexpr T carry_mask = 0x1 << 4 * sizeof(T);
 
-    bool half_carry = (((a & add_mask) + (b & add_mask)) & carry_mask) == carry_mask;
+    bool half_carry =
+        (((a & add_mask) + (b & add_mask)) & carry_mask) == carry_mask;
     if (half_carry) {
       set_flag(FLAG_HALF_CARRY);
     } else {
@@ -112,7 +90,7 @@ struct Cpu {
     }
   }
 
-  void set_half_carry_subtract(const u8 &a, const u8 &b) {
+  void set_half_carry_subtract(const u8& a, const u8& b) {
     bool half_carry = (b & 0x0f) > (a & 0x0f);
 
     if (half_carry) {
@@ -122,10 +100,10 @@ struct Cpu {
     }
   }
 
-  template<typename T, typename U = T>
-  void set_carry(const T &a, const U &b) {
+  template <typename T, typename U = T>
+  void set_carry(const T& a, const U& b) {
     typename next_largest_type<T>::type res = a + b;
-    //if (res > 0xff) {
+    // if (res > 0xff) {
     if (res > boost::integer_traits<T>::const_max) {
       set_flag(FLAG_CARRY);
     } else {
@@ -133,7 +111,7 @@ struct Cpu {
     }
   }
 
-  void carried_add(u8 &dest, const u8 &a, const u8 &b) {
+  void carried_add(u8& dest, const u8& a, const u8& b) {
     u8 carry = get_flag(FLAG_CARRY) ? 1 : 0;
     u8 res = a + b + carry;
 
@@ -146,7 +124,7 @@ struct Cpu {
     clear_flag(FLAG_SUBTRACT);
   }
 
-  void add(u8 &dest, const u8 &a, const u8 &b) {
+  void add(u8& dest, const u8& a, const u8& b) {
     u8 res = a + b;
 
     set_carry(a, res);
@@ -160,7 +138,7 @@ struct Cpu {
 
   // ADC A,[HL]
   void add_carry_a_hl() {
-    u8 &a = regs[Register::A];
+    u8& a = regs[Register::A];
     u16 hl = get_16(Register::HL);
     u8 val = *memory.at(hl);
 
@@ -169,31 +147,31 @@ struct Cpu {
 
   // ADC A,n8
   void add_carry_a_d8() {
-    u8 &a = regs[Register::A];
+    u8& a = regs[Register::A];
     u8 val = read_value();
-    
+
     carried_add(a, a, val);
   }
 
   // ADC A,r8
-  void add_carry_a_r8(const Register &reg) {
-    u8 &a = regs[Register::A];
-    u8 &val = regs[reg];
+  void add_carry_a_r8(const Register& reg) {
+    u8& a = regs[Register::A];
+    u8& val = regs[reg];
 
     carried_add(a, a, val);
   }
 
   // ADD A,r8
-  void add_a_r8(const Register &reg) {
-    u8 &a = regs[Register::A];
-    u8 &val = regs[reg];
+  void add_a_r8(const Register& reg) {
+    u8& a = regs[Register::A];
+    u8& val = regs[reg];
 
     add(a, a, val);
   }
 
   // ADD A,[HL]
   void add_a_hl() {
-    u8 &a = regs[Register::A];
+    u8& a = regs[Register::A];
     u16 addr = get_16(Register::HL);
     u8 val = *memory.at(addr);
 
@@ -202,17 +180,17 @@ struct Cpu {
 
   // ADD A,n8
   void add_a_d8() {
-    u8 &a = regs[Register::A];
+    u8& a = regs[Register::A];
     u8 val = read_value();
 
     add(a, a, val);
   }
 
   // ADD HL,r16
-  void add_hl_r16(const Register &reg) {
-    u16 &hl = get_r16(Register::HL);
-    u16 &r16 = get_r16(reg);
-    
+  void add_hl_r16(const Register& reg) {
+    u16& hl = get_r16(Register::HL);
+    u16& r16 = get_r16(reg);
+
     u16 res = hl + r16;
 
     set_half_carry(hl, r16);
@@ -224,7 +202,7 @@ struct Cpu {
 
   // ADD HL,SP
   void add_hl_sp() {
-    u16 &hl = get_r16(Register::HL);
+    u16& hl = get_r16(Register::HL);
     u16 res = hl + sp;
 
     set_half_carry(hl, (u16)sp);
@@ -251,7 +229,7 @@ struct Cpu {
   }
 
   void and_a(const u8& val) {
-    u8 &a = regs[Register::A];
+    u8& a = regs[Register::A];
 
     a &= val;
 
@@ -263,15 +241,15 @@ struct Cpu {
   }
 
   // AND A,r8
-  void and_a_r8(const Register &reg) {
-    u8 &r = regs[reg];
+  void and_a_r8(const Register& reg) {
+    u8& r = regs[reg];
     and_a(r);
   }
 
   // AND A,[HL]
   void and_a_hl() {
-    u16 &addr = get_r16(Register::HL);
-    u8 *val = memory.at(addr);
+    u16& addr = get_r16(Register::HL);
+    u8* val = memory.at(addr);
 
     and_a(*val);
   }
@@ -283,13 +261,13 @@ struct Cpu {
     and_a(val);
   }
 
-  void bit(const u8 &bit_num, const u8 &val) {
+  void bit(const u8& bit_num, const u8& val) {
     bool bit_set = val & (0x01 << bit_num);
 
     if (bit_set) {
       clear_flag(FLAG_ZERO);
     } else {
-      set_flag(FLAG_ZERO); 
+      set_flag(FLAG_ZERO);
     }
 
     set_flag(FLAG_HALF_CARRY);
@@ -297,15 +275,15 @@ struct Cpu {
   }
 
   // BIT u8,r8
-  void bit_r8(u8 bit_num, const Register &reg) {
-    u8 &val = regs[reg];
+  void bit_r8(u8 bit_num, const Register& reg) {
+    u8& val = regs[reg];
     bit(bit_num, val);
   }
 
   // BIT u3,[HL]
   void bit_hl(u8 bit_num) {
-    u16 &addr = get_r16(Register::HL);
-    u8 *val = memory.at(addr);
+    u16& addr = get_r16(Register::HL);
+    u8* val = memory.at(addr);
     bit(bit_num, *val);
   }
 
@@ -314,7 +292,7 @@ struct Cpu {
     u16 addr = read_value<u16>();
     u16 next_op = pc + 3;
     u8 pc_low = (next_op & 0xff00) >> 8;
-    u8 pc_high  = (next_op & 0x00ff);
+    u8 pc_high = (next_op & 0x00ff);
     memory.set(--sp, pc_high);
     memory.set(--sp, pc_low);
     pc = addr;
@@ -349,12 +327,10 @@ struct Cpu {
   }
 
   // CCF
-  void ccf() {
-    regs[Register::F] &= ~(regs[Register::F] & FLAG_CARRY);
-  }
+  void ccf() { regs[Register::F] &= ~(regs[Register::F] & FLAG_CARRY); }
 
-  void compare_a(const u8 &val) {
-    u8 &a = regs[Register::A];
+  void compare_a(const u8& val) {
+    u8& a = regs[Register::A];
 
     u8 res = a - val;
 
@@ -372,8 +348,8 @@ struct Cpu {
 
   // CP A,[HL]
   void cp_a_hl() {
-    u8 &addr = regs[Register::HL];
-    u8 *val = memory.at(addr);
+    u8& addr = regs[Register::HL];
+    u8* val = memory.at(addr);
 
     compare_a(*val);
   }
@@ -392,13 +368,14 @@ struct Cpu {
   }
 
   // DAA
-  // from https://github.com/taisel/GameBoy-Online/blob/master/js/GameBoyCore.js#L588
+  // from
+  // https://github.com/taisel/GameBoy-Online/blob/master/js/GameBoyCore.js#L588
   void daa() {
     const bool carry = get_flag(FLAG_CARRY);
     const bool subtract = get_flag(FLAG_SUBTRACT);
     const bool half_carry = get_flag(FLAG_HALF_CARRY);
 
-    u8 &a = regs[Register::A];
+    u8& a = regs[Register::A];
 
     if (!subtract) {
       if (carry || a > 0x99) {
@@ -421,7 +398,7 @@ struct Cpu {
     set_zero(a);
   }
 
-  void dec(u8 &val) {
+  void dec(u8& val) {
     u8 res = val - 1;
 
     set_zero(res);
@@ -431,41 +408,32 @@ struct Cpu {
   }
 
   // DEC r8
-  void dec_r8(const Register &reg) {
-    dec(regs[reg]);
-  }
+  void dec_r8(const Register& reg) { dec(regs[reg]); }
 
   // DEC [HL]
   void dec_hl() {
-    u8 &val = value_at_r16(Register::HL);
+    u8& val = value_at_r16(Register::HL);
     dec(val);
   }
 
   // DEC r16
-  void dec_r16(const Register &reg) {
-    u16 &val = get_r16(reg);
+  void dec_r16(const Register& reg) {
+    u16& val = get_r16(reg);
     val--;
   }
 
   // DEC SP
-  void dec_sp() {
-    sp--;
-  }
+  void dec_sp() { sp--; }
 
   // DI
-  void disable_interrupts() {
-    interrupts = false;
-  }
+  void disable_interrupts() { interrupts = false; }
 
   // EI
-  void enable_interrupts() {
-    interrupts = true;
-  }
+  void enable_interrupts() { interrupts = true; }
 
-  void halt() {
-  }
+  void halt() {}
 
-  void inc(u8 &val) {
+  void inc(u8& val) {
     u8 res = val + 1;
 
     set_half_carry(val, 1);
@@ -476,30 +444,24 @@ struct Cpu {
   }
 
   // INC r8
-  void inc_r8(const Register &reg) {
-    inc(regs[reg]);
-  }
+  void inc_r8(const Register& reg) { inc(regs[reg]); }
 
   // INC [HL]
   void inc_hl() {
-    u8 &val = value_at_r16(Register::HL);
+    u8& val = value_at_r16(Register::HL);
     inc(val);
   }
 
   // INC r16
-  void inc_r16(const Register &reg) {
-    u16 &r16 = get_r16(reg);
+  void inc_r16(const Register& reg) {
+    u16& r16 = get_r16(reg);
     r16++;
   }
 
   // INC SP
-  void inc_sp() {
-    sp++;
-  }
+  void inc_sp() { sp++; }
 
-  inline void jump(const u16 &addr) {
-    pc = addr;
-  }
+  inline void jump(const u16& addr) { pc = addr; }
 
   // JP n16
   void jp_d16() {
@@ -507,24 +469,22 @@ struct Cpu {
     jump(addr);
   }
 
-  bool can_jump(const u8 &opcode, int offset) {
+  bool can_jump(const u8& opcode, int offset) {
     int index = ((opcode & 0x38) >> 3) - offset;
 
-    return (
-      (index == JumpCondition::NZ && !get_flag(FLAG_ZERO))
-      || (index == JumpCondition::Z && get_flag(FLAG_ZERO))
-      || (index == JumpCondition::NC && !get_flag(FLAG_CARRY))
-      || (index == JumpCondition::C && get_flag(FLAG_CARRY))
-    );
+    return ((index == JumpCondition::NZ && !get_flag(FLAG_ZERO)) ||
+            (index == JumpCondition::Z && get_flag(FLAG_ZERO)) ||
+            (index == JumpCondition::NC && !get_flag(FLAG_CARRY)) ||
+            (index == JumpCondition::C && get_flag(FLAG_CARRY)));
   }
 
-  void jump_conditional(const u16 &addr, int index_offset = 0) {
+  void jump_conditional(const u16& addr, int index_offset = 0) {
     const u8 opcode = *memory.at(pc);
 
     if (can_jump(opcode, index_offset)) {
       jump(addr);
     }
-  } 
+  }
 
   // JP cc,n16
   void jp_cc_n16() {
@@ -534,40 +494,68 @@ struct Cpu {
 
   // JP HL
   void jp_hl() {
-    const u16 &hl = get_r16(Register::HL);
+    const u16& hl = get_r16(Register::HL);
     pc = hl;
   }
 
   // JR e8
   void jr_e8() {
-    const u8 &offset = read_value();
+    const u8& offset = read_value();
     jump(pc + offset);
   }
 
   // JR cc,e8
   void jr_cc_e8() {
-    const u8 &offset = read_value();
+    const u8& offset = read_value();
     jump_conditional(pc + offset, 4);
   }
 
-  template<typename T>
-  void load(T &dst, T &val) {
-    dst = val;
+  // LD r8,r8
+  void ld_r8_r8(const Register& dst, const Register& src) {
+    regs[dst] = regs[src];
   }
 
-  //void set_16(u8 &reg_high, u8 &reg_low, u16 val) {
+  // LD r8,n8
+  void ld_r8_d8(const Register& dst) {
+    const u8& val = read_value();
+    regs[dst] = val;
+  }
+
+  // LD r16,n16
+  void ld_r16_d16(const Register& dst) {
+    u16& r16 = get_r16(dst);
+    const u16& val = read_value<u16>();
+
+    r16 = val;
+  }
+
+  // LD [HL],r8
+  void ld_hl_r8(const Register& reg) {
+    const u16& hl = get_r16(Register::HL);
+    u8* val = memory.at(hl);
+    *val = regs[reg];
+  }
+
+  // LD [HL],n8
+  void ld_hl_d8(const Register& reg) {
+    const u16& hl = get_r16(Register::HL);
+    u8* val = memory.at(hl);
+    *val = regs[reg];
+  }
+
+  // void set_16(u8 &reg_high, u8 &reg_low, u16 val) {
   //  reg_high = (val & 0xFF00) >> 8;
   //  reg_low = (val & 0xFF);
   //}
-  
+
   inline void set_16(const Register& dst, const u16& val) {
-    *((u16 *) &regs[dst]) = val;
+    *((u16*)&regs[dst]) = val;
   }
 
-  template<typename T = u8>
+  template <typename T = u8>
   T read_value() {
     T val = *memory.at<T>(pc + 1);
- //   pc += 1 + sizeof(T);
+    //   pc += 1 + sizeof(T);
     return val;
   }
 
@@ -577,18 +565,16 @@ struct Cpu {
   }
 
   inline u16 get_16(const Register& reg) {
-    u16 *res = (u16 *)&regs[reg];
+    u16* res = (u16*)&regs[reg];
     return *res;
   }
 
-  inline u16& get_r16(const Register &reg) {
-    return (u16&) *&regs[reg];
-  }
+  inline u16& get_r16(const Register& reg) { return (u16&)*&regs[reg]; }
 
-  inline u8& value_at_r16(const Register &reg) {
-    u16 &addr = get_r16(Register::HL);
-    u8 *val = memory.at(addr);
+  inline u8& value_at_r16(const Register& reg) {
+    u16& addr = get_r16(Register::HL);
+    u8* val = memory.at(addr);
     return *val;
   }
 };
-}
+}  // namespace gb
