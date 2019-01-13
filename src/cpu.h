@@ -20,7 +20,7 @@ enum {
 };
 };
 struct Cpu {
-  enum Register { C = 0, B, E, D, L, H, F, A, BC = 0, DE = 1, HL = 2 };
+  enum Register { C = 0, B, E, D, L, H, F, A, BC = 0, DE = 2, HL = 4 };
   u8 regs[8];
 
   u16 sp;
