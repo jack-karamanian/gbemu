@@ -259,7 +259,7 @@ static std::array<Instruction, 256> bind_instructions(Cpu* cpu) {
       {"XOR d8", 2, 8, std::bind(&Cpu::xor_a_d8, cpu)},                // 0xee
       {"RST 28H", 1, 16, std::bind(&Cpu::rst, cpu)},                   // 0xef
       {"LDH A,(a8)", 2, 12, std::bind(&Cpu::ld_read_offset_d8, cpu)},  // 0xf0
-      {"POP AF", 1, 12, std::bind(&Cpu::pop_r16, cpu, AF)},            // 0xf1
+      {"POP AF", 1, 12, std::bind(&Cpu::pop_af, cpu)},                 // 0xf1
       {"LD A,(C)", 2, 8, std::bind(&Cpu::ld_read_offset_c, cpu)},      // 0xf2
       {"DI", 1, 4, std::bind(&Cpu::disable_interrupts, cpu)},          // 0xf3
       {"INVALID", 1, 4, std::bind(&Cpu::invalid, cpu)},                // 0xf4
@@ -280,7 +280,270 @@ static std::array<Instruction, 256> bind_instructions(Cpu* cpu) {
   return instructions;
 }
 
+std::array<Instruction, 256> bind_cb_instructions(Cpu* cpu) {
+  return {{
+      {"RLC B", 2, 8, std::bind(&Cpu::rlc_r8, cpu, B)},           // 0x0
+      {"RLC C", 2, 8, std::bind(&Cpu::rlc_r8, cpu, C)},           // 0x1
+      {"RLC D", 2, 8, std::bind(&Cpu::rlc_r8, cpu, D)},           // 0x2
+      {"RLC E", 2, 8, std::bind(&Cpu::rlc_r8, cpu, E)},           // 0x3
+      {"RLC H", 2, 8, std::bind(&Cpu::rlc_r8, cpu, H)},           // 0x4
+      {"RLC L", 2, 8, std::bind(&Cpu::rlc_r8, cpu, L)},           // 0x5
+      {"RLC (HL)", 2, 16, std::bind(&Cpu::invalid, cpu)},         // 0x6
+      {"RLC A", 2, 8, std::bind(&Cpu::rlc_r8, cpu, A)},           // 0x7
+      {"RRC B", 2, 8, std::bind(&Cpu::rrc_r8, cpu, B)},           // 0x8
+      {"RRC C", 2, 8, std::bind(&Cpu::rrc_r8, cpu, C)},           // 0x9
+      {"RRC D", 2, 8, std::bind(&Cpu::rrc_r8, cpu, D)},           // 0xa
+      {"RRC E", 2, 8, std::bind(&Cpu::rrc_r8, cpu, E)},           // 0xb
+      {"RRC H", 2, 8, std::bind(&Cpu::rrc_r8, cpu, H)},           // 0xc
+      {"RRC L", 2, 8, std::bind(&Cpu::rrc_r8, cpu, L)},           // 0xd
+      {"RRC (HL)", 2, 16, std::bind(&Cpu::rrc_hl, cpu)},          // 0xe
+      {"RRC A", 2, 8, std::bind(&Cpu::rrc_r8, cpu, A)},           // 0xf
+      {"RL B", 2, 8, std::bind(&Cpu::rl_r8, cpu, B)},             // 0x10
+      {"RL C", 2, 8, std::bind(&Cpu::rl_r8, cpu, C)},             // 0x11
+      {"RL D", 2, 8, std::bind(&Cpu::rl_r8, cpu, D)},             // 0x12
+      {"RL E", 2, 8, std::bind(&Cpu::rl_r8, cpu, E)},             // 0x13
+      {"RL H", 2, 8, std::bind(&Cpu::rl_r8, cpu, H)},             // 0x14
+      {"RL L", 2, 8, std::bind(&Cpu::rl_r8, cpu, L)},             // 0x15
+      {"RL (HL)", 2, 16, std::bind(&Cpu::rl_hl, cpu)},            // 0x16
+      {"RL A", 2, 8, std::bind(&Cpu::rl_r8, cpu, A)},             // 0x17
+      {"RR B", 2, 8, std::bind(&Cpu::rr_r8, cpu, B)},             // 0x18
+      {"RR C", 2, 8, std::bind(&Cpu::rr_r8, cpu, C)},             // 0x19
+      {"RR D", 2, 8, std::bind(&Cpu::rr_r8, cpu, D)},             // 0x1a
+      {"RR E", 2, 8, std::bind(&Cpu::rr_r8, cpu, E)},             // 0x1b
+      {"RR H", 2, 8, std::bind(&Cpu::rr_r8, cpu, H)},             // 0x1c
+      {"RR L", 2, 8, std::bind(&Cpu::rr_r8, cpu, L)},             // 0x1d
+      {"RR (HL)", 2, 16, std::bind(&Cpu::rr_hl, cpu)},            // 0x1e
+      {"RR A", 2, 8, std::bind(&Cpu::rr_r8, cpu, A)},             // 0x1f
+      {"SLA B", 2, 8, std::bind(&Cpu::sla_r8, cpu, B)},           // 0x20
+      {"SLA C", 2, 8, std::bind(&Cpu::sla_r8, cpu, C)},           // 0x21
+      {"SLA D", 2, 8, std::bind(&Cpu::sla_r8, cpu, D)},           // 0x22
+      {"SLA E", 2, 8, std::bind(&Cpu::sla_r8, cpu, E)},           // 0x23
+      {"SLA H", 2, 8, std::bind(&Cpu::sla_r8, cpu, H)},           // 0x24
+      {"SLA L", 2, 8, std::bind(&Cpu::sla_r8, cpu, L)},           // 0x25
+      {"SLA (HL)", 2, 16, std::bind(&Cpu::sla_hl, cpu)},          // 0x26
+      {"SLA A", 2, 8, std::bind(&Cpu::sla_r8, cpu, A)},           // 0x27
+      {"SRA B", 2, 8, std::bind(&Cpu::sra_r8, cpu, B)},           // 0x28
+      {"SRA C", 2, 8, std::bind(&Cpu::sra_r8, cpu, C)},           // 0x29
+      {"SRA D", 2, 8, std::bind(&Cpu::sra_r8, cpu, D)},           // 0x2a
+      {"SRA E", 2, 8, std::bind(&Cpu::sra_r8, cpu, E)},           // 0x2b
+      {"SRA H", 2, 8, std::bind(&Cpu::sra_r8, cpu, H)},           // 0x2c
+      {"SRA L", 2, 8, std::bind(&Cpu::sra_r8, cpu, L)},           // 0x2d
+      {"SRA (HL)", 2, 16, std::bind(&Cpu::sra_hl, cpu)},          // 0x2e
+      {"SRA A", 2, 8, std::bind(&Cpu::sra_r8, cpu, A)},           // 0x2f
+      {"SWAP B", 2, 8, std::bind(&Cpu::swap_r8, cpu, B)},         // 0x30
+      {"SWAP C", 2, 8, std::bind(&Cpu::swap_r8, cpu, C)},         // 0x31
+      {"SWAP D", 2, 8, std::bind(&Cpu::swap_r8, cpu, D)},         // 0x32
+      {"SWAP E", 2, 8, std::bind(&Cpu::swap_r8, cpu, E)},         // 0x33
+      {"SWAP H", 2, 8, std::bind(&Cpu::swap_r8, cpu, H)},         // 0x34
+      {"SWAP L", 2, 8, std::bind(&Cpu::swap_r8, cpu, L)},         // 0x35
+      {"SWAP (HL)", 2, 16, std::bind(&Cpu::swap_hl, cpu)},        // 0x36
+      {"SWAP A", 2, 8, std::bind(&Cpu::swap_r8, cpu, A)},         // 0x37
+      {"SRL B", 2, 8, std::bind(&Cpu::srl_r8, cpu, B)},           // 0x38
+      {"SRL C", 2, 8, std::bind(&Cpu::srl_r8, cpu, C)},           // 0x39
+      {"SRL D", 2, 8, std::bind(&Cpu::srl_r8, cpu, D)},           // 0x3a
+      {"SRL E", 2, 8, std::bind(&Cpu::srl_r8, cpu, E)},           // 0x3b
+      {"SRL H", 2, 8, std::bind(&Cpu::srl_r8, cpu, H)},           // 0x3c
+      {"SRL L", 2, 8, std::bind(&Cpu::srl_r8, cpu, L)},           // 0x3d
+      {"SRL (HL)", 2, 16, std::bind(&Cpu::srl_hl, cpu)},          // 0x3e
+      {"SRL A", 2, 8, std::bind(&Cpu::srl_r8, cpu, A)},           // 0x3f
+      {"BIT 0,B", 2, 8, std::bind(&Cpu::bit_r8, cpu, 0, B)},      // 0x40
+      {"BIT 0,C", 2, 8, std::bind(&Cpu::bit_r8, cpu, 0, C)},      // 0x41
+      {"BIT 0,D", 2, 8, std::bind(&Cpu::bit_r8, cpu, 0, D)},      // 0x42
+      {"BIT 0,E", 2, 8, std::bind(&Cpu::bit_r8, cpu, 0, E)},      // 0x43
+      {"BIT 0,H", 2, 8, std::bind(&Cpu::bit_r8, cpu, 0, H)},      // 0x44
+      {"BIT 0,L", 2, 8, std::bind(&Cpu::bit_r8, cpu, 0, L)},      // 0x45
+      {"BIT 0,(HL)", 2, 16, std::bind(&Cpu::bit_hl, cpu, 0)},     // 0x46
+      {"BIT 0,A", 2, 8, std::bind(&Cpu::bit_r8, cpu, 0, A)},      // 0x47
+      {"BIT 1,B", 2, 8, std::bind(&Cpu::bit_r8, cpu, 1, B)},      // 0x48
+      {"BIT 1,C", 2, 8, std::bind(&Cpu::bit_r8, cpu, 1, C)},      // 0x49
+      {"BIT 1,D", 2, 8, std::bind(&Cpu::bit_r8, cpu, 1, D)},      // 0x4a
+      {"BIT 1,E", 2, 8, std::bind(&Cpu::bit_r8, cpu, 1, E)},      // 0x4b
+      {"BIT 1,H", 2, 8, std::bind(&Cpu::bit_r8, cpu, 1, H)},      // 0x4c
+      {"BIT 1,L", 2, 8, std::bind(&Cpu::bit_r8, cpu, 1, L)},      // 0x4d
+      {"BIT 1,(HL)", 2, 16, std::bind(&Cpu::bit_hl, cpu, 1)},     // 0x4e
+      {"BIT 1,A", 2, 8, std::bind(&Cpu::bit_r8, cpu, 1, A)},      // 0x4f
+      {"BIT 2,B", 2, 8, std::bind(&Cpu::bit_r8, cpu, 2, B)},      // 0x50
+      {"BIT 2,C", 2, 8, std::bind(&Cpu::bit_r8, cpu, 2, C)},      // 0x51
+      {"BIT 2,D", 2, 8, std::bind(&Cpu::bit_r8, cpu, 2, D)},      // 0x52
+      {"BIT 2,E", 2, 8, std::bind(&Cpu::bit_r8, cpu, 2, E)},      // 0x53
+      {"BIT 2,H", 2, 8, std::bind(&Cpu::bit_r8, cpu, 2, H)},      // 0x54
+      {"BIT 2,L", 2, 8, std::bind(&Cpu::bit_r8, cpu, 2, L)},      // 0x55
+      {"BIT 2,(HL)", 2, 16, std::bind(&Cpu::bit_hl, cpu, 2)},     // 0x56
+      {"BIT 2,A", 2, 8, std::bind(&Cpu::bit_r8, cpu, 2, A)},      // 0x57
+      {"BIT 3,B", 2, 8, std::bind(&Cpu::bit_r8, cpu, 3, B)},      // 0x58
+      {"BIT 3,C", 2, 8, std::bind(&Cpu::bit_r8, cpu, 3, C)},      // 0x59
+      {"BIT 3,D", 2, 8, std::bind(&Cpu::bit_r8, cpu, 3, D)},      // 0x5a
+      {"BIT 3,E", 2, 8, std::bind(&Cpu::bit_r8, cpu, 3, E)},      // 0x5b
+      {"BIT 3,H", 2, 8, std::bind(&Cpu::bit_r8, cpu, 3, H)},      // 0x5c
+      {"BIT 3,L", 2, 8, std::bind(&Cpu::bit_r8, cpu, 3, L)},      // 0x5d
+      {"BIT 3,(HL)", 2, 16, std::bind(&Cpu::bit_hl, cpu, 3)},     // 0x5e
+      {"BIT 3,A", 2, 8, std::bind(&Cpu::bit_r8, cpu, 3, A)},      // 0x5f
+      {"BIT 4,B", 2, 8, std::bind(&Cpu::bit_r8, cpu, 4, B)},      // 0x60
+      {"BIT 4,C", 2, 8, std::bind(&Cpu::bit_r8, cpu, 4, C)},      // 0x61
+      {"BIT 4,D", 2, 8, std::bind(&Cpu::bit_r8, cpu, 4, D)},      // 0x62
+      {"BIT 4,E", 2, 8, std::bind(&Cpu::bit_r8, cpu, 4, E)},      // 0x63
+      {"BIT 4,H", 2, 8, std::bind(&Cpu::bit_r8, cpu, 4, H)},      // 0x64
+      {"BIT 4,L", 2, 8, std::bind(&Cpu::bit_r8, cpu, 4, L)},      // 0x65
+      {"BIT 4,(HL)", 2, 16, std::bind(&Cpu::bit_hl, cpu, 4)},     // 0x66
+      {"BIT 4,A", 2, 8, std::bind(&Cpu::bit_r8, cpu, 4, A)},      // 0x67
+      {"BIT 5,B", 2, 8, std::bind(&Cpu::bit_r8, cpu, 5, B)},      // 0x68
+      {"BIT 5,C", 2, 8, std::bind(&Cpu::bit_r8, cpu, 5, C)},      // 0x69
+      {"BIT 5,D", 2, 8, std::bind(&Cpu::bit_r8, cpu, 5, D)},      // 0x6a
+      {"BIT 5,E", 2, 8, std::bind(&Cpu::bit_r8, cpu, 5, E)},      // 0x6b
+      {"BIT 5,H", 2, 8, std::bind(&Cpu::bit_r8, cpu, 5, H)},      // 0x6c
+      {"BIT 5,L", 2, 8, std::bind(&Cpu::bit_r8, cpu, 5, L)},      // 0x6d
+      {"BIT 5,(HL)", 2, 16, std::bind(&Cpu::bit_hl, cpu, 5)},     // 0x6e
+      {"BIT 5,A", 2, 8, std::bind(&Cpu::bit_r8, cpu, 5, A)},      // 0x6f
+      {"BIT 6,B", 2, 8, std::bind(&Cpu::bit_r8, cpu, 6, B)},      // 0x70
+      {"BIT 6,C", 2, 8, std::bind(&Cpu::bit_r8, cpu, 6, C)},      // 0x71
+      {"BIT 6,D", 2, 8, std::bind(&Cpu::bit_r8, cpu, 6, D)},      // 0x72
+      {"BIT 6,E", 2, 8, std::bind(&Cpu::bit_r8, cpu, 6, E)},      // 0x73
+      {"BIT 6,H", 2, 8, std::bind(&Cpu::bit_r8, cpu, 6, H)},      // 0x74
+      {"BIT 6,L", 2, 8, std::bind(&Cpu::bit_r8, cpu, 6, L)},      // 0x75
+      {"BIT 6,(HL)", 2, 16, std::bind(&Cpu::bit_hl, cpu, 6)},     // 0x76
+      {"BIT 6,A", 2, 8, std::bind(&Cpu::bit_r8, cpu, 6, A)},      // 0x77
+      {"BIT 7,B", 2, 8, std::bind(&Cpu::bit_r8, cpu, 7, B)},      // 0x78
+      {"BIT 7,C", 2, 8, std::bind(&Cpu::bit_r8, cpu, 7, C)},      // 0x79
+      {"BIT 7,D", 2, 8, std::bind(&Cpu::bit_r8, cpu, 7, D)},      // 0x7a
+      {"BIT 7,E", 2, 8, std::bind(&Cpu::bit_r8, cpu, 7, E)},      // 0x7b
+      {"BIT 7,H", 2, 8, std::bind(&Cpu::bit_r8, cpu, 7, H)},      // 0x7c
+      {"BIT 7,L", 2, 8, std::bind(&Cpu::bit_r8, cpu, 7, L)},      // 0x7d
+      {"BIT 7,(HL)", 2, 16, std::bind(&Cpu::bit_hl, cpu, 7)},     // 0x7e
+      {"BIT 7,A", 2, 8, std::bind(&Cpu::bit_r8, cpu, 7, A)},      // 0x7f
+      {"RES 0,B", 2, 8, std::bind(&Cpu::res_u3_r8, cpu, 0, B)},   // 0x80
+      {"RES 0,C", 2, 8, std::bind(&Cpu::res_u3_r8, cpu, 0, C)},   // 0x81
+      {"RES 0,D", 2, 8, std::bind(&Cpu::res_u3_r8, cpu, 0, D)},   // 0x82
+      {"RES 0,E", 2, 8, std::bind(&Cpu::res_u3_r8, cpu, 0, E)},   // 0x83
+      {"RES 0,H", 2, 8, std::bind(&Cpu::res_u3_r8, cpu, 0, H)},   // 0x84
+      {"RES 0,L", 2, 8, std::bind(&Cpu::res_u3_r8, cpu, 0, L)},   // 0x85
+      {"RES 0,(HL)", 2, 16, std::bind(&Cpu::res_u3_hl, cpu, 0)},  // 0x86
+      {"RES 0,A", 2, 8, std::bind(&Cpu::res_u3_r8, cpu, 0, A)},   // 0x87
+      {"RES 1,B", 2, 8, std::bind(&Cpu::res_u3_r8, cpu, 1, B)},   // 0x88
+      {"RES 1,C", 2, 8, std::bind(&Cpu::res_u3_r8, cpu, 1, C)},   // 0x89
+      {"RES 1,D", 2, 8, std::bind(&Cpu::res_u3_r8, cpu, 1, D)},   // 0x8a
+      {"RES 1,E", 2, 8, std::bind(&Cpu::res_u3_r8, cpu, 1, E)},   // 0x8b
+      {"RES 1,H", 2, 8, std::bind(&Cpu::res_u3_r8, cpu, 1, H)},   // 0x8c
+      {"RES 1,L", 2, 8, std::bind(&Cpu::res_u3_r8, cpu, 1, L)},   // 0x8d
+      {"RES 1,(HL)", 2, 16, std::bind(&Cpu::res_u3_hl, cpu, 1)},  // 0x8e
+      {"RES 1,A", 2, 8, std::bind(&Cpu::res_u3_r8, cpu, 1, A)},   // 0x8f
+      {"RES 2,B", 2, 8, std::bind(&Cpu::res_u3_r8, cpu, 2, B)},   // 0x90
+      {"RES 2,C", 2, 8, std::bind(&Cpu::res_u3_r8, cpu, 2, C)},   // 0x91
+      {"RES 2,D", 2, 8, std::bind(&Cpu::res_u3_r8, cpu, 2, D)},   // 0x92
+      {"RES 2,E", 2, 8, std::bind(&Cpu::res_u3_r8, cpu, 2, E)},   // 0x93
+      {"RES 2,H", 2, 8, std::bind(&Cpu::res_u3_r8, cpu, 2, H)},   // 0x94
+      {"RES 2,L", 2, 8, std::bind(&Cpu::res_u3_r8, cpu, 2, L)},   // 0x95
+      {"RES 2,(HL)", 2, 16, std::bind(&Cpu::res_u3_hl, cpu, 2)},  // 0x96
+      {"RES 2,A", 2, 8, std::bind(&Cpu::res_u3_r8, cpu, 2, A)},   // 0x97
+      {"RES 3,B", 2, 8, std::bind(&Cpu::res_u3_r8, cpu, 3, B)},   // 0x98
+      {"RES 3,C", 2, 8, std::bind(&Cpu::res_u3_r8, cpu, 3, C)},   // 0x99
+      {"RES 3,D", 2, 8, std::bind(&Cpu::res_u3_r8, cpu, 3, D)},   // 0x9a
+      {"RES 3,E", 2, 8, std::bind(&Cpu::res_u3_r8, cpu, 3, E)},   // 0x9b
+      {"RES 3,H", 2, 8, std::bind(&Cpu::res_u3_r8, cpu, 3, H)},   // 0x9c
+      {"RES 3,L", 2, 8, std::bind(&Cpu::res_u3_r8, cpu, 3, L)},   // 0x9d
+      {"RES 3,(HL)", 2, 16, std::bind(&Cpu::res_u3_hl, cpu, 3)},  // 0x9e
+      {"RES 3,A", 2, 8, std::bind(&Cpu::res_u3_r8, cpu, 3, A)},   // 0x9f
+      {"RES 4,B", 2, 8, std::bind(&Cpu::res_u3_r8, cpu, 4, B)},   // 0xa0
+      {"RES 4,C", 2, 8, std::bind(&Cpu::res_u3_r8, cpu, 4, C)},   // 0xa1
+      {"RES 4,D", 2, 8, std::bind(&Cpu::res_u3_r8, cpu, 4, D)},   // 0xa2
+      {"RES 4,E", 2, 8, std::bind(&Cpu::res_u3_r8, cpu, 4, E)},   // 0xa3
+      {"RES 4,H", 2, 8, std::bind(&Cpu::res_u3_r8, cpu, 4, H)},   // 0xa4
+      {"RES 4,L", 2, 8, std::bind(&Cpu::res_u3_r8, cpu, 4, L)},   // 0xa5
+      {"RES 4,(HL)", 2, 16, std::bind(&Cpu::res_u3_hl, cpu, 4)},  // 0xa6
+      {"RES 4,A", 2, 8, std::bind(&Cpu::res_u3_r8, cpu, 4, A)},   // 0xa7
+      {"RES 5,B", 2, 8, std::bind(&Cpu::res_u3_r8, cpu, 5, B)},   // 0xa8
+      {"RES 5,C", 2, 8, std::bind(&Cpu::res_u3_r8, cpu, 5, C)},   // 0xa9
+      {"RES 5,D", 2, 8, std::bind(&Cpu::res_u3_r8, cpu, 5, D)},   // 0xaa
+      {"RES 5,E", 2, 8, std::bind(&Cpu::res_u3_r8, cpu, 5, E)},   // 0xab
+      {"RES 5,H", 2, 8, std::bind(&Cpu::res_u3_r8, cpu, 5, H)},   // 0xac
+      {"RES 5,L", 2, 8, std::bind(&Cpu::res_u3_r8, cpu, 5, L)},   // 0xad
+      {"RES 5,(HL)", 2, 16, std::bind(&Cpu::res_u3_hl, cpu, 5)},  // 0xae
+      {"RES 5,A", 2, 8, std::bind(&Cpu::res_u3_r8, cpu, 5, A)},   // 0xaf
+      {"RES 6,B", 2, 8, std::bind(&Cpu::res_u3_r8, cpu, 6, B)},   // 0xb0
+      {"RES 6,C", 2, 8, std::bind(&Cpu::res_u3_r8, cpu, 6, C)},   // 0xb1
+      {"RES 6,D", 2, 8, std::bind(&Cpu::res_u3_r8, cpu, 6, D)},   // 0xb2
+      {"RES 6,E", 2, 8, std::bind(&Cpu::res_u3_r8, cpu, 6, E)},   // 0xb3
+      {"RES 6,H", 2, 8, std::bind(&Cpu::res_u3_r8, cpu, 6, H)},   // 0xb4
+      {"RES 6,L", 2, 8, std::bind(&Cpu::res_u3_r8, cpu, 6, L)},   // 0xb5
+      {"RES 6,(HL)", 2, 16, std::bind(&Cpu::res_u3_hl, cpu, 6)},  // 0xb6
+      {"RES 6,A", 2, 8, std::bind(&Cpu::res_u3_r8, cpu, 6, A)},   // 0xb7
+      {"RES 7,B", 2, 8, std::bind(&Cpu::res_u3_r8, cpu, 7, B)},   // 0xb8
+      {"RES 7,C", 2, 8, std::bind(&Cpu::res_u3_r8, cpu, 7, C)},   // 0xb9
+      {"RES 7,D", 2, 8, std::bind(&Cpu::res_u3_r8, cpu, 7, D)},   // 0xba
+      {"RES 7,E", 2, 8, std::bind(&Cpu::res_u3_r8, cpu, 7, E)},   // 0xbb
+      {"RES 7,H", 2, 8, std::bind(&Cpu::res_u3_r8, cpu, 7, H)},   // 0xbc
+      {"RES 7,L", 2, 8, std::bind(&Cpu::res_u3_r8, cpu, 7, L)},   // 0xbd
+      {"RES 7,(HL)", 2, 16, std::bind(&Cpu::res_u3_hl, cpu, 7)},  // 0xbe
+      {"RES 7,A", 2, 8, std::bind(&Cpu::res_u3_r8, cpu, 7, A)},   // 0xbf
+      {"SET 0,B", 2, 8, std::bind(&Cpu::set_u3_r8, cpu, 0, B)},   // 0xc0
+      {"SET 0,C", 2, 8, std::bind(&Cpu::set_u3_r8, cpu, 0, C)},   // 0xc1
+      {"SET 0,D", 2, 8, std::bind(&Cpu::set_u3_r8, cpu, 0, D)},   // 0xc2
+      {"SET 0,E", 2, 8, std::bind(&Cpu::set_u3_r8, cpu, 0, E)},   // 0xc3
+      {"SET 0,H", 2, 8, std::bind(&Cpu::set_u3_r8, cpu, 0, H)},   // 0xc4
+      {"SET 0,L", 2, 8, std::bind(&Cpu::set_u3_r8, cpu, 0, L)},   // 0xc5
+      {"SET 0,(HL)", 2, 16, std::bind(&Cpu::set_u3_hl, cpu, 0)},  // 0xc6
+      {"SET 0,A", 2, 8, std::bind(&Cpu::set_u3_r8, cpu, 0, A)},   // 0xc7
+      {"SET 1,B", 2, 8, std::bind(&Cpu::set_u3_r8, cpu, 1, B)},   // 0xc8
+      {"SET 1,C", 2, 8, std::bind(&Cpu::set_u3_r8, cpu, 1, C)},   // 0xc9
+      {"SET 1,D", 2, 8, std::bind(&Cpu::set_u3_r8, cpu, 1, D)},   // 0xca
+      {"SET 1,E", 2, 8, std::bind(&Cpu::set_u3_r8, cpu, 1, E)},   // 0xcb
+      {"SET 1,H", 2, 8, std::bind(&Cpu::set_u3_r8, cpu, 1, H)},   // 0xcc
+      {"SET 1,L", 2, 8, std::bind(&Cpu::set_u3_r8, cpu, 1, L)},   // 0xcd
+      {"SET 1,(HL)", 2, 16, std::bind(&Cpu::set_u3_hl, cpu, 1)},  // 0xce
+      {"SET 1,A", 2, 8, std::bind(&Cpu::set_u3_r8, cpu, 1, A)},   // 0xcf
+      {"SET 2,B", 2, 8, std::bind(&Cpu::set_u3_r8, cpu, 2, B)},   // 0xd0
+      {"SET 2,C", 2, 8, std::bind(&Cpu::set_u3_r8, cpu, 2, C)},   // 0xd1
+      {"SET 2,D", 2, 8, std::bind(&Cpu::set_u3_r8, cpu, 2, D)},   // 0xd2
+      {"SET 2,E", 2, 8, std::bind(&Cpu::set_u3_r8, cpu, 2, E)},   // 0xd3
+      {"SET 2,H", 2, 8, std::bind(&Cpu::set_u3_r8, cpu, 2, H)},   // 0xd4
+      {"SET 2,L", 2, 8, std::bind(&Cpu::set_u3_r8, cpu, 2, L)},   // 0xd5
+      {"SET 2,(HL)", 2, 16, std::bind(&Cpu::set_u3_hl, cpu, 2)},  // 0xd6
+      {"SET 2,A", 2, 8, std::bind(&Cpu::set_u3_r8, cpu, 2, A)},   // 0xd7
+      {"SET 3,B", 2, 8, std::bind(&Cpu::set_u3_r8, cpu, 3, B)},   // 0xd8
+      {"SET 3,C", 2, 8, std::bind(&Cpu::set_u3_r8, cpu, 3, C)},   // 0xd9
+      {"SET 3,D", 2, 8, std::bind(&Cpu::set_u3_r8, cpu, 3, D)},   // 0xda
+      {"SET 3,E", 2, 8, std::bind(&Cpu::set_u3_r8, cpu, 3, E)},   // 0xdb
+      {"SET 3,H", 2, 8, std::bind(&Cpu::set_u3_r8, cpu, 3, H)},   // 0xdc
+      {"SET 3,L", 2, 8, std::bind(&Cpu::set_u3_r8, cpu, 3, L)},   // 0xdd
+      {"SET 3,(HL)", 2, 16, std::bind(&Cpu::set_u3_hl, cpu, 3)},  // 0xde
+      {"SET 3,A", 2, 8, std::bind(&Cpu::set_u3_r8, cpu, 3, A)},   // 0xdf
+      {"SET 4,B", 2, 8, std::bind(&Cpu::set_u3_r8, cpu, 4, B)},   // 0xe0
+      {"SET 4,C", 2, 8, std::bind(&Cpu::set_u3_r8, cpu, 4, C)},   // 0xe1
+      {"SET 4,D", 2, 8, std::bind(&Cpu::set_u3_r8, cpu, 4, D)},   // 0xe2
+      {"SET 4,E", 2, 8, std::bind(&Cpu::set_u3_r8, cpu, 4, E)},   // 0xe3
+      {"SET 4,H", 2, 8, std::bind(&Cpu::set_u3_r8, cpu, 4, H)},   // 0xe4
+      {"SET 4,L", 2, 8, std::bind(&Cpu::set_u3_r8, cpu, 4, L)},   // 0xe5
+      {"SET 4,(HL)", 2, 16, std::bind(&Cpu::set_u3_hl, cpu, 4)},  // 0xe6
+      {"SET 4,A", 2, 8, std::bind(&Cpu::set_u3_r8, cpu, 4, A)},   // 0xe7
+      {"SET 5,B", 2, 8, std::bind(&Cpu::set_u3_r8, cpu, 5, B)},   // 0xe8
+      {"SET 5,C", 2, 8, std::bind(&Cpu::set_u3_r8, cpu, 5, C)},   // 0xe9
+      {"SET 5,D", 2, 8, std::bind(&Cpu::set_u3_r8, cpu, 5, D)},   // 0xea
+      {"SET 5,E", 2, 8, std::bind(&Cpu::set_u3_r8, cpu, 5, E)},   // 0xeb
+      {"SET 5,H", 2, 8, std::bind(&Cpu::set_u3_r8, cpu, 5, H)},   // 0xec
+      {"SET 5,L", 2, 8, std::bind(&Cpu::set_u3_r8, cpu, 5, L)},   // 0xed
+      {"SET 5,(HL)", 2, 16, std::bind(&Cpu::set_u3_hl, cpu, 5)},  // 0xee
+      {"SET 5,A", 2, 8, std::bind(&Cpu::set_u3_r8, cpu, 5, A)},   // 0xef
+      {"SET 6,B", 2, 8, std::bind(&Cpu::set_u3_r8, cpu, 6, B)},   // 0xf0
+      {"SET 6,C", 2, 8, std::bind(&Cpu::set_u3_r8, cpu, 6, C)},   // 0xf1
+      {"SET 6,D", 2, 8, std::bind(&Cpu::set_u3_r8, cpu, 6, D)},   // 0xf2
+      {"SET 6,E", 2, 8, std::bind(&Cpu::set_u3_r8, cpu, 6, E)},   // 0xf3
+      {"SET 6,H", 2, 8, std::bind(&Cpu::set_u3_r8, cpu, 6, H)},   // 0xf4
+      {"SET 6,L", 2, 8, std::bind(&Cpu::set_u3_r8, cpu, 6, L)},   // 0xf5
+      {"SET 6,(HL)", 2, 16, std::bind(&Cpu::set_u3_hl, cpu, 6)},  // 0xf6
+      {"SET 6,A", 2, 8, std::bind(&Cpu::set_u3_r8, cpu, 6, A)},   // 0xf7
+      {"SET 7,B", 2, 8, std::bind(&Cpu::set_u3_r8, cpu, 7, B)},   // 0xf8
+      {"SET 7,C", 2, 8, std::bind(&Cpu::set_u3_r8, cpu, 7, C)},   // 0xf9
+      {"SET 7,D", 2, 8, std::bind(&Cpu::set_u3_r8, cpu, 7, D)},   // 0xfa
+      {"SET 7,E", 2, 8, std::bind(&Cpu::set_u3_r8, cpu, 7, E)},   // 0xfb
+      {"SET 7,H", 2, 8, std::bind(&Cpu::set_u3_r8, cpu, 7, H)},   // 0xfc
+      {"SET 7,L", 2, 8, std::bind(&Cpu::set_u3_r8, cpu, 7, L)},   // 0xfd
+      {"SET 7,(HL)", 2, 16, std::bind(&Cpu::set_u3_hl, cpu, 7)},  // 0xfe
+      {"SET 7,A", 2, 8, std::bind(&Cpu::set_u3_r8, cpu, 7, A)},   // 0xff
+  }};
+}
+
 InstructionTable::InstructionTable(Cpu& cpu)
-    : cpu(&cpu), instructions(bind_instructions(&cpu)) {}
+    : cpu(&cpu),
+      instructions(bind_instructions(&cpu)),
+      cb_instructions(bind_cb_instructions(&cpu)) {}
 
 }  // namespace gb
