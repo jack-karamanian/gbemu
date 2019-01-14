@@ -14,5 +14,8 @@ struct Memory {
     memory[addr] = val;
   }
 
+
+
+
 };
 }

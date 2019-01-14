@@ -1,7 +1,9 @@
 #pragma once
+#include <array>
 #include <boost/integer_traits.hpp>
 #include <cstdint>
 #include <functional>
+#include <string>
 #include "memory.h"
 #include "types.h"
 
@@ -11,6 +13,22 @@
 #define FLAG_CARRY 0x10
 
 namespace gb {
+struct Cpu;
+struct Instruction {
+  std::string name;
+  size_t size;
+  size_t cycles;
+  std::function<void()> impl;
+};
+
+struct InstructionTable {
+  gb::Cpu* cpu;
+
+  std::array<Instruction, 256> instructions;
+  std::array<Instruction, 256> cb_instructions = {{}};
+
+  InstructionTable(Cpu& cpu);
+};
 namespace JumpCondition {
 enum {
   NZ = 0,
@@ -21,6 +39,13 @@ enum {
 };
 struct Cpu {
   enum Register { C = 0, B, E, D, L, H, F, A, BC = 0, DE = 2, HL = 4 };
+  enum Interrupt {
+    VBlank = 0x01,
+    LcdStat = 0x2,
+    Timer = 0x4,
+    Serial = 0x08,
+    Joypad = 0x10,
+  };
   u8 regs[8];
 
   u16 sp;
@@ -28,17 +53,41 @@ struct Cpu {
   u8 m;
   u8 t;
 
+  u8& a;
+  u8& b;
+  u8& c;
+  u16& bc;
+  u8& d;
+  u8& e;
+  u16& de;
+  u8& h;
+  u8& l;
+  u16& hl;
+  u8& f;
+
   bool interrupts = true;
 
   Memory& memory;
+  InstructionTable instruction_table;
 
-  Cpu(Memory& memory) : memory(memory) {}
+  Cpu(Memory& memory);
 
   u8 fetch() { return memory.memory[pc++]; }
 
-  void decode(const Memory& memory);
+  void fetch_and_decode();
+  void handle_interrupts();
+  void debug_write();
+
+  inline bool has_interrupt(Interrupt interrupt) {
+    return *memory.at(0xff0f) & interrupt;
+  }
+
+  inline void clear_interrupt(Interrupt interrupt) {
+    *memory.at(0xff0f) = ~interrupt;
+  }
 
   inline void noop() const {}
+  inline void invalid() { throw std::runtime_error("invalid instruction"); }
 
   inline bool get_carry() { return regs[Register::F] & 0x10; }
 
@@ -651,6 +700,13 @@ struct Cpu {
     sp = val;
   }
 
+  // LD [n16],SP
+  void ld_d16_sp() {
+    const u16& addr = read_value<u16>();
+    u16* val = memory.at<u16>(addr);
+    *val = sp;
+  }
+
   // LD HL,SP+e8
   void ld_hl_sp_s8() {
     const s8& val = read_value<s8>();
@@ -1081,7 +1137,7 @@ struct Cpu {
   inline u16& get_r16(const Register& reg) { return (u16&)*&regs[reg]; }
 
   inline u8& value_at_r16(const Register& reg) {
-    u16& addr = get_r16(Register::HL);
+    u16& addr = get_r16(reg);
     u8* val = memory.at(addr);
     return *val;
   }

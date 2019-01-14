@@ -9,6 +9,8 @@ add_executable(
   src/cpu.h
   src/cpu.cpp
   src/memory.h
+  src/instruction_table.h
+  src/instruction_table.cpp
 )
 
 target_compile_options(gbemu PRIVATE -Wall -Wextra)
