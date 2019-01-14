@@ -1082,6 +1082,9 @@ struct Cpu {
   // SUB A,[HL]
   void sub_a_hl() { subtract(regs[Register::A], value_at_r16(Register::HL)); }
 
+  // SUB A,n8
+  void sub_a_d8() { subtract(regs[A], read_value()); }
+
   void swap(u8& val) {
     u8 high = (val & 0xf0) >> 4;
     u8 low = (val & 0xf);
