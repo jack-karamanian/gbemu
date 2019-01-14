@@ -27,6 +27,8 @@ struct InstructionTable {
   std::array<Instruction, 256> instructions;
   std::array<Instruction, 256> cb_instructions = {{}};
 
+  InstructionTable() = delete;
+
   InstructionTable(Cpu& cpu);
 };
 namespace JumpCondition {
@@ -397,6 +399,8 @@ struct Cpu {
 
     clear_flag(FLAG_SUBTRACT);
   }
+
+  void cp_a_r8(const Register& reg) { compare_a(regs[reg]); }
 
   // CP A,[HL]
   void cp_a_hl() {
