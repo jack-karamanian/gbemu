@@ -589,10 +589,10 @@ struct Cpu {
   }
 
   // LD [HL],n8
-  void ld_hl_d8(const Register& reg) {
+  void ld_hl_d8() {
     const u16& hl = get_r16(Register::HL);
     u8* val = memory.at(hl);
-    *val = regs[reg];
+    *val = read_value();
   }
 
   // LD r8,[HL]
