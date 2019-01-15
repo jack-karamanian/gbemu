@@ -3,6 +3,8 @@
 #include <boost/integer_traits.hpp>
 #include <cstdint>
 #include <functional>
+#include <iostream>
+#include <sstream>
 #include <string>
 #include "memory.h"
 #include "types.h"
@@ -19,6 +21,8 @@ struct Instruction {
   size_t size;
   size_t cycles;
   std::function<void()> impl;
+
+  Instruction() = delete;
 };
 
 struct InstructionTable {
@@ -74,7 +78,7 @@ struct Cpu {
 
   Cpu(Memory& memory);
 
-  u8 fetch() { return memory.memory[pc++]; }
+  const Instruction& fetch();
 
   void fetch_and_decode();
   void handle_interrupts();
@@ -89,7 +93,12 @@ struct Cpu {
   }
 
   inline void noop() const {}
-  inline void invalid() { throw std::runtime_error("invalid instruction"); }
+  inline void invalid() {
+    std::ostringstream s;
+    s << "invalid instruction: " << std::hex << +memory.memory[pc] << std::endl;
+    throw std::runtime_error(s.str());
+    // std::cout << s.str();
+  }
 
   inline bool get_carry() { return regs[Register::F] & 0x10; }
 
@@ -344,11 +353,12 @@ struct Cpu {
   // CALL,nn
   void call() {
     u16 addr = read_value<u16>();
-    u16 next_op = pc + 3;
-    u8 pc_low = (next_op & 0xff00) >> 8;
-    u8 pc_high = (next_op & 0x00ff);
-    memory.set(--sp, pc_high);
-    memory.set(--sp, pc_low);
+    u16 next_op = pc + 2;
+    // u8 pc_low = (next_op & 0xff00) >> 8;
+    // bu8 pc_high = (next_op & 0x00ff);
+    // bmemory.set(--sp, pc_high);
+    // memory.set(--sp, pc_low);
+    push(next_op);
     pc = addr;
   }
 
@@ -517,7 +527,7 @@ struct Cpu {
   // INC SP
   void inc_sp() { sp++; }
 
-  inline void jump(const u16& addr) { pc = addr; }
+  inline void jump(const u16& addr) { pc = addr - 3; }
 
   // JP n16
   void jp_d16() {
@@ -758,6 +768,7 @@ struct Cpu {
     sp += 2;
 
     reg = (((u16)low) << 8) | high;
+    std::cout << "popped " << std::hex << +reg << std::endl;
   }
 
   // POP AF
@@ -803,7 +814,10 @@ struct Cpu {
   }
 
   // RET
-  void ret() { pop(pc); }
+  void ret() {
+    pop(pc);
+    pc--;
+  }
 
   // RET,cc
   void ret_conditional() {
