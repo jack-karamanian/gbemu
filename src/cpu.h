@@ -52,6 +52,9 @@ struct Cpu {
     Serial = 0x08,
     Joypad = 0x10,
   };
+  enum MemoryRegister {
+    Interrupts = 0xff0f,
+  };
   u8 regs[8];
 
   u16 sp;
@@ -71,7 +74,7 @@ struct Cpu {
   u16& hl;
   u8& f;
 
-  bool interrupts = true;
+  bool interrupts_enabled = true;
 
   Memory& memory;
   InstructionTable instruction_table;
@@ -82,10 +85,19 @@ struct Cpu {
 
   void fetch_and_decode();
   void handle_interrupts();
+  bool handle_interrupt(Interrupt interrupt);
   void debug_write();
 
+  inline u8* get_interrupts_register() {
+    return memory.at(MemoryRegister::Interrupts);
+  }
+
   inline bool has_interrupt(Interrupt interrupt) {
-    return *memory.at(0xff0f) & interrupt;
+    return *memory.at(MemoryRegister::Interrupts) & interrupt;
+  }
+
+  inline void set_interrupt(Interrupt interrupt) {
+    *memory.at(MemoryRegister::Interrupts) |= interrupt;
   }
 
   inline void clear_interrupt(Interrupt interrupt) {
@@ -492,10 +504,10 @@ struct Cpu {
   void dec_sp() { sp--; }
 
   // DI
-  void disable_interrupts() { interrupts = false; }
+  void disable_interrupts() { interrupts_enabled = false; }
 
   // EI
-  void enable_interrupts() { interrupts = true; }
+  void enable_interrupts() { interrupts_enabled = true; }
 
   void halt() {}
 
