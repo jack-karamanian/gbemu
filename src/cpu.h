@@ -220,7 +220,7 @@ struct Cpu {
   // ADC A,n8
   void add_carry_a_d8() {
     u8& a = regs[Register::A];
-    u8 val = read_value();
+    u8 val = read_operand();
 
     carried_add(a, a, val);
   }
@@ -253,7 +253,7 @@ struct Cpu {
   // ADD A,n8
   void add_a_d8() {
     u8& a = regs[Register::A];
-    u8 val = read_value();
+    u8 val = read_operand();
 
     add(a, a, val);
   }
@@ -286,7 +286,7 @@ struct Cpu {
 
   // ADD SP,s8
   void add_sp_s8() {
-    s8 val = read_value();
+    s8 val = read_operand();
     int res = sp + val;
 
     if (res & 0xffff0000) {
@@ -331,7 +331,7 @@ struct Cpu {
 
   // AND A,n8
   void and_a_d8() {
-    u8 val = read_value();
+    u8 val = read_operand();
 
     and_a(val);
   }
@@ -364,7 +364,7 @@ struct Cpu {
 
   // CALL,nn
   void call() {
-    u16 addr = read_value<u16>();
+    u16 addr = read_operand<u16>();
     u16 next_op = pc + 2;
     // u8 pc_low = (next_op & 0xff00) >> 8;
     // bu8 pc_high = (next_op & 0x00ff);
@@ -434,7 +434,7 @@ struct Cpu {
 
   // CP A,n8
   void cp_a_d8() {
-    u8 val = read_value();
+    u8 val = read_operand();
     compare_a(val);
   }
 
@@ -543,7 +543,7 @@ struct Cpu {
 
   // JP n16
   void jp_d16() {
-    u16 addr = read_value<u16>();
+    u16 addr = read_operand<u16>();
     jump(addr);
   }
 
@@ -566,7 +566,7 @@ struct Cpu {
 
   // JP cc,n16
   void jp_cc_n16() {
-    u16 addr = read_value<u16>();
+    u16 addr = read_operand<u16>();
     jump_conditional(addr);
   }
 
@@ -578,13 +578,13 @@ struct Cpu {
 
   // JR e8
   void jr_e8() {
-    const u8& offset = read_value();
+    const u8& offset = read_operand();
     jump(pc + offset);
   }
 
   // JR cc,e8
   void jr_cc_e8() {
-    const u8& offset = read_value();
+    const u8& offset = read_operand();
     jump_conditional(pc + offset, 4);
   }
 
@@ -595,14 +595,14 @@ struct Cpu {
 
   // LD r8,n8
   void ld_r8_d8(const Register& dst) {
-    const u8& val = read_value();
+    const u8& val = read_operand();
     regs[dst] = val;
   }
 
   // LD r16,n16
   void ld_r16_d16(const Register& dst) {
     u16& r16 = get_r16(dst);
-    const u16& val = read_value<u16>();
+    const u16& val = read_operand<u16>();
 
     r16 = val;
   }
@@ -618,7 +618,7 @@ struct Cpu {
   void ld_hl_d8() {
     const u16& hl = get_r16(Register::HL);
     u8* val = memory.at(hl);
-    *val = read_value();
+    *val = read_operand();
   }
 
   // LD r8,[HL]
@@ -636,7 +636,7 @@ struct Cpu {
 
   // LD [n16],A
   void ld_d16_a() {
-    const u16& addr = read_value<u16>();
+    const u16& addr = read_operand<u16>();
     u8* val = memory.at(addr);
     *val = regs[Register::A];
   }
@@ -648,7 +648,7 @@ struct Cpu {
 
   // LD [$FF00 + n8],A
   void ld_offset_a() {
-    const u8& offset = read_value();
+    const u8& offset = read_operand();
     load_offset(offset, regs[Register::A]);
   }
 
@@ -663,7 +663,7 @@ struct Cpu {
 
   // LD A,[n16]
   void ld_a_d16() {
-    const u16& addr = read_value<u16>();
+    const u16& addr = read_operand<u16>();
     const u8* val = memory.at(addr);
     regs[Register::A] = *val;
   }
@@ -675,7 +675,7 @@ struct Cpu {
 
   // LD A,[$FF00 + n8]
   void ld_read_offset_d8() {
-    const u8& offset = read_value();
+    const u8& offset = read_operand();
     read_offset_from_memory(offset, regs[Register::A]);
   }
 
@@ -722,20 +722,20 @@ struct Cpu {
 
   // LD SP,n16
   void ld_sp_d16() {
-    const u16& val = read_value<u16>();
+    const u16& val = read_operand<u16>();
     sp = val;
   }
 
   // LD [n16],SP
   void ld_d16_sp() {
-    const u16& addr = read_value<u16>();
+    const u16& addr = read_operand<u16>();
     u16* val = memory.at<u16>(addr);
     *val = sp;
   }
 
   // LD HL,SP+e8
   void ld_hl_sp_s8() {
-    const s8& val = read_value<s8>();
+    const s8& val = read_operand<s8>();
     int res = sp + val;
     if (res & 0xffff0000) {
       set_flag(FLAG_CARRY);
@@ -772,7 +772,7 @@ struct Cpu {
   void or_a_hl() { or_a(value_at_r16(Register::HL)); }
 
   // OR A,n8
-  void or_a_d8() { or_a(read_value()); }
+  void or_a_d8() { or_a(read_operand()); }
 
   void pop(u16& reg) {
     u8 low = *memory.at(sp);
@@ -1009,7 +1009,7 @@ struct Cpu {
   }
 
   // SBC A,n8
-  void sbc_a_d8() { carried_subtract(regs[Register::A], read_value()); }
+  void sbc_a_d8() { carried_subtract(regs[Register::A], read_operand()); }
 
   // SCF
   void scf() {
@@ -1109,7 +1109,7 @@ struct Cpu {
   void sub_a_hl() { subtract(regs[Register::A], value_at_r16(Register::HL)); }
 
   // SUB A,n8
-  void sub_a_d8() { subtract(regs[A], read_value()); }
+  void sub_a_d8() { subtract(regs[A], read_operand()); }
 
   void swap(u8& val) {
     u8 high = (val & 0xf0) >> 4;
@@ -1143,7 +1143,7 @@ struct Cpu {
   }
 
   // XOR A,n8
-  void xor_a_d8() { exclusive_or(regs[Register::A], read_value()); }
+  void xor_a_d8() { exclusive_or(regs[Register::A], read_operand()); }
 
   // void set_16(u8 &reg_high, u8 &reg_low, u16 val) {
   //  reg_high = (val & 0xFF00) >> 8;
@@ -1151,7 +1151,7 @@ struct Cpu {
   //}
 
   template <typename T = u8>
-  T read_value() {
+  T read_operand() {
     T val = *memory.at<T>(pc + 1);
     //   pc += 1 + sizeof(T);
     return val;
