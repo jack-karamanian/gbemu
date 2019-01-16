@@ -74,7 +74,11 @@ struct Cpu {
   u16& hl;
   u8& f;
 
+  u8 current_opcode = 0x00;
+  u8* current_operand;
+
   bool interrupts_enabled = true;
+  bool stopped = false;
 
   Memory& memory;
   InstructionTable instruction_table;
@@ -107,7 +111,8 @@ struct Cpu {
   inline void noop() const {}
   inline void invalid() {
     std::ostringstream s;
-    s << "invalid instruction: " << std::hex << +memory.memory[pc] << std::endl;
+    s << "invalid instruction: " << std::hex << +memory.memory[pc - 1]
+      << std::endl;
     throw std::runtime_error(s.str());
     // std::cout << s.str();
   }
@@ -365,12 +370,12 @@ struct Cpu {
   // CALL,nn
   void call() {
     u16 addr = read_operand<u16>();
-    u16 next_op = pc + 2;
+    // u16 next_op = pc + 2;
     // u8 pc_low = (next_op & 0xff00) >> 8;
     // bu8 pc_high = (next_op & 0x00ff);
     // bmemory.set(--sp, pc_high);
     // memory.set(--sp, pc_low);
-    push(next_op);
+    push(pc);
     pc = addr;
   }
 
@@ -539,7 +544,7 @@ struct Cpu {
   // INC SP
   void inc_sp() { sp++; }
 
-  inline void jump(const u16& addr) { pc = addr - 3; }
+  inline void jump(const u16& addr) { pc = addr; }
 
   // JP n16
   void jp_d16() {
@@ -557,9 +562,7 @@ struct Cpu {
   }
 
   void jump_conditional(const u16& addr, int index_offset = 0) {
-    const u8 opcode = *memory.at(pc);
-
-    if (can_jump(opcode, index_offset)) {
+    if (can_jump(current_opcode, index_offset)) {
       jump(addr);
     }
   }
@@ -578,13 +581,14 @@ struct Cpu {
 
   // JR e8
   void jr_e8() {
-    const u8& offset = read_operand();
+    const s8& offset = read_operand<s8>();
     jump(pc + offset);
   }
 
   // JR cc,e8
   void jr_cc_e8() {
-    const u8& offset = read_operand();
+    const s8& offset = read_operand<s8>();
+    std::cout << "offset " << std::hex << +offset << std::endl;
     jump_conditional(pc + offset, 4);
   }
 
@@ -826,15 +830,11 @@ struct Cpu {
   }
 
   // RET
-  void ret() {
-    pop(pc);
-    pc--;
-  }
+  void ret() { pop(pc); }
 
   // RET,cc
   void ret_conditional() {
-    u8 opcode = *memory.at(pc);
-    if (can_jump(opcode, 0)) {
+    if (can_jump(current_opcode, 0)) {
       ret();
     }
   }
@@ -974,10 +974,9 @@ struct Cpu {
 
   // RST vec
   void rst() {
-    u8 opcode = *memory.at(pc);
     push(pc);
 
-    u16 addr = opcode & 0x38;
+    u16 addr = current_opcode & 0x38;
     pc = addr;
   }
 
@@ -1085,7 +1084,7 @@ struct Cpu {
   void srl_hl() { shift(value_at_r16(Register::HL)); }
 
   // STOP
-  void stop() {}
+  void stop() { stopped = true; }
 
   void subtract(u8& dst, const u8& src) {
     u8 res = dst - src;
@@ -1152,9 +1151,7 @@ struct Cpu {
 
   template <typename T = u8>
   T read_operand() {
-    T val = *memory.at<T>(pc + 1);
-    //   pc += 1 + sizeof(T);
-    return val;
+    return *reinterpret_cast<T*>(current_operand);
   }
 
   void load_reg_to_addr(const Register& dst, const Register& src) {
