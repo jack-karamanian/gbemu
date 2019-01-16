@@ -228,7 +228,7 @@ static std::array<Instruction, 256> bind_instructions(Cpu* cpu) {
       {"RET NC", 1, 20, std::bind(&Cpu::ret_conditional, cpu)},         // 0xd0
       {"POP DE", 1, 12, std::bind(&Cpu::pop_r16, cpu, DE)},             // 0xd1
       {"JP NC,a16", 3, 16, std::bind(&Cpu::jp_cc_n16, cpu)},            // 0xd2
-      {"INVALID", 3, 16, std::bind(&Cpu::invalid, cpu)},                // 0xd3
+      {"INVALID", 1, 16, std::bind(&Cpu::invalid, cpu)},                // 0xd3
       {"CALL NC,a16", 3, 24, std::bind(&Cpu::call_nc, cpu)},            // 0xd4
       {"PUSH DE", 1, 16, std::bind(&Cpu::push_r16, cpu, DE)},           // 0xd5
       {"SUB d8", 2, 8, std::bind(&Cpu::sub_a_d8, cpu)},                 // 0xd6
@@ -236,26 +236,26 @@ static std::array<Instruction, 256> bind_instructions(Cpu* cpu) {
       {"RET C", 1, 20, std::bind(&Cpu::ret_conditional, cpu)},          // 0xd8
       {"RETI", 1, 16, std::bind(&Cpu::reti, cpu)},                      // 0xd9
       {"JP C,a16", 3, 16, std::bind(&Cpu::jp_cc_n16, cpu)},             // 0xda
-      {"INVALID", 3, 16, std::bind(&Cpu::invalid, cpu)},                // 0xdb
+      {"INVALID", 1, 16, std::bind(&Cpu::invalid, cpu)},                // 0xdb
       {"CALL C,a16", 3, 24, std::bind(&Cpu::call_c, cpu)},              // 0xdc
-      {"INVALID", 3, 24, std::bind(&Cpu::invalid, cpu)},                // 0xdd
+      {"INVALID", 1, 24, std::bind(&Cpu::invalid, cpu)},                // 0xdd
       {"SBC A,d8", 2, 8, std::bind(&Cpu::sbc_a_d8, cpu)},               // 0xde
       {"RST 18H", 1, 16, std::bind(&Cpu::rst, cpu)},                    // 0xdf
       {"LDH (a8),A", 2, 12, std::bind(&Cpu::ld_offset_a, cpu)},         // 0xe0
       {"POP HL", 1, 12, std::bind(&Cpu::pop_r16, cpu, HL)},             // 0xe1
       // Is this right?
       {"LD (C),A", 2, 8, std::bind(&Cpu::ld_offset_c_a, cpu)},         // 0xe2
-      {"INVALID", 2, 8, std::bind(&Cpu::invalid, cpu)},                // 0xe3
-      {"INVALID", 2, 8, std::bind(&Cpu::invalid, cpu)},                // 0xe4
+      {"INVALID", 1, 8, std::bind(&Cpu::invalid, cpu)},                // 0xe3
+      {"INVALID", 1, 8, std::bind(&Cpu::invalid, cpu)},                // 0xe4
       {"PUSH HL", 1, 16, std::bind(&Cpu::push_r16, cpu, HL)},          // 0xe5
       {"AND d8", 2, 8, std::bind(&Cpu::and_a_d8, cpu)},                // 0xe6
       {"RST 20H", 1, 16, std::bind(&Cpu::rst, cpu)},                   // 0xe7
       {"ADD SP,r8", 2, 16, std::bind(&Cpu::add_sp_s8, cpu)},           // 0xe8
       {"JP (HL)", 1, 4, std::bind(&Cpu::jp_hl, cpu)},                  // 0xe9
       {"LD (a16),A", 3, 16, std::bind(&Cpu::ld_d16_a, cpu)},           // 0xea
-      {"INVALID", 3, 16, std::bind(&Cpu::invalid, cpu)},               // 0xeb
-      {"INVALID", 3, 16, std::bind(&Cpu::invalid, cpu)},               // 0xec
-      {"INVALID", 3, 16, std::bind(&Cpu::invalid, cpu)},               // 0xed
+      {"INVALID", 1, 16, std::bind(&Cpu::invalid, cpu)},               // 0xeb
+      {"INVALID", 1, 16, std::bind(&Cpu::invalid, cpu)},               // 0xec
+      {"INVALID", 1, 16, std::bind(&Cpu::invalid, cpu)},               // 0xed
       {"XOR d8", 2, 8, std::bind(&Cpu::xor_a_d8, cpu)},                // 0xee
       {"RST 28H", 1, 16, std::bind(&Cpu::rst, cpu)},                   // 0xef
       {"LDH A,(a8)", 2, 12, std::bind(&Cpu::ld_read_offset_d8, cpu)},  // 0xf0
@@ -268,7 +268,7 @@ static std::array<Instruction, 256> bind_instructions(Cpu* cpu) {
       {"RST 30H", 1, 16, std::bind(&Cpu::rst, cpu)},                   // 0xf7
       {"LD HL,SP+r8", 2, 12, std::bind(&Cpu::ld_hl_sp_s8, cpu)},       // 0xf8
       {"LD SP,HL", 1, 8, std::bind(&Cpu::ld_sp_hl, cpu)},              // 0xf9
-      {"LD A,(a16)", 3, 16, std::bind(&Cpu::invalid, cpu)},            // 0xfa
+      {"LD A,(a16)", 3, 16, std::bind(&Cpu::ld_a_d16, cpu)},           // 0xfa
       {"EI", 1, 4, std::bind(&Cpu::enable_interrupts, cpu)},           // 0xfb
       {"INVALID", 1, 4, std::bind(&Cpu::invalid, cpu)},                // 0xfc
       {"INVALID", 1, 4, std::bind(&Cpu::invalid, cpu)},                // 0xfd
