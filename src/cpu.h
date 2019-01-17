@@ -53,14 +53,16 @@ struct Cpu {
     Joypad = 0x10,
   };
   enum MemoryRegister {
-    Interrupts = 0xff0f,
+    InterruptRequest = 0xff0f,
+    InterruptEnabled = 0xffff,
+    LcdControl = 0xff40,
   };
   u8 regs[8];
 
   u16 sp;
   u16 pc;
   u8 m;
-  u8 t;
+  unsigned int ticks;
 
   u8& a;
   u8& b;
@@ -92,16 +94,20 @@ struct Cpu {
   bool handle_interrupt(Interrupt interrupt);
   void debug_write();
 
-  inline u8* get_interrupts_register() {
-    return memory.at(MemoryRegister::Interrupts);
+  inline u8* get_interrupts_register() const {
+    return memory.at(MemoryRegister::InterruptRequest);
   }
 
-  inline bool has_interrupt(Interrupt interrupt) {
-    return *memory.at(MemoryRegister::Interrupts) & interrupt;
+  inline bool interrupt_enabled(Interrupt interrupt) {
+    return *memory.at(MemoryRegister::InterruptEnabled) & interrupt;
   }
 
-  inline void set_interrupt(Interrupt interrupt) {
-    *memory.at(MemoryRegister::Interrupts) |= interrupt;
+  inline bool has_interrupt(Interrupt interrupt) const {
+    return *memory.at(MemoryRegister::InterruptRequest) & interrupt;
+  }
+
+  inline void request_interrupt(Interrupt interrupt) {
+    *memory.at(MemoryRegister::InterruptRequest) |= interrupt;
   }
 
   inline void clear_interrupt(Interrupt interrupt) {
@@ -109,7 +115,7 @@ struct Cpu {
   }
 
   inline void noop() const {}
-  inline void invalid() {
+  inline void invalid() const {
     std::ostringstream s;
     s << "invalid instruction: " << std::hex << +memory.memory[pc - 1]
       << std::endl;
@@ -117,7 +123,7 @@ struct Cpu {
     // std::cout << s.str();
   }
 
-  inline bool get_carry() { return regs[Register::F] & 0x10; }
+  inline bool get_carry() const { return regs[Register::F] & 0x10; }
 
   inline bool get_flag(u8 flag) const { return regs[Register::F] & flag; }
 
@@ -132,6 +138,10 @@ struct Cpu {
     } else {
       clear_flag(FLAG_ZERO);
     }
+  }
+  template <typename T = u8>
+  T read_operand() {
+    return *reinterpret_cast<T*>(current_operand);
   }
 
   // void set_half_carry(const u8 &a, const u8 &b) {
@@ -167,15 +177,7 @@ struct Cpu {
     }
   }
 
-  void set_half_carry_subtract(const u8& a, const u8& b) {
-    bool half_carry = (b & 0x0f) > (a & 0x0f);
-
-    if (half_carry) {
-      set_flag(FLAG_HALF_CARRY);
-    } else {
-      clear_flag(FLAG_HALF_CARRY);
-    }
-  }
+  void set_half_carry_subtract(const u8& a, const u8& b);
 
   template <typename T, typename U = T>
   void set_carry(const T& a, const U& b) {
@@ -188,988 +190,399 @@ struct Cpu {
     }
   }
 
-  void carried_add(u8& dest, const u8& a, const u8& b) {
-    u8 carry = get_flag(FLAG_CARRY) ? 1 : 0;
-    u8 res = a + b + carry;
+  void carried_add(u8& dest, const u8& a, const u8& b);
 
-    set_carry(a, res);
-    set_half_carry(a, res);
-
-    dest = res;
-
-    set_zero(res);
-    clear_flag(FLAG_SUBTRACT);
-  }
-
-  void add(u8& dest, const u8& a, const u8& b) {
-    u8 res = a + b;
-
-    set_carry(a, res);
-    set_half_carry(a, res);
-
-    dest = res;
-
-    set_zero(res);
-    clear_flag(FLAG_SUBTRACT);
-  }
+  void add(u8& dest, const u8& a, const u8& b);
 
   // ADC A,[HL]
-  void add_carry_a_hl() {
-    u8& a = regs[Register::A];
-    u16 hl = get_16(Register::HL);
-    u8 val = *memory.at(hl);
-
-    carried_add(a, a, val);
-  }
+  void add_carry_a_hl();
 
   // ADC A,n8
-  void add_carry_a_d8() {
-    u8& a = regs[Register::A];
-    u8 val = read_operand();
-
-    carried_add(a, a, val);
-  }
+  void add_carry_a_d8();
 
   // ADC A,r8
-  void add_carry_a_r8(const Register& reg) {
-    u8& a = regs[Register::A];
-    u8& val = regs[reg];
-
-    carried_add(a, a, val);
-  }
+  void add_carry_a_r8(const Register& reg);
 
   // ADD A,r8
-  void add_a_r8(const Register& reg) {
-    u8& a = regs[Register::A];
-    u8& val = regs[reg];
-
-    add(a, a, val);
-  }
+  void add_a_r8(const Register& reg);
 
   // ADD A,[HL]
-  void add_a_hl() {
-    u8& a = regs[Register::A];
-    u16 addr = get_16(Register::HL);
-    u8 val = *memory.at(addr);
-
-    add(a, a, val);
-  }
+  void add_a_hl();
 
   // ADD A,n8
-  void add_a_d8() {
-    u8& a = regs[Register::A];
-    u8 val = read_operand();
-
-    add(a, a, val);
-  }
+  void add_a_d8();
 
   // ADD HL,r16
-  void add_hl_r16(const Register& reg) {
-    u16& hl = get_r16(Register::HL);
-    u16& r16 = get_r16(reg);
-
-    u16 res = hl + r16;
-
-    set_half_carry(hl, r16);
-    set_carry(hl, r16);
-    clear_flag(FLAG_SUBTRACT);
-
-    hl = res;
-  }
+  void add_hl_r16(const Register& reg);
 
   // ADD HL,SP
-  void add_hl_sp() {
-    u16& hl = get_r16(Register::HL);
-    u16 res = hl + sp;
-
-    set_half_carry(hl, (u16)sp);
-    set_carry(hl, (u16)sp);
-    clear_flag(FLAG_SUBTRACT);
-
-    hl = res;
-  }
+  void add_hl_sp();
 
   // ADD SP,s8
-  void add_sp_s8() {
-    s8 val = read_operand();
-    int res = sp + val;
+  void add_sp_s8();
 
-    if (res & 0xffff0000) {
-      set_flag(FLAG_CARRY);
-    } else {
-      clear_flag(FLAG_CARRY);
-    }
-
-    set_half_carry(sp, val);
-
-    clear_flag(FLAG_ZERO);
-    clear_flag(FLAG_SUBTRACT);
-
-    sp = res;
-  }
-
-  void and_a(const u8& val) {
-    u8& a = regs[Register::A];
-
-    a &= val;
-
-    set_zero(a);
-    set_flag(FLAG_HALF_CARRY);
-
-    clear_flag(FLAG_SUBTRACT);
-    clear_flag(FLAG_CARRY);
-  }
+  void and_a(const u8& val);
 
   // AND A,r8
-  void and_a_r8(const Register& reg) {
-    u8& r = regs[reg];
-    and_a(r);
-  }
+  void and_a_r8(const Register& reg);
 
   // AND A,[HL]
-  void and_a_hl() {
-    u16& addr = get_r16(Register::HL);
-    u8* val = memory.at(addr);
-
-    and_a(*val);
-  }
+  void and_a_hl();
 
   // AND A,n8
-  void and_a_d8() {
-    u8 val = read_operand();
+  void and_a_d8();
 
-    and_a(val);
-  }
-
-  void bit(const u8& bit_num, const u8& val) {
-    bool bit_set = val & (0x01 << bit_num);
-
-    if (bit_set) {
-      clear_flag(FLAG_ZERO);
-    } else {
-      set_flag(FLAG_ZERO);
-    }
-
-    set_flag(FLAG_HALF_CARRY);
-    clear_flag(FLAG_SUBTRACT);
-  }
+  void bit(const u8& bit_num, const u8& val);
 
   // BIT u8,r8
-  void bit_r8(u8 bit_num, const Register& reg) {
-    u8& val = regs[reg];
-    bit(bit_num, val);
-  }
+  void bit_r8(u8 bit_num, const Register& reg);
 
   // BIT u3,[HL]
-  void bit_hl(u8 bit_num) {
-    u16& addr = get_r16(Register::HL);
-    u8* val = memory.at(addr);
-    bit(bit_num, *val);
-  }
+  void bit_hl(u8 bit_num);
 
   // CALL,nn
-  void call() {
-    u16 addr = read_operand<u16>();
-    // u16 next_op = pc + 2;
-    // u8 pc_low = (next_op & 0xff00) >> 8;
-    // bu8 pc_high = (next_op & 0x00ff);
-    // bmemory.set(--sp, pc_high);
-    // memory.set(--sp, pc_low);
-    push(pc);
-    pc = addr;
-  }
+  void call();
 
   // CALL Z,n16
-  void call_z() {
-    if (get_flag(FLAG_ZERO)) {
-      call();
-    }
-  }
+  void call_z();
 
   // CALL NZ,n16
-  void call_nz() {
-    if (!get_flag(FLAG_ZERO)) {
-      call();
-    }
-  }
+  void call_nz();
 
   // CALL C,n16
-  void call_c() {
-    if (get_flag(FLAG_CARRY)) {
-      call();
-    }
-  }
+  void call_c();
 
   // CALL NC,n16
-  void call_nc() {
-    if (!get_flag(FLAG_CARRY)) {
-      call();
-    }
-  }
+  void call_nc();
 
   // CCF
-  void ccf() { regs[Register::F] &= ~(regs[Register::F] & FLAG_CARRY); }
+  void ccf();
 
-  void compare_a(const u8& val) {
-    u8& a = regs[Register::A];
+  void compare_a(const u8& val);
 
-    u8 res = a - val;
-
-    set_zero(res);
-    set_half_carry_subtract(a, val);
-
-    if (val > a) {
-      set_flag(FLAG_CARRY);
-    } else {
-      clear_flag(FLAG_CARRY);
-    }
-
-    clear_flag(FLAG_SUBTRACT);
-  }
-
-  void cp_a_r8(const Register& reg) { compare_a(regs[reg]); }
+  void cp_a_r8(const Register& reg);
 
   // CP A,[HL]
-  void cp_a_hl() {
-    u8& addr = regs[Register::HL];
-    u8* val = memory.at(addr);
-
-    compare_a(*val);
-  }
+  void cp_a_hl();
 
   // CP A,n8
-  void cp_a_d8() {
-    u8 val = read_operand();
-    compare_a(val);
-  }
+  void cp_a_d8();
 
   // CPL
-  void cpl() {
-    regs[Register::A] = ~regs[Register::A];
-    set_flag(FLAG_SUBTRACT);
-    set_flag(FLAG_HALF_CARRY);
-  }
+  void cpl();
 
   // DAA
   // from
   // https://github.com/taisel/GameBoy-Online/blob/master/js/GameBoyCore.js#L588
-  void daa() {
-    const bool carry = get_flag(FLAG_CARRY);
-    const bool subtract = get_flag(FLAG_SUBTRACT);
-    const bool half_carry = get_flag(FLAG_HALF_CARRY);
+  void daa();
 
-    u8& a = regs[Register::A];
-
-    if (!subtract) {
-      if (carry || a > 0x99) {
-        a = (a + 0x60) + 0xff;
-        set_flag(FLAG_CARRY);
-      }
-      if (half_carry || (a & 0xf) > 0x9) {
-        a = (a + 0x6) & 0xff;
-        clear_flag(FLAG_HALF_CARRY);
-      }
-    } else if (carry && half_carry) {
-      a = (a + 0x9a) & 0xff;
-      clear_flag(FLAG_HALF_CARRY);
-    } else if (carry) {
-      a = (a + 0xa0) & 0xff;
-    } else if (half_carry) {
-      a = (a + 0xfa) & 0xff;
-      clear_flag(FLAG_HALF_CARRY);
-    }
-    set_zero(a);
-  }
-
-  void dec(u8& val) {
-    u8 res = val - 1;
-
-    set_zero(res);
-    set_half_carry_subtract(val, 1);
-
-    val = res;
-  }
+  void dec(u8& val);
 
   // DEC r8
-  void dec_r8(const Register& reg) { dec(regs[reg]); }
+  void dec_r8(const Register& reg);
 
   // DEC [HL]
-  void dec_hl() {
-    u8& val = value_at_r16(Register::HL);
-    dec(val);
-  }
+  void dec_hl();
 
   // DEC r16
-  void dec_r16(const Register& reg) {
-    u16& val = get_r16(reg);
-    val--;
-  }
+  void dec_r16(const Register& reg);
 
   // DEC SP
-  void dec_sp() { sp--; }
+  void dec_sp();
 
   // DI
-  void disable_interrupts() { interrupts_enabled = false; }
+  void disable_interrupts();
 
   // EI
-  void enable_interrupts() { interrupts_enabled = true; }
+  void enable_interrupts();
 
-  void halt() {}
+  void halt();
 
-  void inc(u8& val) {
-    u8 res = val + 1;
-
-    set_half_carry(val, 1);
-    set_zero(res);
-    clear_flag(FLAG_SUBTRACT);
-
-    val = res;
-  }
+  void inc(u8& val);
 
   // INC r8
-  void inc_r8(const Register& reg) { inc(regs[reg]); }
+  void inc_r8(const Register& reg);
 
   // INC [HL]
-  void inc_hl() {
-    u8& val = value_at_r16(Register::HL);
-    inc(val);
-  }
+  void inc_hl();
 
   // INC r16
-  void inc_r16(const Register& reg) {
-    u16& r16 = get_r16(reg);
-    r16++;
-  }
+  void inc_r16(const Register& reg);
 
   // INC SP
-  void inc_sp() { sp++; }
+  void inc_sp();
 
-  inline void jump(const u16& addr) { pc = addr; }
+  void jump(const u16& addr);
 
   // JP n16
-  void jp_d16() {
-    u16 addr = read_operand<u16>();
-    jump(addr);
-  }
+  void jp_d16();
 
-  bool can_jump(const u8& opcode, int offset) {
-    int index = ((opcode & 0x38) >> 3) - offset;
+  bool can_jump(const u8& opcode, int offset);
 
-    return ((index == JumpCondition::NZ && !get_flag(FLAG_ZERO)) ||
-            (index == JumpCondition::Z && get_flag(FLAG_ZERO)) ||
-            (index == JumpCondition::NC && !get_flag(FLAG_CARRY)) ||
-            (index == JumpCondition::C && get_flag(FLAG_CARRY)));
-  }
-
-  void jump_conditional(const u16& addr, int index_offset = 0) {
-    if (can_jump(current_opcode, index_offset)) {
-      jump(addr);
-    }
-  }
+  void jump_conditional(const u16& addr, int index_offset = 0);
 
   // JP cc,n16
-  void jp_cc_n16() {
-    u16 addr = read_operand<u16>();
-    jump_conditional(addr);
-  }
+  void jp_cc_n16();
 
   // JP HL
-  void jp_hl() {
-    const u16& hl = get_r16(Register::HL);
-    pc = hl;
-  }
+  void jp_hl();
 
   // JR e8
-  void jr_e8() {
-    const s8& offset = read_operand<s8>();
-    jump(pc + offset);
-  }
+  void jr_e8();
 
   // JR cc,e8
-  void jr_cc_e8() {
-    const s8& offset = read_operand<s8>();
-    std::cout << "offset " << std::hex << +offset << std::endl;
-    jump_conditional(pc + offset, 4);
-  }
+  void jr_cc_e8();
 
   // LD r8,r8
-  void ld_r8_r8(const Register& dst, const Register& src) {
-    regs[dst] = regs[src];
-  }
+  void ld_r8_r8(const Register& dst, const Register& src);
 
   // LD r8,n8
-  void ld_r8_d8(const Register& dst) {
-    const u8& val = read_operand();
-    regs[dst] = val;
-  }
+  void ld_r8_d8(const Register& dst);
 
   // LD r16,n16
-  void ld_r16_d16(const Register& dst) {
-    u16& r16 = get_r16(dst);
-    const u16& val = read_operand<u16>();
-
-    r16 = val;
-  }
+  void ld_r16_d16(const Register& dst);
 
   // LD [HL],r8
-  void ld_hl_r8(const Register& reg) {
-    const u16& hl = get_r16(Register::HL);
-    u8* val = memory.at(hl);
-    *val = regs[reg];
-  }
+  void ld_hl_r8(const Register& reg);
 
   // LD [HL],n8
-  void ld_hl_d8() {
-    const u16& hl = get_r16(Register::HL);
-    u8* val = memory.at(hl);
-    *val = read_operand();
-  }
+  void ld_hl_d8();
 
   // LD r8,[HL]
-  void ld_r8_hl(const Register& reg) {
-    const u16& hl = get_r16(Register::HL);
-    u8* val = memory.at(hl);
-    regs[reg] = *val;
-  }
+  void ld_r8_hl(const Register& reg);
 
   // LD [r16], A
-  void ld_r16_a(const Register& reg) {
-    u16& r16 = get_r16(reg);
-    r16 = regs[Register::A];
-  }
+  void ld_r16_a(const Register& reg);
 
   // LD [n16],A
-  void ld_d16_a() {
-    const u16& addr = read_operand<u16>();
-    u8* val = memory.at(addr);
-    *val = regs[Register::A];
-  }
+  void ld_d16_a();
 
-  void load_offset(const u8& offset, const u8& val) {
-    u8* dest = memory.at(0xFF00 + offset);
-    *dest = val;
-  }
+  void load_offset(const u8& offset, const u8& val);
 
   // LD [$FF00 + n8],A
-  void ld_offset_a() {
-    const u8& offset = read_operand();
-    load_offset(offset, regs[Register::A]);
-  }
+  void ld_offset_a();
 
   // LD [$FF00 + C],A
-  void ld_offset_c_a() { load_offset(regs[Register::C], regs[Register::A]); }
+  void ld_offset_c_a();
 
   // LD A,[r16]
-  void ld_a_r16(const Register& reg) {
-    const u8& val = value_at_r16(reg);
-    regs[Register::A] = val;
-  }
+  void ld_a_r16(const Register& reg);
 
   // LD A,[n16]
-  void ld_a_d16() {
-    const u16& addr = read_operand<u16>();
-    const u8* val = memory.at(addr);
-    regs[Register::A] = *val;
-  }
+  void ld_a_d16();
 
-  void read_offset_from_memory(const u8& offset, u8& dest) {
-    const u8* val = memory.at(0xff00 + offset);
-    dest = *val;
-  }
+  void read_offset_from_memory(const u8& offset, u8& dest);
 
   // LD A,[$FF00 + n8]
-  void ld_read_offset_d8() {
-    const u8& offset = read_operand();
-    read_offset_from_memory(offset, regs[Register::A]);
-  }
+  void ld_read_offset_d8();
 
   // LD A,[$FF00 + C]
-  void ld_read_offset_c() {
-    read_offset_from_memory(regs[Register::C], regs[Register::A]);
-  }
+  void ld_read_offset_c();
 
   // TODO: fix this
-  void load_hl_a() {
-    u16& hl = get_r16(Register::HL);
-    u8* dst = memory.at(hl);
-    *dst = regs[Register::A];
-  }
+  void load_hl_a();
 
-  void load_a_hl() {
-    const u8& val = value_at_r16(Register::HL);
-    regs[Register::A] = val;
-  }
+  void load_a_hl();
 
   // LD [HL+],A
-  void ld_hl_inc_a() {
-    load_hl_a();
-    inc_r16(Register::HL);
-  }
+  void ld_hl_inc_a();
 
   // LD [HL-],A
-  void ld_hl_dec_a() {
-    load_hl_a();
-    dec_r16(Register::HL);
-  }
+  void ld_hl_dec_a();
 
   // LD A,[HL+]
-  void ld_a_hl_inc() {
-    load_a_hl();
-    inc_r16(Register::HL);
-  }
+  void ld_a_hl_inc();
 
   // LD A,[HL-]
-  void ld_a_hl_dec() {
-    load_a_hl();
-    dec_r16(Register::HL);
-  }
+  void ld_a_hl_dec();
 
   // LD SP,n16
-  void ld_sp_d16() {
-    const u16& val = read_operand<u16>();
-    sp = val;
-  }
+  void ld_sp_d16();
 
   // LD [n16],SP
-  void ld_d16_sp() {
-    const u16& addr = read_operand<u16>();
-    u16* val = memory.at<u16>(addr);
-    *val = sp;
-  }
+  void ld_d16_sp();
 
   // LD HL,SP+e8
-  void ld_hl_sp_s8() {
-    const s8& val = read_operand<s8>();
-    int res = sp + val;
-    if (res & 0xffff0000) {
-      set_flag(FLAG_CARRY);
-    } else {
-      clear_flag(FLAG_CARRY);
-    }
-
-    set_half_carry(sp, val);
-
-    clear_flag(FLAG_ZERO);
-    clear_flag(FLAG_SUBTRACT);
-
-    sp = res;
-  }
+  void ld_hl_sp_s8();
 
   // LD SP,HL
-  void ld_sp_hl() {
-    const u16& hl = get_r16(Register::HL);
-    sp = hl;
-  }
+  void ld_sp_hl();
 
-  void or_a(const u8& val) {
-    regs[Register::A] |= val;
-    set_zero(regs[Register::A]);
-    clear_flag(FLAG_SUBTRACT);
-    clear_flag(FLAG_HALF_CARRY);
-    clear_flag(FLAG_CARRY);
-  }
+  void or_a(const u8& val);
 
   // OR A,r8
-  void or_a_r8(const Register& reg) { or_a(regs[reg]); }
+  void or_a_r8(const Register& reg);
 
   // OR A,[HL]
-  void or_a_hl() { or_a(value_at_r16(Register::HL)); }
+  void or_a_hl();
 
   // OR A,n8
-  void or_a_d8() { or_a(read_operand()); }
+  void or_a_d8();
 
-  void pop(u16& reg) {
-    u8 low = *memory.at(sp);
-    u8 high = *memory.at(sp + 1);
-    sp += 2;
-
-    reg = (((u16)low) << 8) | high;
-    std::cout << "popped " << std::hex << +reg << std::endl;
-  }
+  void pop(u16& reg);
 
   // POP AF
-  void pop_af() {
-    u16& af = get_r16(Register::F);
-    pop(af);
-  }
+  void pop_af();
 
   // POP r16
-  void pop_r16(const Register& reg) { pop(get_r16(reg)); }
+  void pop_r16(const Register& reg);
 
-  void push(const u16& val) {
-    u8 low = (val & 0xff00) >> 8;
-    u8 high = val & 0xff;
-
-    memory.set(--sp, high);
-    memory.set(--sp, low);
-  }
+  void push(const u16& val);
 
   // PUSH AF
-  void push_af() { push(get_r16(Register::F)); }
+  void push_af();
 
   // PUSH r16
-  void push_r16(const Register& reg) { push(get_r16(reg)); }
+  void push_r16(const Register& reg);
 
-  void set_bit(u8& dest, const u8& bit, bool set) {
-    const u8 bit_mask = 0x1 << bit;
-    if (set) {
-      dest |= bit_mask;
-    } else {
-      dest &= ~bit_mask;
-    }
-  }
+  void set_bit(u8& dest, const u8& bit, bool set);
 
   // RES u3,r8
-  void res_u3_r8(const u8 bit, const Register& reg) {
-    set_bit(regs[reg], bit, false);
-  }
+  void res_u3_r8(const u8 bit, const Register& reg);
 
   // RES u3,[HL]
-  void res_u3_hl(const u8 bit) {
-    set_bit(value_at_r16(Register::HL), bit, false);
-  }
+  void res_u3_hl(const u8 bit);
 
   // RET
-  void ret() { pop(pc); }
+  void ret();
 
   // RET,cc
-  void ret_conditional() {
-    if (can_jump(current_opcode, 0)) {
-      ret();
-    }
-  }
+  void ret_conditional();
 
   // RETI
-  void reti() {
-    ret();
-    enable_interrupts();
-  }
+  void reti();
 
-  void rotate(u8& val, bool left = true) {
-    const bool did_carry = get_flag(FLAG_CARRY);
+  void rotate(u8& val, bool left = true);
 
-    const bool set_carry = (val & (left ? 0x80 : 0x01)) != 0;
-
-    if (left) {
-      val <<= 1;
-    } else {
-      val >>= 1;
-    }
-
-    if (did_carry) {
-      if (left) {
-        val |= 0x01;
-      } else {
-        val |= 0x80;
-      }
-    }
-
-    if (set_carry) {
-      set_flag(FLAG_CARRY);
-    } else {
-      clear_flag(FLAG_CARRY);
-    }
-  }
-
-  void rotate_zero(u8& val, bool left = true) {
-    rotate(val, left);
-    set_zero(val);
-    clear_flag(FLAG_SUBTRACT);
-    clear_flag(FLAG_HALF_CARRY);
-  }
+  void rotate_zero(u8& val, bool left = true);
 
   // RL r8
-  void rl_r8(const Register& reg) { rotate_zero(regs[reg]); }
+  void rl_r8(const Register& reg);
 
   // RL, [HL]
-  void rl_hl() {
-    u8& val = value_at_r16(Register::HL);
-    rotate_zero(val);
-  }
-
+  void rl_hl();
   // RLA
-  void rl_a() {
-    rotate(regs[Register::A]);
+  void rl_a();
 
-    clear_flag(FLAG_ZERO);
-    clear_flag(FLAG_SUBTRACT);
-    clear_flag(FLAG_HALF_CARRY);
-  }
+  void rotate_carry(u8& val, bool left = true);
 
-  void rotate_carry(u8& val, bool left = true) {
-    int carry_val = (left ? 0x80 : 0x01);
-
-    if (left) {
-      val <<= 1;
-    } else {
-      val >>= 1;
-    }
-
-    if (val & carry_val) {
-      set_flag(FLAG_CARRY);
-      if (left) {
-        val |= 0x01;
-      } else {
-        val |= 0x80;
-      }
-    } else {
-      clear_flag(FLAG_CARRY);
-    }
-  }
-
-  void rotate_carry_zero(u8& val, bool left = true) {
-    rotate_carry(val, left);
-    set_zero(val);
-    clear_flag(FLAG_SUBTRACT);
-    clear_flag(FLAG_HALF_CARRY);
-  }
+  void rotate_carry_zero(u8& val, bool left = true);
 
   // RLC r8
-  void rlc_r8(const Register& reg) { rotate_carry_zero(regs[reg]); }
+  void rlc_r8(const Register& reg);
 
   // RLC [HL]
-  void rlc_hl() {
-    u8& val = value_at_r16(Register::HL);
-    rotate_carry_zero(val);
-  }
+  void rlc_hl();
 
   // RLCA
-  void rlca() {
-    rotate_carry(regs[Register::A]);
-    clear_flag(FLAG_ZERO);
-    clear_flag(FLAG_SUBTRACT);
-    clear_flag(FLAG_HALF_CARRY);
-  }
+  void rlca();
 
   // RR r8
-  void rr_r8(const Register& reg) { rotate_zero(regs[reg], false); }
+  void rr_r8(const Register& reg);
 
   // RR [HL]
-  void rr_hl() {
-    u8& val = value_at_r16(Register::HL);
-    rotate_zero(val, false);
-  }
+  void rr_hl();
 
   // RRA
-  void rra() {
-    rotate(regs[Register::A], false);
-    clear_flag(FLAG_ZERO);
-    clear_flag(FLAG_SUBTRACT);
-    clear_flag(FLAG_HALF_CARRY);
-  }
+  void rra();
 
   // RRC r8
-  void rrc_r8(const Register& reg) { rotate_carry_zero(regs[reg], false); }
+  void rrc_r8(const Register& reg);
 
   // RRC [HL]
-  void rrc_hl() { rotate_carry_zero(value_at_r16(Register::HL), false); }
+  void rrc_hl();
 
   // RRCA
-  void rrca() {
-    rotate_carry(regs[Register::A], false);
-    clear_flag(FLAG_ZERO);
-    clear_flag(FLAG_SUBTRACT);
-    clear_flag(FLAG_HALF_CARRY);
-  }
+  void rrca();
 
   // RST vec
-  void rst() {
-    push(pc);
+  void rst();
 
-    u16 addr = current_opcode & 0x38;
-    pc = addr;
-  }
-
-  void carried_subtract(u8& dst, const u8& src) {
-    u8 carry = get_flag(FLAG_CARRY) ? 1 : 0;
-    u8 res = dst - src - carry;
-
-    set_half_carry_subtract(dst, src);
-    set_zero(res);
-
-    if (src > dst) {
-      set_flag(FLAG_CARRY);
-    } else {
-      clear_flag(FLAG_CARRY);
-    }
-    set_flag(FLAG_SUBTRACT);
-
-    dst = res;
-  }
+  void carried_subtract(u8& dst, const u8& src);
 
   // SBC A,r8
-  void sbc_a_r8(const Register& reg) {
-    carried_subtract(regs[Register::A], regs[reg]);
-  }
+  void sbc_a_r8(const Register& reg);
 
   // SBC A,[HL]
-  void sbc_a_hl() {
-    carried_subtract(regs[Register::A], value_at_r16(Register::HL));
-  }
+  void sbc_a_hl();
 
   // SBC A,n8
-  void sbc_a_d8() { carried_subtract(regs[Register::A], read_operand()); }
+  void sbc_a_d8();
 
   // SCF
-  void scf() {
-    set_flag(FLAG_CARRY);
-    clear_flag(FLAG_SUBTRACT);
-    clear_flag(FLAG_HALF_CARRY);
-  }
+  void scf();
 
   // SET u3,r8
-  void set_u3_r8(const u8& bit, const Register& reg) {
-    set_bit(regs[reg], bit, true);
-  }
+  void set_u3_r8(const u8& bit, const Register& reg);
 
   // SET u3,[HL]
-  void set_u3_hl(const u8& bit) {
-    set_bit(value_at_r16(Register::HL), bit, true);
-  }
+  void set_u3_hl(const u8& bit);
 
-  void shift_arithmetic(u8& val, bool left = true) {
-    bool is_carry = val & (left ? 0x80 : 0x01);
-
-    if (left) {
-      val <<= 1;
-    } else {
-      u8 bit7 = val & 0x80;
-      val >>= 1;
-      val |= bit7;
-    }
-
-    if (is_carry) {
-      set_flag(FLAG_CARRY);
-    } else {
-      clear_flag(FLAG_CARRY);
-    }
-
-    set_zero(val);
-    clear_flag(FLAG_HALF_CARRY);
-    clear_flag(FLAG_SUBTRACT);
-  }
+  void shift_arithmetic(u8& val, bool left = true);
 
   // SLA r8
-  void sla_r8(const Register& reg) { shift_arithmetic(regs[reg]); }
+  void sla_r8(const Register& reg);
 
   // SLA [HL]
-  void sla_hl() { shift_arithmetic(value_at_r16(Register::HL)); }
+  void sla_hl();
 
   // SRA r8
-  void sra_r8(const Register& reg) { shift_arithmetic(regs[reg], false); }
+  void sra_r8(const Register& reg);
 
   // SRA [HL]
-  void sra_hl() { shift_arithmetic(value_at_r16(Register::HL), false); }
+  void sra_hl();
 
-  void shift(u8& val) {
-    bool is_carry = val & 0x01;
-
-    val >>= 1;
-
-    if (is_carry) {
-      set_flag(FLAG_CARRY);
-    } else {
-      clear_flag(FLAG_CARRY);
-    }
-
-    set_zero(val);
-    clear_flag(FLAG_HALF_CARRY);
-    clear_flag(FLAG_SUBTRACT);
-  }
+  void shift(u8& val);
 
   // SRL r8
-  void srl_r8(const Register& reg) { shift(regs[reg]); }
+  void srl_r8(const Register& reg);
 
   // SRL [HL]
-  void srl_hl() { shift(value_at_r16(Register::HL)); }
+  void srl_hl();
 
   // STOP
-  void stop() { stopped = true; }
+  void stop();
 
-  void subtract(u8& dst, const u8& src) {
-    u8 res = dst - src;
-
-    set_half_carry_subtract(dst, src);
-    if (src > dst) {
-      set_flag(FLAG_CARRY);
-    } else {
-      clear_flag(FLAG_CARRY);
-    }
-    set_zero(res);
-    set_flag(FLAG_SUBTRACT);
-
-    dst = src;
-  }
+  void subtract(u8& dst, const u8& src);
 
   // SUB A,r8
-  void sub_a_r8(const Register& reg) { subtract(regs[Register::A], regs[reg]); }
+  void sub_a_r8(const Register& reg);
 
   // SUB A,[HL]
-  void sub_a_hl() { subtract(regs[Register::A], value_at_r16(Register::HL)); }
+  void sub_a_hl();
 
   // SUB A,n8
-  void sub_a_d8() { subtract(regs[A], read_operand()); }
+  void sub_a_d8();
 
-  void swap(u8& val) {
-    u8 high = (val & 0xf0) >> 4;
-    u8 low = (val & 0xf);
-    val = (low << 4) | high;
-  }
+  void swap(u8& val);
 
   // SWAP r8
-  void swap_r8(const Register& reg) { swap(regs[reg]); }
+  void swap_r8(const Register& reg);
 
   // SWAP [HL]
-  void swap_hl() { swap(value_at_r16(Register::HL)); }
+  void swap_hl();
 
   // clang thinks xor is block related?
-  void exclusive_or(u8& dst, const u8& src) {
-    dst ^= src;
-    set_zero(dst);
-    clear_flag(FLAG_SUBTRACT);
-    clear_flag(FLAG_CARRY);
-    clear_flag(FLAG_HALF_CARRY);
-  }
+  void exclusive_or(u8& dst, const u8& src);
 
   // XOR A,r8
-  void xor_a_r8(const Register& reg) {
-    exclusive_or(regs[Register::A], regs[reg]);
-  }
+  void xor_a_r8(const Register& reg);
 
   // XOR A,[HL]
-  void xor_a_hl() {
-    exclusive_or(regs[Register::A], value_at_r16(Register::HL));
-  }
+  void xor_a_hl();
 
   // XOR A,n8
-  void xor_a_d8() { exclusive_or(regs[Register::A], read_operand()); }
+  void xor_a_d8();
 
   // void set_16(u8 &reg_high, u8 &reg_low, u16 val) {
   //  reg_high = (val & 0xFF00) >> 8;
   //  reg_low = (val & 0xFF);
   //}
 
-  template <typename T = u8>
-  T read_operand() {
-    return *reinterpret_cast<T*>(current_operand);
-  }
+  void load_reg_to_addr(const Register& dst, const Register& src);
 
-  void load_reg_to_addr(const Register& dst, const Register& src) {
-    u16 addr = regs[dst];
-    memory.set(addr, src);
-  }
+  u16& get_r16(const Register& reg);
 
-  inline u16 get_16(const Register& reg) {
-    u16* res = (u16*)&regs[reg];
-    return *res;
-  }
-
-  inline u16& get_r16(const Register& reg) { return (u16&)*&regs[reg]; }
-
-  inline u8& value_at_r16(const Register& reg) {
-    u16& addr = get_r16(reg);
-    u8* val = memory.at(addr);
-    return *val;
-  }
+  u8& value_at_r16(const Register& reg);
 };
 }  // namespace gb
