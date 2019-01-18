@@ -1,4 +1,4 @@
-#include "cpu.h"
+#include "memory.h"
 
 namespace gb {
 void Memory::set(const u16& addr, const u8& val) {
