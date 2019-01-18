@@ -6,7 +6,7 @@
 #include <iostream>
 #include <sstream>
 #include <string>
-#include "memory.h"
+#include "system.h"
 #include "types.h"
 
 #define FLAG_ZERO 0x80
@@ -70,10 +70,10 @@ struct Cpu {
   bool interrupts_enabled = true;
   bool stopped = false;
 
-  Memory& memory;
+  const System* system;
   InstructionTable instruction_table;
 
-  Cpu(Memory& memory);
+  Cpu(const System* system);
 
   const Instruction& fetch();
 
@@ -82,34 +82,18 @@ struct Cpu {
   bool handle_interrupt(Interrupt interrupt);
   void debug_write();
 
-  inline u8* get_interrupts_register() const {
-    return memory.at(MemoryRegister::InterruptRequest);
-  }
+  inline u8* get_interrupts_register() const;
 
-  inline bool interrupt_enabled(Interrupt interrupt) {
-    return *memory.at(MemoryRegister::InterruptEnabled) & interrupt;
-  }
+  inline bool interrupt_enabled(Interrupt interrupt);
 
-  inline bool has_interrupt(Interrupt interrupt) const {
-    return *memory.at(MemoryRegister::InterruptRequest) & interrupt;
-  }
+  inline bool has_interrupt(Interrupt interrupt) const;
 
-  inline void request_interrupt(Interrupt interrupt) {
-    *memory.at(MemoryRegister::InterruptRequest) |= interrupt;
-  }
+  inline void request_interrupt(Interrupt interrupt);
 
-  inline void clear_interrupt(Interrupt interrupt) {
-    *memory.at(0xff0f) = ~interrupt;
-  }
+  inline void clear_interrupt(Interrupt interrupt);
 
   inline void noop() const {}
-  inline void invalid() const {
-    std::ostringstream s;
-    s << "invalid instruction: " << std::hex << +memory.memory[pc - 1]
-      << std::endl;
-    throw std::runtime_error(s.str());
-    // std::cout << s.str();
-  }
+  void invalid() const;
 
   inline bool get_carry() const { return regs[Register::F] & 0x10; }
 
