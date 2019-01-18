@@ -64,18 +64,6 @@ struct Cpu {
   u8 m;
   unsigned int ticks;
 
-  u8& a;
-  u8& b;
-  u8& c;
-  u16& bc;
-  u8& d;
-  u8& e;
-  u16& de;
-  u8& h;
-  u8& l;
-  u16& hl;
-  u8& f;
-
   u8 current_opcode = 0x00;
   u8* current_operand;
 

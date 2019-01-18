@@ -13,17 +13,6 @@ Cpu::Cpu(Memory& memory)
       pc(0),
       m(0),
       ticks(0),
-      a(*&regs[Register::A]),
-      b(*&regs[Register::B]),
-      c(*&regs[Register::C]),
-      bc(*(reinterpret_cast<u16*>(&regs[Register::BC]))),
-      d(*&regs[Register::D]),
-      e(*&regs[Register::E]),
-      de(*(reinterpret_cast<u16*>(&regs[Register::DE]))),
-      h(*&regs[Register::H]),
-      l(*&regs[Register::L]),
-      hl(*(reinterpret_cast<u16*>(&regs[Register::HL]))),
-      f(*&regs[Register::F]),
       memory(memory),
       instruction_table(*this) {}
 
@@ -112,7 +101,7 @@ void Cpu::debug_write() {
             << " DE: " << std::setw(6) << get_r16(Register::DE) << std::endl
             << "H: " << std::setw(4) << +regs[Register::H]
             << " L: " << std::setw(4) << +regs[Register::L]
-            << " HL: " << std::setw(6) << hl << std::endl
+            << " HL: " << std::setw(6) << get_r16(Register::HL) << std::endl
             << "PC: " << std::setw(6) << pc << std::endl
             << "SP: " << std::setw(6) << sp << std::endl
             << "memory[SP]: " << std::setw(6) << (*((u16*)&memory.memory[sp]))
