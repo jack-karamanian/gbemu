@@ -9,10 +9,14 @@ add_executable(
   src/cpu.h
   src/cpu.cpp
   src/memory.h
+  src/memory.cpp
   src/instruction_table.h
   src/instruction_table.cpp
+  src/lcd.h
+  src/system.h
+  src/system.cpp
 )
 
-target_compile_options(gbemu PRIVATE -Wall -Wextra)
+target_compile_options(gbemu PRIVATE -Wall -Wextra -ggdb)
 
 target_link_libraries(gbemu SDL2)
