@@ -10,7 +10,7 @@ namespace gb {
 class IRenderer;
 struct Memory;
 class Gpu {
-  std::array<Pixel, DISPLAY_SIZE> pixels;
+  std::array<Pixel, DISPLAY_SIZE> pixels = {{}};
 
   Memory* memory;
   std::unique_ptr<IRenderer> renderer;
