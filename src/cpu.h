@@ -6,7 +6,7 @@
 #include <iostream>
 #include <sstream>
 #include <string>
-#include "system.h"
+#include "memory.h"
 #include "types.h"
 
 #define FLAG_ZERO 0x80
@@ -70,10 +70,10 @@ struct Cpu {
   bool interrupts_enabled = true;
   bool stopped = false;
 
-  const System* system;
+  Memory* memory;
   InstructionTable instruction_table;
 
-  Cpu(const System* system);
+  Cpu(Memory& memory);
 
   const Instruction& fetch();
 

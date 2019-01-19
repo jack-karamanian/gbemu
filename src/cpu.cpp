@@ -5,25 +5,23 @@
 #include <sstream>
 #include <string>
 #include "cpu.h"
-#include "memory.h"
 
 namespace gb {
-Cpu::Cpu(const System* system)
+Cpu::Cpu(Memory& memory)
     : regs{0x13, 0x00, 0xd8, 0x00, 0x4d, 0x01, 0xb0, 0x01},
-      sp(0xfffe),
-      pc(0),
-      m(0),
-      ticks(0),
-      system(system),
+      sp{0xfffe},
+      pc{0},
+      m{0},
+      ticks{0},
+      memory{&memory},
       instruction_table(*this) {}
 
 const Instruction& Cpu::fetch() {
-  u8 opcode = system->memory->system->memory->memory[pc];
+  u8 opcode = memory->memory[pc];
   if (opcode == 0xCB) {
     pc++;
     ticks += 4;
-    return instruction_table
-        .cb_instructions[system->memory->system->memory->memory[pc]];
+    return instruction_table.cb_instructions[memory->memory[pc]];
   }
   return instruction_table.instructions[opcode];
 }
@@ -34,22 +32,21 @@ int Cpu::fetch_and_decode() {
   }
   const Instruction& inst = fetch();
   std::cout << inst.name << std::endl;
-  std::cout << "opcode: " << std::hex
-            << +system->memory->system->memory->memory[pc] << std::endl;
+  std::cout << "opcode: " << std::hex << +memory->memory[pc] << std::endl;
   const int operands_size = (inst.size - 1);
 
   if (operands_size == 1) {
-    std::cout << std::hex << +*system->memory->at(pc + 1) << std::endl;
+    std::cout << std::hex << +*memory->at(pc + 1) << std::endl;
   } else if (operands_size == 2) {
-    std::cout << std::hex << *system->memory->at<u16>(pc + 1) << std::endl;
+    std::cout << std::hex << *memory->at<u16>(pc + 1) << std::endl;
   }
 
-  current_opcode = system->memory->memory[pc];
-  current_operand = &system->memory->memory[pc + 1];
+  current_opcode = memory->memory[pc];
+  current_operand = &memory->memory[pc + 1];
 
   u8 offset = 0;
 
-  if (system->memory->memory[pc - 1] == 0xcb) {
+  if (memory->memory[pc - 1] == 0xcb) {
     offset = -1;
   }
 
@@ -95,7 +92,10 @@ bool Cpu::handle_interrupt(u8 interrupt) {
     case Interrupt::Joypad:
       pc = 0x60;
       break;
+    default:
+      return false;
   }
+  return true;
 }
 
 void Cpu::debug_write() {
@@ -113,8 +113,8 @@ void Cpu::debug_write() {
             << " HL: " << std::setw(6) << get_r16(Register::HL) << std::endl
             << "PC: " << std::setw(6) << pc << std::endl
             << "SP: " << std::setw(6) << sp << std::endl
-            << "system->memory[SP]: " << std::setw(6)
-            << (*((u16*)&system->memory->memory[sp])) << std::endl
+            << "memory[SP]: " << std::setw(6) << (*((u16*)&memory->memory[sp]))
+            << std::endl
             << std::endl;
 }
 
@@ -129,28 +129,28 @@ void Cpu::set_half_carry_subtract(const u8& a, const u8& b) {
 }
 
 u8* Cpu::get_interrupts_register() const {
-  return system->memory->at(MemoryRegister::InterruptRequest);
+  return memory->at(MemoryRegister::InterruptRequest);
 }
 
 bool Cpu::interrupt_enabled(u8 interrupt) const {
-  return *system->memory->at(MemoryRegister::InterruptEnabled) & interrupt;
+  return *memory->at(MemoryRegister::InterruptEnabled) & interrupt;
 }
 
 bool Cpu::has_interrupt(u8 interrupt) const {
-  return *system->memory->at(MemoryRegister::InterruptRequest) & interrupt;
+  return *memory->at(MemoryRegister::InterruptRequest) & interrupt;
 }
 
 void Cpu::request_interrupt(Interrupt interrupt) const {
-  *system->memory->at(MemoryRegister::InterruptRequest) |= interrupt;
+  *memory->at(MemoryRegister::InterruptRequest) |= interrupt;
 }
 
 void Cpu::clear_interrupt(Interrupt interrupt) const {
-  *system->memory->at(0xff0f) = ~interrupt;
+  *memory->at(0xff0f) = ~interrupt;
 }
 
 void Cpu::invalid() const {
   std::ostringstream s;
-  s << "invalid instruction: " << std::hex << +system->memory->memory[pc - 1]
+  s << "invalid instruction: " << std::hex << +memory->memory[pc - 1]
     << std::endl;
   throw std::runtime_error(s.str());
   // std::cout << s.str();
@@ -185,7 +185,7 @@ void Cpu::add(u8& dest, const u8& a, const u8& b) {
 void Cpu::add_carry_a_hl() {
   u8& a = regs[Register::A];
   u16 hl = get_r16(Register::HL);
-  u8 val = *system->memory->at(hl);
+  u8 val = *memory->at(hl);
 
   carried_add(a, a, val);
 }
@@ -218,7 +218,7 @@ void Cpu::add_a_r8(const Register& reg) {
 void Cpu::add_a_hl() {
   u8& a = regs[Register::A];
   u16 addr = get_r16(Register::HL);
-  u8 val = *system->memory->at(addr);
+  u8 val = *memory->at(addr);
 
   add(a, a, val);
 }
@@ -297,7 +297,7 @@ void Cpu::and_a_r8(const Register& reg) {
 // AND A,[HL]
 void Cpu::and_a_hl() {
   u16& addr = get_r16(Register::HL);
-  u8* val = system->memory->at(addr);
+  u8* val = memory->at(addr);
 
   and_a(*val);
 }
@@ -331,7 +331,7 @@ void Cpu::bit_r8(u8 bit_num, const Register& reg) {
 // BIT u3,[HL]
 void Cpu::bit_hl(u8 bit_num) {
   u16& addr = get_r16(Register::HL);
-  u8* val = system->memory->at(addr);
+  u8* val = memory->at(addr);
   bit(bit_num, *val);
 }
 
@@ -341,8 +341,8 @@ void Cpu::call() {
   // u16 next_op = pc + 2;
   // u8 pc_low = (next_op & 0xff00) >> 8;
   // bu8 pc_high = (next_op & 0x00ff);
-  // bsystem->memory->set(--sp, pc_high);
-  // system->memory->set(--sp, pc_low);
+  // bmemory->set(--sp, pc_high);
+  // memory->set(--sp, pc_low);
   push(pc);
   pc = addr;
 }
@@ -404,7 +404,7 @@ void Cpu::cp_a_r8(const Register& reg) {
 // CP A,[HL]
 void Cpu::cp_a_hl() {
   u8& addr = regs[Register::HL];
-  u8* val = system->memory->at(addr);
+  u8* val = memory->at(addr);
 
   compare_a(*val);
 }
@@ -600,21 +600,21 @@ void Cpu::ld_r16_d16(const Register& dst) {
 // LD [HL],r8
 void Cpu::ld_hl_r8(const Register& reg) {
   const u16& hl = get_r16(Register::HL);
-  u8* val = system->memory->at(hl);
+  u8* val = memory->at(hl);
   *val = regs[reg];
 }
 
 // LD [HL],n8
 void Cpu::ld_hl_d8() {
   const u16& hl = get_r16(Register::HL);
-  u8* val = system->memory->at(hl);
+  u8* val = memory->at(hl);
   *val = read_operand();
 }
 
 // LD r8,[HL]
 void Cpu::ld_r8_hl(const Register& reg) {
   const u16& hl = get_r16(Register::HL);
-  u8* val = system->memory->at(hl);
+  u8* val = memory->at(hl);
   regs[reg] = *val;
 }
 
@@ -627,12 +627,12 @@ void Cpu::ld_r16_a(const Register& reg) {
 // LD [n16],A
 void Cpu::ld_d16_a() {
   const u16& addr = read_operand<u16>();
-  u8* val = system->memory->at(addr);
+  u8* val = memory->at(addr);
   *val = regs[Register::A];
 }
 
 void Cpu::load_offset(const u8& offset, const u8& val) {
-  u8* dest = system->memory->at(0xFF00 + offset);
+  u8* dest = memory->at(0xFF00 + offset);
   *dest = val;
 }
 
@@ -656,12 +656,12 @@ void Cpu::ld_a_r16(const Register& reg) {
 // LD A,[n16]
 void Cpu::ld_a_d16() {
   const u16& addr = read_operand<u16>();
-  const u8* val = system->memory->at(addr);
+  const u8* val = memory->at(addr);
   regs[Register::A] = *val;
 }
 
 void Cpu::read_offset_from_memory(const u8& offset, u8& dest) {
-  const u8* val = system->memory->at(0xff00 + offset);
+  const u8* val = memory->at(0xff00 + offset);
   dest = *val;
 }
 
@@ -679,7 +679,7 @@ void Cpu::ld_read_offset_c() {
 // TODO: fix this
 void Cpu::load_hl_a() {
   u16& hl = get_r16(Register::HL);
-  u8* dst = system->memory->at(hl);
+  u8* dst = memory->at(hl);
   *dst = regs[Register::A];
 }
 
@@ -721,7 +721,7 @@ void Cpu::ld_sp_d16() {
 // LD [n16],SP
 void Cpu::ld_d16_sp() {
   const u16& addr = read_operand<u16>();
-  u16* val = system->memory->at<u16>(addr);
+  u16* val = memory->at<u16>(addr);
   *val = sp;
 }
 
@@ -773,8 +773,8 @@ void Cpu::or_a_d8() {
 }
 
 void Cpu::pop(u16& reg) {
-  u8 low = *system->memory->at(sp);
-  u8 high = *system->memory->at(sp + 1);
+  u8 low = *memory->at(sp);
+  u8 high = *memory->at(sp + 1);
   sp += 2;
 
   reg = (((u16)low) << 8) | high;
@@ -796,8 +796,8 @@ void Cpu::push(const u16& val) {
   u8 low = (val & 0xff00) >> 8;
   u8 high = val & 0xff;
 
-  system->memory->set(--sp, high);
-  system->memory->set(--sp, low);
+  memory->set(--sp, high);
+  memory->set(--sp, low);
 }
 
 // PUSH AF
@@ -1191,7 +1191,7 @@ void Cpu::xor_a_d8() {
 
 void Cpu::load_reg_to_addr(const Register& dst, const Register& src) {
   u16 addr = regs[dst];
-  system->memory->set(addr, src);
+  memory->set(addr, src);
 }
 
 u16& Cpu::get_r16(const Register& reg) {
@@ -1200,7 +1200,7 @@ u16& Cpu::get_r16(const Register& reg) {
 
 u8& Cpu::value_at_r16(const Register& reg) {
   u16& addr = get_r16(reg);
-  u8* val = system->memory->at(addr);
+  u8* val = memory->at(addr);
   return *val;
 }
 }  // namespace gb

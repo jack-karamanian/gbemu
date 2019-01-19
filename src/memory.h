@@ -1,11 +1,8 @@
 #pragma once
-#include "system.h"
 #include "types.h"
 
 namespace gb {
 struct Memory {
-  const System* system;
-  Memory(const System* system) : system{system} {}
   u8 memory[0xFFFF];
 
   template <typename T = u8>

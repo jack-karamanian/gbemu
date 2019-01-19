@@ -14,10 +14,12 @@ add_executable(
   src/instruction_table.cpp
   src/lcd.h
   src/lcd.cpp
-  src/system.h
-  src/system.cpp
   src/gpu.h
   src/gpu.cpp
+  src/pixel.h
+  src/renderer.h
+  src/sdl_renderer.h
+  src/sdl_renderer.cpp
 )
 
 target_compile_options(gbemu PRIVATE -Wall -Wextra -ggdb)

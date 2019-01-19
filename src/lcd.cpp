@@ -38,7 +38,7 @@ void Lcd::update(unsigned int ticks) {
           mode = 2;
           std::cout << "VBLANK" << std::endl;
           // Render image
-          system->cpu->request_interrupt(Cpu::Interrupt::VBlank);
+          cpu->request_interrupt(Cpu::Interrupt::VBlank);
         }
       }
       break;
@@ -57,11 +57,11 @@ void Lcd::update(unsigned int ticks) {
     }
   }
 }
-void Lcd::write_lcdc() {
-  u8* lcdc = system->memory->at(LCDC_REGISTER);
+void Lcd::write_lcdc() const {
+  u8* lcdc = memory->at(LCDC_REGISTER);
   *lcdc = (u8)mode;
 
-  u8* lcdc_y = system->memory->at(LCDC_Y_COORD);
+  u8* lcdc_y = memory->at(LCDC_Y_COORD);
   *lcdc_y = scanlines;
 }
 }  // namespace gb
