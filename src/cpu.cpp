@@ -44,13 +44,7 @@ int Cpu::fetch_and_decode() {
   current_opcode = memory->memory[pc];
   current_operand = &memory->memory[pc + 1];
 
-  u8 offset = 0;
-
-  if (memory->memory[pc - 1] == 0xcb) {
-    offset = -1;
-  }
-
-  pc += inst.size + offset;
+  pc += inst.size;
   ticks += inst.cycles;
 
   inst.impl();

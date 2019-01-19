@@ -1,3 +1,4 @@
+#include <algorithm>
 #include <functional>
 #include "cpu.h"
 
@@ -544,6 +545,12 @@ std::array<Instruction, 256> bind_cb_instructions(Cpu* cpu) {
 InstructionTable::InstructionTable(Cpu& cpu)
     : cpu(&cpu),
       instructions(bind_instructions(&cpu)),
-      cb_instructions(bind_cb_instructions(&cpu)) {}
+      cb_instructions(bind_cb_instructions(&cpu)) {
+  std::for_each(cb_instructions.begin(), cb_instructions.end(),
+                [](Instruction& i) {
+                  i.size -= 1;
+                  i.cycles -= 4;
+                });
+}
 
 }  // namespace gb
