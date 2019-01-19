@@ -141,7 +141,9 @@ bool Cpu::has_interrupt(u8 interrupt) const {
 }
 
 void Cpu::request_interrupt(Interrupt interrupt) const {
-  *memory->at(MemoryRegister::InterruptRequest) |= interrupt;
+  if (interrupts_enabled) {
+    *memory->at(MemoryRegister::InterruptRequest) |= interrupt;
+  }
 }
 
 void Cpu::clear_interrupt(Interrupt interrupt) const {
