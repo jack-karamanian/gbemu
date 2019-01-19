@@ -2,8 +2,9 @@
 #include "types.h"
 namespace gb {
 struct Pixel {
-  u8 r;
-  u8 g;
-  u8 b;
+  u8 r = 0;
+  u8 g = 0;
+  u8 b = 0;
+  u8 a = 255;
 };
 }  // namespace gb
