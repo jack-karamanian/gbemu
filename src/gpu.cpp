@@ -20,7 +20,7 @@ void Gpu::render() {
     const int pixel_index = ((i % 16) * 160);
     const u8& byte1 = memory->memory[i];
     const u8& byte2 = memory->memory[i + 1];
-    for (int shift = 7; i >= 0; i--) {
+    for (int shift = 7; shift >= 0; --shift) {
       const u8 mask = (0x1 << shift);
       const u8 low_bit = (byte1 & mask) >> shift;
       const u8 high_bit = (byte2 & mask) >> shift;
