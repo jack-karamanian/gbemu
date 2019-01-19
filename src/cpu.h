@@ -67,7 +67,7 @@ struct Cpu {
   u8 current_opcode = 0x00;
   u8* current_operand;
 
-  bool interrupts_enabled = true;
+  bool interrupts_enabled = false;
   bool stopped = false;
 
   Memory* memory;
