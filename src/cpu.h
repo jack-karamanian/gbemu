@@ -77,20 +77,20 @@ struct Cpu {
 
   const Instruction& fetch();
 
-  void fetch_and_decode();
+  int fetch_and_decode();
   void handle_interrupts();
-  bool handle_interrupt(Interrupt interrupt);
+  bool handle_interrupt(u8 interrupt);
   void debug_write();
 
-  inline u8* get_interrupts_register() const;
+  u8* get_interrupts_register() const;
 
-  inline bool interrupt_enabled(Interrupt interrupt);
+  bool interrupt_enabled(u8 interrupt) const;
 
-  inline bool has_interrupt(Interrupt interrupt) const;
+  bool has_interrupt(u8 interrupt) const;
 
-  inline void request_interrupt(Interrupt interrupt);
+  void request_interrupt(Interrupt interrupt) const;
 
-  inline void clear_interrupt(Interrupt interrupt);
+  void clear_interrupt(Interrupt interrupt) const;
 
   inline void noop() const {}
   void invalid() const;

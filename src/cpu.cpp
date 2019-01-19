@@ -28,9 +28,9 @@ const Instruction& Cpu::fetch() {
   return instruction_table.instructions[opcode];
 }
 
-void Cpu::fetch_and_decode() {
+int Cpu::fetch_and_decode() {
   if (stopped) {
-    return;
+    return 0;
   }
   const Instruction& inst = fetch();
   std::cout << inst.name << std::endl;
@@ -44,37 +44,43 @@ void Cpu::fetch_and_decode() {
     std::cout << std::hex << *system->memory->at<u16>(pc + 1) << std::endl;
   }
 
-  std::cout << std::hex << +*system->memory->at<u16>(pc + 2) << std::endl;
   current_opcode = system->memory->memory[pc];
   current_operand = &system->memory->memory[pc + 1];
 
-  pc += inst.size;
+  u8 offset = 0;
+
+  if (system->memory->memory[pc - 1] == 0xcb) {
+    offset = -1;
+  }
+
+  pc += inst.size + offset;
   ticks += inst.cycles;
 
   inst.impl();
 
-  debug_write();
+  return inst.cycles;
+
+  // debug_write();
 }
 
 void Cpu::handle_interrupts() {
   if (interrupts_enabled) {
-    u8 interrupts_register = *get_interrupts_register();
     for (int i = 0; i < 5; i++) {
       u8 interrupt = 0x01 << i;
-      if (has_interrupt((Interrupt)interrupt) &&
-          interrupt_enabled((Interrupt)interrupt)) {
-        handle_interrupt((Interrupt)interrupt);
+      if (has_interrupt(interrupt) && interrupt_enabled(interrupt)) {
+        handle_interrupt(interrupt);
       }
     }
   }
 }
 
-bool Cpu::handle_interrupt(Interrupt interrupt) {
+bool Cpu::handle_interrupt(u8 interrupt) {
   disable_interrupts();
-  clear_interrupt(interrupt);
+  clear_interrupt((Interrupt)interrupt);
   push(pc);
   switch (interrupt) {
     case Interrupt::VBlank:
+      std::cout << "INT VBLANK" << std::endl;
       pc = 0x40;
       break;
     case Interrupt::LcdStat:
@@ -126,21 +132,22 @@ u8* Cpu::get_interrupts_register() const {
   return system->memory->at(MemoryRegister::InterruptRequest);
 }
 
-bool Cpu::interrupt_enabled(Interrupt interrupt) {
+bool Cpu::interrupt_enabled(u8 interrupt) const {
   return *system->memory->at(MemoryRegister::InterruptEnabled) & interrupt;
 }
 
-bool Cpu::has_interrupt(Interrupt interrupt) const {
+bool Cpu::has_interrupt(u8 interrupt) const {
   return *system->memory->at(MemoryRegister::InterruptRequest) & interrupt;
 }
 
-void Cpu::request_interrupt(Interrupt interrupt) {
+void Cpu::request_interrupt(Interrupt interrupt) const {
   *system->memory->at(MemoryRegister::InterruptRequest) |= interrupt;
 }
 
-void Cpu::clear_interrupt(Interrupt interrupt) {
+void Cpu::clear_interrupt(Interrupt interrupt) const {
   *system->memory->at(0xff0f) = ~interrupt;
 }
+
 void Cpu::invalid() const {
   std::ostringstream s;
   s << "invalid instruction: " << std::hex << +system->memory->memory[pc - 1]
