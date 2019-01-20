@@ -31,13 +31,16 @@ int main(int argc, const char** argv) {
   rom.close();
 
   gb::Cpu cpu{memory};
-  gb::Lcd lcd{cpu, memory};
 
   SDL_Init(SDL_INIT_VIDEO);
 
+  SDL_SetHint(SDL_HINT_VIDEO_X11_NET_WM_BYPASS_COMPOSITOR, "0");
   SDL_Window* window = SDL_CreateWindow("gbemu", SDL_WINDOWPOS_UNDEFINED,
                                         SDL_WINDOWPOS_UNDEFINED, 160, 144, 0);
-  auto delete_renderer = [](SDL_Renderer* r) { SDL_DestroyRenderer(r); };
+  auto delete_renderer = [](SDL_Renderer* r) {
+    std::cout << "DESTROY SDL RENDERER" << std::endl;
+    SDL_DestroyRenderer(r);
+  };
   std::unique_ptr<SDL_Renderer, std::function<void(SDL_Renderer*)>>
       sdl_renderer{
           SDL_CreateRenderer(
@@ -47,9 +50,10 @@ int main(int argc, const char** argv) {
     std::cout << "SDL Error: " << SDL_GetError() << std::endl;
   }
 
-  auto renderer{std::make_unique<gb::SdlRenderer>(std::move(sdl_renderer))};
-
+  std::unique_ptr<gb::SdlRenderer> renderer =
+      std::make_unique<gb::SdlRenderer>(std::move(sdl_renderer));
   gb::Gpu gpu{memory, std::move(renderer)};
+  gb::Lcd lcd{cpu, memory, gpu};
 
   cpu.pc = 0x100;
   memory.memory[0xFF05] = 0x00;
@@ -104,11 +108,6 @@ int main(int argc, const char** argv) {
     auto time = std::chrono::duration_cast<std::chrono::milliseconds>(
                     std::chrono::system_clock::now().time_since_epoch())
                     .count();
-
-    if (time - prevTime > 16) {
-      gpu.render();
-      prevTime = time;
-    }
   }
 
   return 0;

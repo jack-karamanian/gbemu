@@ -20,8 +20,10 @@ add_executable(
   src/renderer.h
   src/sdl_renderer.h
   src/sdl_renderer.cpp
+  src/sprite_attribute.h
+  src/constants.h
 )
 
+target_link_libraries(gbemu SDL2)
 target_compile_options(gbemu PRIVATE -Wall -Wextra -ggdb)
 
-target_link_libraries(gbemu SDL2)

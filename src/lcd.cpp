@@ -1,5 +1,6 @@
 #include <iostream>
 #include "cpu.h"
+#include "gpu.h"
 #include "lcd.h"
 #include "memory.h"
 #include "types.h"
@@ -24,21 +25,24 @@ void Lcd::update(unsigned int ticks) {
         mode = 0;
         std::cout << "to mode 0" << std::endl;
         lcd_ticks = 0;
+        gpu->render_scanline(scanlines);
       }
       // Render scanline
+
       break;
     }
     case 0: {
-      if (lcd_ticks >= 200) {
+      if (lcd_ticks >= 204) {
         scanlines++;
         lcd_ticks = 0;
         if (scanlines >= 144) {
           mode = 1;
+          std::cout << "VBLANK" << std::endl;
+          gpu->render();
+          cpu->request_interrupt(Cpu::Interrupt::VBlank);
         } else {
           mode = 2;
-          std::cout << "VBLANK" << std::endl;
           // Render image
-          cpu->request_interrupt(Cpu::Interrupt::VBlank);
         }
       }
       break;

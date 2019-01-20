@@ -2,22 +2,27 @@
 #include <SDL2/SDL.h>
 #include <array>
 #include <memory>
+#include "constants.h"
 #include "pixel.h"
+#include "renderer.h"
 #include "types.h"
 
-constexpr int DISPLAY_SIZE = 144 * 160;
 namespace gb {
-class IRenderer;
 struct Memory;
 class Gpu {
-  std::array<Pixel, DISPLAY_SIZE> pixels = {{}};
-
   Memory* memory;
   std::unique_ptr<IRenderer> renderer;
 
+  std::array<Pixel, DISPLAY_SIZE> pixels = {{}};
+
+  void dump_vram();
+  void render_sprites(int scanline);
+
  public:
   Gpu(Memory& memory, std::unique_ptr<IRenderer> renderer);
+  ~Gpu();
 
   void render();
+  void render_scanline(int scanline);
 };
 }  // namespace gb

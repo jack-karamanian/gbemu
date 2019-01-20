@@ -6,6 +6,7 @@
 namespace gb {
 struct Cpu;
 struct Memory;
+class Gpu;
 class Lcd {
   enum class Mode {
     HBlank = 0,
@@ -15,13 +16,15 @@ class Lcd {
   };
   Cpu* cpu;
   Memory* memory;
+  Gpu* gpu;
 
   int mode = 2;
   int scanlines = 0;
   unsigned int lcd_ticks = 0;
 
  public:
-  Lcd(Cpu& cpu, Memory& memory) : cpu{&cpu}, memory{&memory} {}
+  Lcd(Cpu& cpu, Memory& memory, Gpu& gpu)
+      : cpu{&cpu}, memory{&memory}, gpu{&gpu} {}
   void update(unsigned int ticks);
   void write_lcdc() const;
 };
