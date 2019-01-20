@@ -24,6 +24,8 @@ add_executable(
   src/constants.h
 )
 
+target_include_directories(gbemu PRIVATE include)
+
 target_link_libraries(gbemu SDL2)
 target_compile_options(gbemu PRIVATE -Wall -Wextra -ggdb)
 
