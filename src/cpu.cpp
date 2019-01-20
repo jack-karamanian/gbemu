@@ -628,8 +628,7 @@ void Cpu::ld_d16_a() {
 }
 
 void Cpu::load_offset(const u8& offset, const u8& val) {
-  u8* dest = memory->at(0xFF00 + offset);
-  *dest = val;
+  memory->set(0xff00 + offset, val);
 }
 
 // LD [$FF00 + n8],A
