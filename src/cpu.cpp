@@ -616,8 +616,8 @@ void Cpu::ld_r8_hl(const Register& reg) {
 
 // LD [r16], A
 void Cpu::ld_r16_a(const Register& reg) {
-  u16& r16 = get_r16(reg);
-  r16 = regs[Register::A];
+  u8& val = value_at_r16(reg);
+  val = regs[Register::A];
 }
 
 // LD [n16],A
