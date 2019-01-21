@@ -141,7 +141,7 @@ void Cpu::request_interrupt(Interrupt interrupt) const {
 }
 
 void Cpu::clear_interrupt(Interrupt interrupt) const {
-  *memory->at(0xff0f) = ~interrupt;
+  *memory->at(0xff0f) &= ~interrupt;
 }
 
 void Cpu::invalid() const {
