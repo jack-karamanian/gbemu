@@ -16,11 +16,14 @@ class Gpu {
   std::array<Pixel, DISPLAY_SIZE> pixels = {{}};
 
   void dump_vram();
+  u8 get_scx() const;
+  u8 get_scy() const;
+  void render_tile(const u8 byte1, const u8 byte2, const int x, const int y);
   void render_sprites(int scanline);
+  void render_background(int scanline);
 
  public:
   Gpu(Memory& memory, std::unique_ptr<IRenderer> renderer);
-  ~Gpu();
 
   void render();
   void render_scanline(int scanline);

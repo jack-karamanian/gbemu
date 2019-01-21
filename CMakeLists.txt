@@ -3,9 +3,11 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 set(CMAKE_CXX_STANDARD 17)
 project(gbemu)
 
+
 add_executable(
   gbemu
   src/main.cpp
+  include/types.h
   src/cpu.h
   src/cpu.cpp
   src/memory.h
@@ -22,10 +24,11 @@ add_executable(
   src/sdl_renderer.cpp
   src/sprite_attribute.h
   src/constants.h
+  src/registers/lcdc.h
 )
 
 target_include_directories(gbemu PRIVATE include)
 
 target_link_libraries(gbemu SDL2)
-target_compile_options(gbemu PRIVATE -Wall -Wextra -ggdb)
+target_compile_options(gbemu PRIVATE -Wall -Wextra -pedantic -ggdb )
 

@@ -1146,7 +1146,7 @@ void Cpu::swap(u8& val) {
 }
 
 // SWAP r8
-void Cpu::swap_r8(const Register& reg) {
+void Cpu::swap_r8(const Register reg) {
   swap(regs[reg]);
 }
 

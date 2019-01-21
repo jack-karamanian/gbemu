@@ -42,7 +42,7 @@ enum {
   NC,
   C,
 };
-};
+}
 struct Cpu {
   enum Register { C = 0, B, E, D, L, H, F, A, BC = 0, DE = 2, HL = 4 };
   enum Interrupt {
@@ -529,7 +529,7 @@ struct Cpu {
   void swap(u8& val);
 
   // SWAP r8
-  void swap_r8(const Register& reg);
+  void swap_r8(const Register reg);
 
   // SWAP [HL]
   void swap_hl();
