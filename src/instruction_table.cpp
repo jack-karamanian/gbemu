@@ -245,7 +245,7 @@ static std::array<Instruction, 256> bind_instructions(Cpu* cpu) {
       {"LDH (a8),A", 2, 12, std::bind(&Cpu::ld_offset_a, cpu)},         // 0xe0
       {"POP HL", 1, 12, std::bind(&Cpu::pop_r16, cpu, HL)},             // 0xe1
       // Is this right?
-      {"LD (C),A", 2, 8, std::bind(&Cpu::ld_offset_c_a, cpu)},         // 0xe2
+      {"LD (C),A", 1, 8, std::bind(&Cpu::ld_offset_c_a, cpu)},         // 0xe2
       {"INVALID", 1, 8, std::bind(&Cpu::invalid, cpu)},                // 0xe3
       {"INVALID", 1, 8, std::bind(&Cpu::invalid, cpu)},                // 0xe4
       {"PUSH HL", 1, 16, std::bind(&Cpu::push_r16, cpu, HL)},          // 0xe5
