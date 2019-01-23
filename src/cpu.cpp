@@ -166,10 +166,10 @@ void Cpu::carried_add(u8& dest, const u8& a, const u8& b) {
 }
 
 void Cpu::add(u8& dest, const u8& a, const u8& b) {
-  u8 res = a + b;
+  const u8 res = a + b;
 
-  set_carry(a, res);
-  set_half_carry(a, res);
+  set_carry(a, b);
+  set_half_carry(a, b);
 
   dest = res;
 
