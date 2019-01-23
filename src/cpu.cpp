@@ -383,9 +383,9 @@ void Cpu::ccf() {
 }
 
 void Cpu::compare_a(const u8& val) {
-  u8& a = regs[Register::A];
+  const u8& a = regs[Register::A];
 
-  u8 res = a - val;
+  const u8 res = a - val;
 
   set_zero(res);
   set_half_carry_subtract(a, val);
@@ -396,7 +396,7 @@ void Cpu::compare_a(const u8& val) {
     clear_flag(FLAG_CARRY);
   }
 
-  clear_flag(FLAG_SUBTRACT);
+  set_flag(FLAG_SUBTRACT);
 }
 
 void Cpu::cp_a_r8(const Register& reg) {
