@@ -153,11 +153,19 @@ void Cpu::invalid() const {
 }
 
 void Cpu::carried_add(u8& dest, const u8& a, const u8& b) {
-  u8 carry = get_flag(FLAG_CARRY) ? 1 : 0;
-  u8 res = a + b + carry;
+  const u8 carry = get_flag(FLAG_CARRY) ? 1 : 0;
+  const u8 res = (a + b) + carry;
 
-  set_carry(a, res);
-  set_half_carry(a, res);
+  if ((a + b) + carry > 0xff) {
+    set_flag(FLAG_CARRY);
+  } else {
+    clear_flag(FLAG_CARRY);
+  }
+  if ((((a & 0x0f) + (b & 0x0f) + carry) & 0x10) > 0xf) {
+    set_flag(FLAG_HALF_CARRY);
+  } else {
+    clear_flag(FLAG_HALF_CARRY);
+  }
 
   dest = res;
 
@@ -197,7 +205,7 @@ void Cpu::add_carry_a_d8() {
 // ADC A,r8
 void Cpu::add_carry_a_r8(const Register& reg) {
   u8& a = regs[Register::A];
-  u8& val = regs[reg];
+  const u8& val = regs[reg];
 
   carried_add(a, a, val);
 }
