@@ -153,7 +153,7 @@ static std::array<Instruction, 256> bind_instructions(Cpu* cpu) {
       {"ADD A,H", 1, 4, std::bind(&Cpu::add_a_r8, cpu, H)},             // 0x84
       {"ADD A,L", 1, 4, std::bind(&Cpu::add_a_r8, cpu, L)},             // 0x85
       {"ADD A,(HL)", 1, 8, std::bind(&Cpu::add_a_hl, cpu)},             // 0x86
-      {"ADD A,A", 1, 4, std::bind(&Cpu::add_carry_a_r8, cpu, A)},       // 0x87
+      {"ADD A,A", 1, 4, std::bind(&Cpu::add_a_r8, cpu, A)},             // 0x87
       {"ADC A,B", 1, 4, std::bind(&Cpu::add_carry_a_r8, cpu, B)},       // 0x88
       {"ADC A,C", 1, 4, std::bind(&Cpu::add_carry_a_r8, cpu, C)},       // 0x89
       {"ADC A,D", 1, 4, std::bind(&Cpu::add_carry_a_r8, cpu, D)},       // 0x8a
