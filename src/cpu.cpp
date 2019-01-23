@@ -373,7 +373,13 @@ void Cpu::call_nc() {
 
 // CCF
 void Cpu::ccf() {
-  regs[Register::F] &= ~(regs[Register::F] & FLAG_CARRY);
+  if (get_flag(FLAG_CARRY)) {
+    clear_flag(FLAG_CARRY);
+  } else {
+    set_flag(FLAG_CARRY);
+  }
+  clear_flag(FLAG_SUBTRACT);
+  clear_flag(FLAG_HALF_CARRY);
 }
 
 void Cpu::compare_a(const u8& val) {
