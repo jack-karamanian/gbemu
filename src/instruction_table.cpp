@@ -261,7 +261,7 @@ static std::array<Instruction, 256> bind_instructions(Cpu* cpu) {
       {"RST 28H", 1, 16, std::bind(&Cpu::rst, cpu)},                   // 0xef
       {"LDH A,(a8)", 2, 12, std::bind(&Cpu::ld_read_offset_d8, cpu)},  // 0xf0
       {"POP AF", 1, 12, std::bind(&Cpu::pop_af, cpu)},                 // 0xf1
-      {"LD A,(C)", 2, 8, std::bind(&Cpu::ld_read_offset_c, cpu)},      // 0xf2
+      {"LD A,(C)", 1, 8, std::bind(&Cpu::ld_read_offset_c, cpu)},      // 0xf2
       {"DI", 1, 4, std::bind(&Cpu::disable_interrupts, cpu)},          // 0xf3
       {"INVALID", 1, 4, std::bind(&Cpu::invalid, cpu)},                // 0xf4
       {"PUSH AF", 1, 16, std::bind(&Cpu::push_af, cpu)},               // 0xf5
