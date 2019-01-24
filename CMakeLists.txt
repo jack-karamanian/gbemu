@@ -25,10 +25,12 @@ add_executable(
   src/sprite_attribute.h
   src/constants.h
   src/registers/lcdc.h
+  src/input.h
+  src/input.cpp
 )
 
 target_include_directories(gbemu PRIVATE include)
 
 target_link_libraries(gbemu SDL2)
-target_compile_options(gbemu PRIVATE -Wall -Wextra -pedantic -ggdb )
+target_compile_options(gbemu PRIVATE -Wall -Wextra -pedantic -O3 )
 

@@ -5,6 +5,7 @@
 #include <string>
 #include "cpu.h"
 #include "gpu.h"
+#include "input.h"
 #include "lcd.h"
 #include "memory.h"
 #include "sdl_renderer.h"
@@ -99,15 +100,51 @@ int main(int argc, const char** argv) {
       if (e.type == SDL_QUIT) {
         break;
       }
+      if (e.type == SDL_KEYUP || e.type == SDL_KEYDOWN) {
+        bool set_key = e.type == SDL_KEYDOWN;
+        switch (e.key.keysym.sym) {
+          case SDLK_UP:
+            input.set_up(set_key);
+            break;
+          case SDLK_DOWN:
+            input.set_down(set_key);
+            break;
+          case SDLK_LEFT:
+            input.set_left(set_key);
+            break;
+          case SDLK_RIGHT:
+            input.set_right(set_key);
+            break;
+          case SDLK_z:
+            input.set_b(set_key);
+            break;
+          case SDLK_x:
+            input.set_a(set_key);
+            break;
+          case SDLK_RETURN:
+            input.set_start(set_key);
+            break;
+          case SDLK_RSHIFT:
+            input.set_select(set_key);
+            break;
+          default:
+            break;
+        }
+      }
     }
+    const bool request_interrupt = input.update();
+    if (request_interrupt) {
+      cpu.request_interrupt(gb::Cpu::Interrupt::Joypad);
+    }
+    // memory.memory[0xFF00] = 0xFF;
     // std::cin.get();
     int ticks = cpu.fetch_and_decode();
-    cpu.debug_write();
-    cpu.handle_interrupts();
+    if (!cpu.halted) {
+      cpu.debug_write();
+    }
+    ticks += cpu.handle_interrupts();
     lcd.update(ticks);
-    auto time = std::chrono::duration_cast<std::chrono::milliseconds>(
-                    std::chrono::system_clock::now().time_since_epoch())
-                    .count();
+    // std::cout << std::hex << "lcd ctl: " << +*memory.at(0xff40) << std::endl;
   }
 
   return 0;
