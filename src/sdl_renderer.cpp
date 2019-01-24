@@ -18,10 +18,6 @@ SdlRenderer::SdlRenderer(
   }
 }
 
-IRenderer::~IRenderer() {
-  std::cout << "IRenderer Destructor" << std::endl;
-}
-
 void SdlRenderer::draw_pixels(const std::array<Pixel, DISPLAY_SIZE>& pixels) {
   Uint32* texture_pixels = nullptr;
   int pitch = -1;
