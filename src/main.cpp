@@ -101,7 +101,7 @@ int main(int argc, const char** argv) {
         break;
       }
       if (e.type == SDL_KEYUP || e.type == SDL_KEYDOWN) {
-        bool set_key = e.type == SDL_KEYDOWN;
+        const bool set_key = e.type == SDL_KEYDOWN;
         switch (e.key.keysym.sym) {
           case SDLK_UP:
             input.set_up(set_key);
