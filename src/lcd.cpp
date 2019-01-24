@@ -7,7 +7,7 @@
 
 namespace gb {
 void Lcd::update(unsigned int ticks) {
-  write_lcdc();
+  write_lcd_stat();
   lcd_ticks += ticks;
   std::cout << "mode: " << mode << std::endl;
   switch (mode) {
@@ -38,11 +38,11 @@ void Lcd::update(unsigned int ticks) {
         if (scanlines >= 144) {
           mode = 1;
           std::cout << "VBLANK" << std::endl;
+          // Render image
           gpu->render();
           cpu->request_interrupt(Cpu::Interrupt::VBlank);
         } else {
           mode = 2;
-          // Render image
         }
       }
       break;
@@ -52,7 +52,7 @@ void Lcd::update(unsigned int ticks) {
         scanlines++;
         lcd_ticks = 0;
 
-        if (scanlines > 154) {
+        if (scanlines == 153) {
           mode = 2;
           scanlines = 0;
         }
@@ -61,8 +61,8 @@ void Lcd::update(unsigned int ticks) {
     }
   }
 }
-void Lcd::write_lcdc() const {
-  u8* lcdc = memory->at(LCDC_REGISTER);
+void Lcd::write_lcd_stat() const {
+  u8* lcdc = memory->at(LCD_STAT_REGISTER);
   *lcdc = (u8)mode;
 
   u8* lcdc_y = memory->at(LCDC_Y_COORD);

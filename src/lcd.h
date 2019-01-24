@@ -1,6 +1,6 @@
 #pragma once
 
-#define LCDC_REGISTER 0xff41
+#define LCD_STAT_REGISTER 0xff41
 #define LCDC_Y_COORD 0xff44
 
 namespace gb {
@@ -21,11 +21,11 @@ class Lcd {
   int mode = 2;
   int scanlines = 0;
   unsigned int lcd_ticks = 0;
+  void write_lcd_stat() const;
 
  public:
   Lcd(Cpu& cpu, Memory& memory, Gpu& gpu)
       : cpu{&cpu}, memory{&memory}, gpu{&gpu} {}
   void update(unsigned int ticks);
-  void write_lcdc() const;
 };
 }  // namespace gb
