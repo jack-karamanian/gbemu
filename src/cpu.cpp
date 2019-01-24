@@ -1136,7 +1136,7 @@ void Cpu::subtract(u8& dst, const u8& src) {
   set_zero(res);
   set_flag(FLAG_SUBTRACT);
 
-  dst = src;
+  dst = res;
 }
 
 // SUB A,r8
