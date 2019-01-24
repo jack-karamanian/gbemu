@@ -464,10 +464,11 @@ void Cpu::daa() {
 }
 
 void Cpu::dec(u8& val) {
-  u8 res = val - 1;
+  const u8 res = val - 1;
 
   set_zero(res);
   set_half_carry_subtract(val, 1);
+  set_flag(FLAG_SUBTRACT);
 
   val = res;
 }
