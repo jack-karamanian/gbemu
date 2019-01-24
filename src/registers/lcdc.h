@@ -13,6 +13,7 @@ class Lcdc {
   // Bit 7
   bool controller_on() const { return value & 0x80; }
 
+  // Bit 6
   const std::pair<u16, u16> window_area() const {
     bool high_area = value & 0x40;
 
@@ -23,8 +24,10 @@ class Lcdc {
     return {0x9800, 0x9bff};
   }
 
+  // Bit 5
   bool windowing_on() const { return value & 0x20; }
 
+  // Bit 4
   std::pair<u16, u16> bg_tile_data_range() const {
     bool selection = value & 0x10;
 
@@ -60,10 +63,10 @@ class Lcdc {
   u16 bg_tile_data_base() const {
     const auto [addr, _] = bg_tile_data_range();
 
-    return addr == 0x8000 ? addr : 0x9000;
+    return addr == 0x8000 ? addr : 0x8800;
   }
 
-  bool is_tile_map_signed() const { return bg_tile_data_base() == 0x9000; }
+  bool is_tile_map_signed() const { return bg_tile_data_base() == 0x8800; }
 };
 }  // namespace Registers
 }  // namespace gb
