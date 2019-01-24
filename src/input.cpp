@@ -6,8 +6,8 @@ Input::Input(Memory& memory) : memory{&memory} {}
 bool Input::update() {
   bool request_interrupt{false};
   u8* input_state = memory->get_input_register();
-  const bool select_buttons = !(*input_state & 0x20);
-  const bool select_dpad = !(*input_state & 0x10);
+  const bool select_buttons{!(*input_state & 0x20)};
+  const bool select_dpad{!(*input_state & 0x10)};
 
   if (select_buttons || select_dpad) {
     u8 button_bits{0};
