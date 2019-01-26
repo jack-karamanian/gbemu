@@ -129,13 +129,8 @@ void Gpu::render_background(int scanline) {
   auto lcdc = reinterpret_cast<const Registers::Lcdc*>(
       memory->at(Registers::Lcdc::Address));
 
-  // std::cout << "lcdc: " << std::hex << +lcdc->value << std::endl;
-
   const u8 scx = get_scx();
   const u8 scy = get_scy();
-
-  const u8 tile_scx = scx / 32;
-  const u8 tile_scy = scy / 32;
 
   if (!lcdc->bg_on()) {
     // return;
@@ -148,12 +143,12 @@ void Gpu::render_background(int scanline) {
   const bool is_signed = lcdc->is_tile_map_signed();
 
   const int scanline_tile_row = (scanline + scy) / 8;
-  const u16 tile_scroll_offset = (32 * (scanline_tile_row) + 0);
+  const u16 tile_scroll_offset = 32 * scanline_tile_row;
 
   const int tile_y = ((scanline + scy) % 8);
   for (int x = 0; x < 160; ++x) {
-    int px = x + scx;
-    const u16 tile_index = (px / 8);
+    int pixel_x = x + scx;
+    const u16 tile_index = (pixel_x / 8);
     const u16 offset_tile_index = (tile_scroll_offset + tile_index) % 1024;
 
     const u8* tile = &tile_map_begin[offset_tile_index];
@@ -167,7 +162,7 @@ void Gpu::render_background(int scanline) {
       tile_addr = tile_data_base + (16 * (*tile));
     }
 
-    tile_addr += 2 * (tile_y);
+    tile_addr += 2 * tile_y;
 
     const u8* tile_data = memory->at(tile_addr);
 
@@ -175,7 +170,7 @@ void Gpu::render_background(int scanline) {
     const u8 byte1 = tile_data[0];
     const u8 byte2 = tile_data[1];
 
-    render_pixel(byte1, byte2, px % 8, screen_x, scanline, COLORS);
+    render_pixel(byte1, byte2, pixel_x % 8, screen_x, scanline, COLORS);
   }
 }
 
