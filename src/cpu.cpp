@@ -1166,6 +1166,11 @@ void Cpu::swap(u8& val) {
   u8 high = (val & 0xf0) >> 4;
   u8 low = (val & 0xf);
   val = (low << 4) | high;
+
+  set_zero(val);
+  clear_flag(FLAG_CARRY);
+  clear_flag(FLAG_HALF_CARRY);
+  clear_flag(FLAG_SUBTRACT);
 }
 
 // SWAP r8
