@@ -55,6 +55,7 @@ int main(int argc, const char** argv) {
       std::make_unique<gb::SdlRenderer>(std::move(sdl_renderer));
   gb::Gpu gpu{memory, std::move(renderer)};
   gb::Lcd lcd{cpu, memory, gpu};
+  gb::Input input{memory};
 
   cpu.pc = 0x100;
   memory.memory[0xFF05] = 0x00;
