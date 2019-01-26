@@ -1,4 +1,5 @@
 #include <SDL2/SDL.h>
+#include <boost/program_options.hpp>
 #include <chrono>
 #include <fstream>
 #include <iostream>
@@ -10,11 +11,21 @@
 #include "memory.h"
 #include "sdl_renderer.h"
 
-int main(int argc, const char** argv) {
-  (void)argc;
+namespace po = boost::program_options;
 
-  static_assert(std::is_same<next_largest_type<u16>::type, u32>::value,
-                " not same");
+int main(int argc, const char** argv) {
+  po::options_description option_desc{"Options"};
+
+  option_desc.add_options()(
+      "trace", po::value<bool>()->default_value(false)->implicit_value(true),
+      "enables CPU tracing");
+
+  po::variables_map vm;
+  po::store(po::parse_command_line(argc, argv, option_desc), vm);
+
+  po::notify(vm);
+  const bool trace = vm["trace"].as<bool>();
+
   gb::Memory memory;
   std::string rom_name = argv[1];
 
@@ -88,13 +99,8 @@ int main(int argc, const char** argv) {
   memory.memory[0xFF49] = 0xFF;
   memory.memory[0xFF4A] = 0x00;
   memory.memory[0xFF4B] = 0x00;
-  memory.memory[0xFFFF] = 0x00;
-  // cpu.pc = 0x25d;
+  memory.memory[0xFFFE] = 0x00;
 
-  cpu.debug_write();
-  auto prevTime = std::chrono::duration_cast<std::chrono::milliseconds>(
-                      std::chrono::system_clock::now().time_since_epoch())
-                      .count();
   while (true) {
     SDL_Event e;
     if (SDL_PollEvent(&e)) {
@@ -133,19 +139,21 @@ int main(int argc, const char** argv) {
         }
       }
     }
+
+    memory.set(0xff04, rand());
     const bool request_interrupt = input.update();
     if (request_interrupt) {
       cpu.request_interrupt(gb::Cpu::Interrupt::Joypad);
     }
-    // memory.memory[0xFF00] = 0xFF;
-    // std::cin.get();
+
     int ticks = cpu.fetch_and_decode();
     if (!cpu.halted) {
-      cpu.debug_write();
+      if (trace) {
+        cpu.debug_write();
+      }
     }
     ticks += cpu.handle_interrupts();
     lcd.update(ticks);
-    // std::cout << std::hex << "lcd ctl: " << +*memory.at(0xff40) << std::endl;
   }
 
   return 0;

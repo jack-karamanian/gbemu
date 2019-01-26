@@ -31,6 +31,6 @@ add_executable(
 
 target_include_directories(gbemu PRIVATE include)
 
-target_link_libraries(gbemu SDL2)
+target_link_libraries(gbemu SDL2 boost_program_options)
 target_compile_options(gbemu PRIVATE -Wall -Wextra -pedantic -O3 )
 
