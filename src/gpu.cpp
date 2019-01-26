@@ -149,7 +149,8 @@ void Gpu::render_background(int scanline) {
   for (int x = 0; x < 160; ++x) {
     int pixel_x = x + scx;
     const u16 tile_index = (pixel_x / 8);
-    const u16 offset_tile_index = (tile_scroll_offset + tile_index) % 1024;
+    const u16 offset_tile_index =
+        (tile_scroll_offset + (tile_index % 32)) % 1024;
 
     const u8* tile = &tile_map_begin[offset_tile_index];
 
