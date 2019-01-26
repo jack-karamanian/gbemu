@@ -27,8 +27,8 @@ const Instruction& Cpu::fetch() {
 }
 
 int Cpu::fetch_and_decode() {
-  if (stopped) {
-    return 0;
+  if (stopped || halted) {
+    return 4;
   }
   const Instruction& inst = fetch();
   std::cout << inst.name << std::endl;
@@ -54,20 +54,24 @@ int Cpu::fetch_and_decode() {
   // debug_write();
 }
 
-void Cpu::handle_interrupts() {
+int Cpu::handle_interrupts() {
   if (interrupts_enabled) {
     for (int i = 0; i < 5; i++) {
       u8 interrupt = 0x01 << i;
-      if (has_interrupt(interrupt) && interrupt_enabled(interrupt)) {
-        handle_interrupt(interrupt);
+      if (has_interrupt(interrupt)) {
+        if (interrupt_enabled(interrupt)) {
+          handle_interrupt(interrupt);
+          return 20;
+        }
       }
     }
   }
+  return 0;
 }
 
 bool Cpu::handle_interrupt(u8 interrupt) {
   disable_interrupts();
-  clear_interrupt((Interrupt)interrupt);
+  clear_interrupt(interrupt);
   push(pc);
   switch (interrupt) {
     case Interrupt::VBlank:
@@ -134,13 +138,15 @@ bool Cpu::has_interrupt(u8 interrupt) const {
   return *memory->at(MemoryRegister::InterruptRequest) & interrupt;
 }
 
-void Cpu::request_interrupt(Interrupt interrupt) const {
+void Cpu::request_interrupt(Interrupt interrupt) {
   if (interrupts_enabled) {
     *memory->at(MemoryRegister::InterruptRequest) |= interrupt;
   }
+  halted = false;
+  stopped = false;
 }
 
-void Cpu::clear_interrupt(Interrupt interrupt) const {
+void Cpu::clear_interrupt(const u8 interrupt) const {
   *memory->at(0xff0f) &= ~interrupt;
 }
 
@@ -505,7 +511,9 @@ void Cpu::enable_interrupts() {
   interrupts_enabled = true;
 }
 
-void Cpu::halt() {}
+void Cpu::halt() {
+  halted = true;
+}
 
 void Cpu::inc(u8& val) {
   u8 res = val + 1;

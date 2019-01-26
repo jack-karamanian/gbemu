@@ -69,6 +69,7 @@ struct Cpu {
 
   bool interrupts_enabled = false;
   bool stopped = false;
+  bool halted = false;
 
   Memory* memory;
   InstructionTable instruction_table;
@@ -78,7 +79,7 @@ struct Cpu {
   const Instruction& fetch();
 
   int fetch_and_decode();
-  void handle_interrupts();
+  int handle_interrupts();
   bool handle_interrupt(u8 interrupt);
   void debug_write();
 
@@ -88,9 +89,9 @@ struct Cpu {
 
   bool has_interrupt(u8 interrupt) const;
 
-  void request_interrupt(Interrupt interrupt) const;
+  void request_interrupt(Interrupt interrupt);
 
-  void clear_interrupt(Interrupt interrupt) const;
+  void clear_interrupt(const u8 interrupt) const;
 
   inline void noop() const {}
   void invalid() const;
