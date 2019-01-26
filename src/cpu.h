@@ -135,8 +135,8 @@ struct Cpu {
   //  }
   //}
 
-  template <typename T, typename U = T>
-  void set_half_carry(const T& a, const U& b) {
+  template <typename T>
+  void set_half_carry(const T& a, const T& b) {
     // Hardcode max of 16 bit for now. Could support more with templates
     constexpr T add_mask = 0xffff >> (16 - (sizeof(T) * 4));
     constexpr T carry_mask = 0x1 << 4 * sizeof(T);
@@ -556,6 +556,12 @@ struct Cpu {
 
   u16& get_r16(const Register& reg);
 
-  u8& value_at_r16(const Register& reg);
+  u8 value_at_r16(const Register& reg);
+  template <typename F, typename... Args>
+  void mutate(const Register reg, F f, Args... args) {
+    u8 val = value_at_r16(reg);
+    (this->*f)(val, args...);
+    memory->set(get_r16(reg), val);
+  }
 };
 }  // namespace gb

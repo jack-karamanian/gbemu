@@ -246,9 +246,15 @@ void Cpu::add_hl_r16(const Register& reg) {
   u16& hl = get_r16(Register::HL);
   u16& r16 = get_r16(reg);
 
-  u16 res = hl + r16;
+  const u16 res = hl + r16;
 
-  set_half_carry(hl, r16);
+  // set_half_carry(hl, r16);
+
+  if (((hl & 0xff) + (r16 & 0xff)) > 0xff) {
+    set_flag(FLAG_HALF_CARRY);
+  } else {
+    clear_flag(FLAG_HALF_CARRY);
+  }
   set_carry(hl, r16);
   clear_flag(FLAG_SUBTRACT);
 
@@ -260,8 +266,8 @@ void Cpu::add_hl_sp() {
   u16& hl = get_r16(Register::HL);
   u16 res = hl + sp;
 
-  set_half_carry(hl, (u16)sp);
-  set_carry(hl, (u16)sp);
+  set_half_carry(hl, sp);
+  set_carry(hl, sp);
   clear_flag(FLAG_SUBTRACT);
 
   hl = res;
@@ -269,16 +275,16 @@ void Cpu::add_hl_sp() {
 
 // ADD SP,s8
 void Cpu::add_sp_s8() {
-  s8 val = read_operand();
+  s8 val = read_operand<s8>();
   int res = sp + val;
 
-  if (res & 0xffff0000) {
+  if (res & 0xffffff00) {
     set_flag(FLAG_CARRY);
   } else {
     clear_flag(FLAG_CARRY);
   }
 
-  set_half_carry(sp, val);
+  set_half_carry(sp, (u16)val);
 
   clear_flag(FLAG_ZERO);
   clear_flag(FLAG_SUBTRACT);
@@ -413,16 +419,14 @@ void Cpu::compare_a(const u8& val) {
   set_flag(FLAG_SUBTRACT);
 }
 
+// CP A,r8
 void Cpu::cp_a_r8(const Register& reg) {
   compare_a(regs[reg]);
 }
 
 // CP A,[HL]
 void Cpu::cp_a_hl() {
-  u8& addr = regs[Register::HL];
-  u8* val = memory->at(addr);
-
-  compare_a(*val);
+  compare_a(value_at_r16(Register::HL));
 }
 
 // CP A,n8
@@ -486,8 +490,9 @@ void Cpu::dec_r8(const Register& reg) {
 
 // DEC [HL]
 void Cpu::dec_hl() {
-  u8& val = value_at_r16(Register::HL);
-  dec(val);
+  // u8& val = value_at_r16(Register::HL);
+  // dec(val);
+  mutate(Register::HL, &Cpu::dec);
 }
 
 // DEC r16
@@ -518,7 +523,7 @@ void Cpu::halt() {
 void Cpu::inc(u8& val) {
   u8 res = val + 1;
 
-  set_half_carry(val, 1);
+  set_half_carry(val, (u8)1);
   set_zero(res);
   clear_flag(FLAG_SUBTRACT);
 
@@ -532,8 +537,9 @@ void Cpu::inc_r8(const Register& reg) {
 
 // INC [HL]
 void Cpu::inc_hl() {
-  u8& val = value_at_r16(Register::HL);
-  inc(val);
+  // u8& val = value_at_r16(Register::HL);
+  // inc(val);
+  mutate(Register::HL, &Cpu::inc);
 }
 
 // INC r16
@@ -619,15 +625,17 @@ void Cpu::ld_r16_d16(const Register& dst) {
 // LD [HL],r8
 void Cpu::ld_hl_r8(const Register& reg) {
   const u16& hl = get_r16(Register::HL);
-  u8* val = memory->at(hl);
-  *val = regs[reg];
+  // u8* val = memory->at(hl);
+  //*val = regs[reg];
+  memory->set(hl, regs[reg]);
 }
 
 // LD [HL],n8
 void Cpu::ld_hl_d8() {
   const u16& hl = get_r16(Register::HL);
-  u8* val = memory->at(hl);
-  *val = read_operand();
+  // u8* val = memory->at(hl);
+  //*val = read_operand();
+  memory->set(hl, read_operand());
 }
 
 // LD r8,[HL]
@@ -639,15 +647,17 @@ void Cpu::ld_r8_hl(const Register& reg) {
 
 // LD [r16], A
 void Cpu::ld_r16_a(const Register& reg) {
-  u8& val = value_at_r16(reg);
-  val = regs[Register::A];
+  // u8& val = value_at_r16(reg);
+  // val = regs[Register::A];
+  memory->set(get_r16(reg), regs[Register::A]);
 }
 
 // LD [n16],A
 void Cpu::ld_d16_a() {
   const u16& addr = read_operand<u16>();
-  u8* val = memory->at(addr);
-  *val = regs[Register::A];
+  // u8* val = memory->at(addr);
+  //*val = regs[Register::A];
+  memory->set(addr, regs[Register::A]);
 }
 
 void Cpu::load_offset(const u8& offset, const u8& val) {
@@ -696,9 +706,8 @@ void Cpu::ld_read_offset_c() {
 
 // TODO: fix this
 void Cpu::load_hl_a() {
-  u16& hl = get_r16(Register::HL);
-  u8* dst = memory->at(hl);
-  *dst = regs[Register::A];
+  const u16& hl = get_r16(Register::HL);
+  memory->set(hl, regs[Register::A]);
 }
 
 void Cpu::load_a_hl() {
@@ -745,6 +754,8 @@ void Cpu::ld_d16_sp() {
 
 // LD HL,SP+e8
 void Cpu::ld_hl_sp_s8() {
+  u16& hl = get_r16(Register::HL);
+
   const s8& val = read_operand<s8>();
   int res = sp + val;
   if (res & 0xffff0000) {
@@ -753,12 +764,12 @@ void Cpu::ld_hl_sp_s8() {
     clear_flag(FLAG_CARRY);
   }
 
-  set_half_carry(sp, val);
+  set_half_carry(sp, (u16)val);
 
   clear_flag(FLAG_ZERO);
   clear_flag(FLAG_SUBTRACT);
 
-  sp = res;
+  hl = res;
 }
 
 // LD SP,HL
@@ -791,8 +802,8 @@ void Cpu::or_a_d8() {
 }
 
 void Cpu::pop(u16& reg) {
-  u8 low = *memory->at(sp);
-  u8 high = *memory->at(sp + 1);
+  u8 low = *memory->at(sp + 1);
+  u8 high = *memory->at(sp);
   sp += 2;
 
   reg = (((u16)low) << 8) | high;
@@ -803,6 +814,7 @@ void Cpu::pop(u16& reg) {
 void Cpu::pop_af() {
   u16& af = get_r16(Register::F);
   pop(af);
+  regs[Register::F] &= 0xf0;
 }
 
 // POP r16
@@ -814,8 +826,8 @@ void Cpu::push(const u16& val) {
   u8 low = (val & 0xff00) >> 8;
   u8 high = val & 0xff;
 
-  memory->set(--sp, high);
   memory->set(--sp, low);
+  memory->set(--sp, high);
 }
 
 // PUSH AF
@@ -844,7 +856,8 @@ void Cpu::res_u3_r8(const u8 bit, const Register& reg) {
 
 // RES u3,[HL]
 void Cpu::res_u3_hl(const u8 bit) {
-  set_bit(value_at_r16(Register::HL), bit, false);
+  // set_bit(value_at_r16(Register::HL), bit, false);
+  mutate(Register::HL, &Cpu::set_bit, bit, false);
 }
 
 // RET
@@ -905,8 +918,9 @@ void Cpu::rl_r8(const Register& reg) {
 
 // RL, [HL]
 void Cpu::rl_hl() {
-  u8& val = value_at_r16(Register::HL);
-  rotate_zero(val);
+  // u8& val = value_at_r16(Register::HL);
+  // rotate_zero(val);
+  mutate(Register::HL, &Cpu::rotate_zero, true);
 }
 
 // RLA
@@ -920,6 +934,8 @@ void Cpu::rl_a() {
 
 void Cpu::rotate_carry(u8& val, bool left) {
   int carry_val = (left ? 0x80 : 0x01);
+
+  // TODO: This is wrong. Set the carry flag only if bit 7 is set
 
   if (left) {
     val <<= 1;
@@ -953,8 +969,9 @@ void Cpu::rlc_r8(const Register& reg) {
 
 // RLC [HL]
 void Cpu::rlc_hl() {
-  u8& val = value_at_r16(Register::HL);
-  rotate_carry_zero(val);
+  // u8 val = value_at_r16(Register::HL);
+  // rotate_carry_zero(val);
+  mutate(Register::HL, &Cpu::rotate_carry_zero, true);
 }
 
 // RLCA
@@ -972,8 +989,9 @@ void Cpu::rr_r8(const Register& reg) {
 
 // RR [HL]
 void Cpu::rr_hl() {
-  u8& val = value_at_r16(Register::HL);
+  u8 val = value_at_r16(Register::HL);
   rotate_zero(val, false);
+  memory->set(get_r16(Register::HL), val);
 }
 
 // RRA
@@ -991,7 +1009,9 @@ void Cpu::rrc_r8(const Register& reg) {
 
 // RRC [HL]
 void Cpu::rrc_hl() {
-  rotate_carry_zero(value_at_r16(Register::HL), false);
+  u8 val = value_at_r16(Register::HL);
+  rotate_carry_zero(val, false);
+  memory->set(get_r16(Register::HL), val);
 }
 
 // RRCA
@@ -1006,15 +1026,32 @@ void Cpu::rrca() {
 void Cpu::rst() {
   push(pc);
 
-  u16 addr = current_opcode & 0x38;
+  const u16 addr = current_opcode & 0x38;
   pc = addr;
 }
 
 void Cpu::carried_subtract(u8& dst, const u8& src) {
-  u8 carry = get_flag(FLAG_CARRY) ? 1 : 0;
-  u8 res = dst - src - carry;
+  const u8 carry = get_flag(FLAG_CARRY) ? 1 : 0;
+  const u8 res = dst - src - carry;
+  const u16 res1 = dst - src - carry;
 
-  set_half_carry_subtract(dst, src);
+  const u16 magnitude = src + carry;
+
+  bool half_carry = (res1 ^ src) & 0x10;
+
+  if (((dst & 0x0f) - (src - 0x0f) - carry) < 0) {
+    set_flag(FLAG_HALF_CARRY);
+  } else {
+    clear_flag(FLAG_HALF_CARRY);
+  }
+
+  std::cout << "dst: " << +dst << std::endl;
+  std::cout << "src: " << +src << std::endl;
+  std::cout << "res: " << +res << std::endl;
+  std::cout << "carry: " << +carry << std::endl;
+  std::cout << "half carry: " << std::boolalpha << !!get_flag(FLAG_HALF_CARRY)
+            << std::endl;
+
   set_zero(res);
 
   if (src > dst) {
@@ -1022,6 +1059,7 @@ void Cpu::carried_subtract(u8& dst, const u8& src) {
   } else {
     clear_flag(FLAG_CARRY);
   }
+  std::cout << "flag carry: " << !!get_flag(FLAG_CARRY) << std::endl;
   set_flag(FLAG_SUBTRACT);
 
   dst = res;
@@ -1056,7 +1094,9 @@ void Cpu::set_u3_r8(const u8& bit, const Register& reg) {
 
 // SET u3,[HL]
 void Cpu::set_u3_hl(const u8& bit) {
-  set_bit(value_at_r16(Register::HL), bit, true);
+  u8 val = value_at_r16(Register::HL);
+  set_bit(val, bit, true);
+  memory->set(get_r16(Register::HL), val);
 }
 
 void Cpu::shift_arithmetic(u8& val, bool left) {
@@ -1088,7 +1128,9 @@ void Cpu::sla_r8(const Register& reg) {
 
 // SLA [HL]
 void Cpu::sla_hl() {
-  shift_arithmetic(value_at_r16(Register::HL));
+  u8 val = value_at_r16(Register::HL);
+  shift_arithmetic(val);
+  memory->set(get_r16(Register::HL), val);
 }
 
 // SRA r8
@@ -1098,7 +1140,9 @@ void Cpu::sra_r8(const Register& reg) {
 
 // SRA [HL]
 void Cpu::sra_hl() {
-  shift_arithmetic(value_at_r16(Register::HL), false);
+  u8 val = value_at_r16(Register::HL);
+  shift_arithmetic(val, false);
+  memory->set(get_r16(Register::HL), val);
 }
 
 void Cpu::shift(u8& val) {
@@ -1124,7 +1168,9 @@ void Cpu::srl_r8(const Register& reg) {
 
 // SRL [HL]
 void Cpu::srl_hl() {
-  shift(value_at_r16(Register::HL));
+  u8 val = value_at_r16(Register::HL);
+  shift(val);
+  memory->set(get_r16(Register::HL), val);
 }
 
 // STOP
@@ -1180,7 +1226,8 @@ void Cpu::swap_r8(const Register reg) {
 
 // SWAP [HL]
 void Cpu::swap_hl() {
-  swap(value_at_r16(Register::HL));
+  // swap(value_at_r16(Register::HL));
+  mutate(Register::HL, &Cpu::swap);
 }
 
 // clang thinks xor is block related?
@@ -1221,7 +1268,7 @@ u16& Cpu::get_r16(const Register& reg) {
   return (u16&)*&regs[reg];
 }
 
-u8& Cpu::value_at_r16(const Register& reg) {
+u8 Cpu::value_at_r16(const Register& reg) {
   u16& addr = get_r16(reg);
   u8* val = memory->at(addr);
   return *val;
