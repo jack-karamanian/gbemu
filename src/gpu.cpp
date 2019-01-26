@@ -12,10 +12,17 @@
 
 namespace gb {
 static constexpr std::array<Pixel, 4> COLORS = {{
-    {0, 0, 0, 255},
-    {64, 64, 64, 255},
-    {128, 128, 128, 255},
     {255, 255, 255, 255},
+    {128, 128, 128, 255},
+    {100, 100, 100, 255},
+    {32, 32, 32, 255},
+}};
+
+static constexpr std::array<Pixel, 4> SPRITE_COLORS = {{
+    {255, 255, 255, 0},
+    {128, 128, 128, 255},
+    {100, 100, 100, 255},
+    {0, 0, 0, 0},
 }};
 Gpu::Gpu(Memory& memory, std::unique_ptr<IRenderer> renderer)
     : memory{&memory}, renderer{std::move(renderer)} {}
@@ -54,22 +61,31 @@ u8 Gpu::get_scy() const {
   return *memory->at(0xff42);
 }
 
+void Gpu::render_pixel(const u8 byte1,
+                       const u8 byte2,
+                       const u8 pixel_x,
+                       const int screen_x,
+                       const int screen_y,
+                       const std::array<Pixel, 4>& colors) {
+  const u8 shift = 7 - pixel_x;
+  const u8 mask = (0x1 << shift);
+  const u8 low_bit = (byte1 & mask) >> shift;
+  const u8 high_bit = (byte2 & mask) >> shift;
+
+  const u8 color_index = (high_bit << 1) | low_bit;
+
+  if (screen_x < 160 && screen_y >= 0) {
+    pixels[144 * screen_x + screen_y] = colors.at(color_index);
+  }
+}
+
 void Gpu::render_tile(const u8 byte1,
                       const u8 byte2,
                       const int screen_x,
-                      const int screen_y) {
-  for (int shift = 7; shift >= 0; --shift) {
-    const u8 mask = (0x1 << shift);
-    const u8 low_bit = (byte1 & mask) >> shift;
-    const u8 high_bit = (byte2 & mask) >> shift;
-
-    const u8 color_index = (high_bit << 1) | low_bit;
-    const int x = ((7 - shift) + screen_x);
-    std::cout << "screen x" << std::dec << x << std::endl;
-    std::cout << "screen y" << std::dec << screen_y << std::endl;
-    if (x < 160 && screen_y >= 0) {
-      pixels[144 * x + screen_y] = COLORS.at(color_index);
-    }
+                      const int screen_y,
+                      const std::array<Pixel, 4>& colors) {
+  for (int pixel_x = 0; pixel_x < 8; ++pixel_x) {
+    render_pixel(byte1, byte2, pixel_x, screen_x, screen_y, colors);
   }
 }
 
@@ -96,11 +112,15 @@ void Gpu::render_sprites(int scanline) {
 
       const auto tile = memory->at(tile_addr);
 
-      const u8 byte1 = tile[1];
-      const u8 byte2 = tile[0];
+      const u8 byte1 = tile[0];
+      const u8 byte2 = tile[1];
+
       const int y = scanline - 16;
       const int x = sprite_attrib->x - 8;
-      render_tile(byte1, byte2, x, y);
+
+      for (int pixel_x = 0; pixel_x < 8; pixel_x++) {
+        render_pixel(byte1, byte2, pixel_x, x + pixel_x, y, SPRITE_COLORS);
+      }
     }
   }
 }
@@ -109,7 +129,7 @@ void Gpu::render_background(int scanline) {
   auto lcdc = reinterpret_cast<const Registers::Lcdc*>(
       memory->at(Registers::Lcdc::Address));
 
-  std::cout << "lcdc: " << std::hex << +lcdc->value << std::endl;
+  // std::cout << "lcdc: " << std::hex << +lcdc->value << std::endl;
 
   const u8 scx = get_scx();
   const u8 scy = get_scy();
@@ -122,55 +142,49 @@ void Gpu::render_background(int scanline) {
   }
 
   auto [tile_map_begin_addr, tile_map_end_addr] = lcdc->bg_tile_map_range();
-  u8* tile_map_begin =
-      memory->at(tile_map_begin_addr);  //+ (32 * tile_scx + tile_scy);
+  u8* tile_map_begin = memory->at(tile_map_begin_addr);
 
   const u16 tile_data_base = lcdc->bg_tile_data_base();
   const bool is_signed = lcdc->is_tile_map_signed();
 
-  const int scanline_tile_row = scanline / 8;
-  const u16 tile_scroll_offset =
-      (32 * (tile_scy + scanline_tile_row) + tile_scx);
-  std::cout << "tile scx: " << std::hex << +tile_scx << std::endl;
-  std::cout << "tile scy: " << std::hex << +tile_scy << std::endl;
+  const int scanline_tile_row = (scanline + scy) / 8;
+  const u16 tile_scroll_offset = (32 * (scanline_tile_row) + 0);
 
-  const int tile_y = scanline % 8;
-  for (u16 tile_index = 0; tile_index < 20; ++tile_index) {
+  const int tile_y = ((scanline + scy) % 8);
+  for (int x = 0; x < 160; ++x) {
+    int px = x + scx;
+    const u16 tile_index = (px / 8);
     const u16 offset_tile_index = (tile_scroll_offset + tile_index) % 1024;
 
     const u8* tile = &tile_map_begin[offset_tile_index];
-    const u16 tile_addr = tile_data_base + (16 * (*tile)) + (2 * tile_y);
-    const u8* tile_data =
-        is_signed ? memory->at(tile_data_base +
-                               (16 * (*reinterpret_cast<const s8*>(tile))) +
-                               (2 * tile_y))
-                  : memory->at(tile_data_base + (16 * (*tile)) + (2 * tile_y));
 
-    std::cout << "tile index: " << std::dec << +*tile << std::endl;
-    std::cout << "rendering screen tile: " << std::dec << tile_index
-              << std::endl;
-    std::cout << "tile base: " << std::hex << tile_data_base << std::endl;
-    std::cout << "tile addr: " << std::hex << tile_addr << std::endl;
+    u16 tile_addr;
+
+    if (is_signed) {
+      int16_t signed_index = (*reinterpret_cast<const s8*>(tile));
+      tile_addr = tile_data_base + (16 * (signed_index + 128));
+    } else {
+      tile_addr = tile_data_base + (16 * (*tile));
+    }
+
+    tile_addr += 2 * (tile_y);
+
+    const u8* tile_data = memory->at(tile_addr);
+
+    const int screen_x = x;
     const u8 byte1 = tile_data[0];
     const u8 byte2 = tile_data[1];
-    render_tile(byte1, byte2, tile_index * 8, scanline);
+
+    render_pixel(byte1, byte2, px % 8, screen_x, scanline, COLORS);
   }
 }
 
 void Gpu::render_scanline(int scanline) {
-  std::cout << "scanlines :" << std::dec << scanline << std::endl;
-  for (int i = 0; i < 160; ++i) {
-    pixels[144 * i + scanline] = {0, 0, 0, 0};
-  }
   render_background(scanline);
   render_sprites(scanline);
 }
 
 void Gpu::render() {
-  std::cout << "draw_pixels " << std::boolalpha << (renderer.get() == nullptr)
-            << std::endl;
   renderer->draw_pixels(pixels);
-  // char c;
-  // std::cin.read(&c, 1);
 }
 }  // namespace gb

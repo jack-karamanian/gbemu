@@ -18,7 +18,17 @@ class Gpu {
   void dump_vram();
   u8 get_scx() const;
   u8 get_scy() const;
-  void render_tile(const u8 byte1, const u8 byte2, const int x, const int y);
+  void render_pixel(const u8 byte1,
+                    const u8 byte2,
+                    const u8 pixel_x,
+                    const int x,
+                    const int y,
+                    const std::array<Pixel, 4>& colors);
+  void render_tile(const u8 byte1,
+                   const u8 byte2,
+                   const int screen_x,
+                   const int screen_y,
+                   const std::array<Pixel, 4>& colors);
   void render_sprites(int scanline);
   void render_background(int scanline);
 
