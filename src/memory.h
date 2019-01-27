@@ -36,7 +36,7 @@ class Memory {
 
   void do_dma_transfer(const u8& val);
 
-  const u8* get_input_register();
+  u8 get_input_register();
   void set_input_register(u8 val);
 
   nonstd::span<const SpriteAttribute> get_sprite_attributes();

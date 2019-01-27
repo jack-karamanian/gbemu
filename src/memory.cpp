@@ -67,8 +67,8 @@ void Memory::do_dma_transfer(const u8& data) {
   }
 }
 
-const u8* Memory::get_input_register() {
-  return &memory[0xff00];
+u8 Memory::get_input_register() {
+  return memory[0xff00];
 }
 
 void Memory::set_input_register(u8 val) {
