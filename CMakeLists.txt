@@ -27,6 +27,7 @@ add_executable(
   src/registers/lcdc.h
   src/input.h
   src/input.cpp
+  src/utils.h
 )
 
 target_include_directories(gbemu PRIVATE include)
