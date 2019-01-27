@@ -84,7 +84,7 @@ struct Cpu {
   bool handle_interrupt(u8 interrupt);
   void debug_write();
 
-  const u8* get_interrupts_register() const;
+  u8 get_interrupts_register() const;
 
   bool interrupt_enabled(u8 interrupt) const;
 

@@ -17,13 +17,13 @@ Cpu::Cpu(Memory& memory)
       instruction_table(*this) {}
 
 const Instruction& Cpu::fetch() {
-  const u8 opcode = *memory->at(pc);
+  const u8 opcode = memory->at(pc);
   if (opcode == 0xCB) {
     pc++;
     ticks += 4;
-    return instruction_table.cb_instructions[*memory->at(pc)];
+    return instruction_table.cb_instructions.at(memory->at(pc));
   }
-  return instruction_table.instructions[opcode];
+  return instruction_table.instructions.at(opcode);
 }
 
 int Cpu::fetch_and_decode() {
@@ -32,7 +32,7 @@ int Cpu::fetch_and_decode() {
   }
   const Instruction& inst = fetch();
   std::cout << inst.name << std::endl;
-  std::cout << "opcode: " << std::hex << +*memory->at(pc) << std::endl;
+  std::cout << "opcode: " << std::hex << +memory->at(pc) << std::endl;
   const int operands_size = (inst.size - 1);
 
   if (operands_size == 1) {
@@ -112,7 +112,7 @@ void Cpu::debug_write() {
             << " HL: " << std::setw(6) << get_r16(Register::HL) << std::endl
             << "PC: " << std::setw(6) << pc << std::endl
             << "SP: " << std::setw(6) << sp << std::endl
-            << "memory[SP]: " << std::setw(6) << (*((u16*)&memory->memory[sp]))
+            << "memory[SP]: " << std::setw(6) << memory->at<u16>(sp)
             << std::endl
             << std::endl;
 }
@@ -127,22 +127,22 @@ void Cpu::set_half_carry_subtract(const u8& a, const u8& b) {
   }
 }
 
-const u8* Cpu::get_interrupts_register() const {
+u8 Cpu::get_interrupts_register() const {
   return memory->at(MemoryRegister::InterruptRequest);
 }
 
 bool Cpu::interrupt_enabled(u8 interrupt) const {
-  const u8 interrupts = *memory->at(MemoryRegister::InterruptEnabled);
+  const u8 interrupts = memory->at(MemoryRegister::InterruptEnabled);
   return (interrupts & interrupt) != 0;
 }
 
 bool Cpu::has_interrupt(u8 interrupt) const {
-  return (*memory->at(MemoryRegister::InterruptRequest) & interrupt) != 0;
+  return (memory->at(MemoryRegister::InterruptRequest) & interrupt) != 0;
 }
 
 void Cpu::request_interrupt(Interrupt interrupt) {
   if (interrupts_enabled) {
-    const u8 interrupts = *memory->at(MemoryRegister::InterruptRequest);
+    const u8 interrupts = memory->at(MemoryRegister::InterruptRequest);
     memory->set(MemoryRegister::InterruptRequest, interrupts | interrupt);
   }
   halted = false;
@@ -150,14 +150,13 @@ void Cpu::request_interrupt(Interrupt interrupt) {
 }
 
 void Cpu::clear_interrupt(const u8 interrupt) const {
-  const u8 interrupts = *memory->at(0xff0f);
+  const u8 interrupts = memory->at(0xff0f);
   memory->set(0xff0f, interrupts & ~interrupt);
 }
 
 void Cpu::invalid() const {
   std::ostringstream s;
-  s << "invalid instruction: " << std::hex << +memory->memory[pc - 1]
-    << std::endl;
+  s << "invalid instruction: " << std::hex << +memory->at(pc - 1) << std::endl;
   throw std::runtime_error(s.str());
   // std::cout << s.str();
 }
@@ -198,8 +197,8 @@ void Cpu::add(u8& dest, const u8& a, const u8& b) {
 // ADC A,[HL]
 void Cpu::add_carry_a_hl() {
   u8& a = regs[Register::A];
-  u16 hl = get_r16(Register::HL);
-  u8 val = *memory->at(hl);
+  const u16 hl = get_r16(Register::HL);
+  const u8 val = memory->at(hl);
 
   carried_add(a, a, val);
 }
@@ -231,8 +230,8 @@ void Cpu::add_a_r8(const Register& reg) {
 // ADD A,[HL]
 void Cpu::add_a_hl() {
   u8& a = regs[Register::A];
-  u16 addr = get_r16(Register::HL);
-  u8 val = *memory->at(addr);
+  const u16 addr = get_r16(Register::HL);
+  const u8 val = memory->at(addr);
 
   add(a, a, val);
 }
@@ -240,7 +239,7 @@ void Cpu::add_a_hl() {
 // ADD A,n8
 void Cpu::add_a_d8() {
   u8& a = regs[Register::A];
-  u8 val = read_operand();
+  const u8 val = read_operand();
 
   add(a, a, val);
 }
@@ -282,7 +281,7 @@ void Cpu::add_sp_s8() {
   const s8 val = read_operand();
   int res = sp + val;
 
-  if (res & 0xffffff00) {
+  if ((res & 0xffffff00) != 0) {
     set_flag(FLAG_CARRY);
   } else {
     clear_flag(FLAG_CARRY);
@@ -316,10 +315,10 @@ void Cpu::and_a_r8(const Register& reg) {
 
 // AND A,[HL]
 void Cpu::and_a_hl() {
-  u16& addr = get_r16(Register::HL);
-  const u8* val = memory->at(addr);
+  const u16& addr = get_r16(Register::HL);
+  const u8 val = memory->at(addr);
 
-  and_a(*val);
+  and_a(val);
 }
 
 // AND A,n8
@@ -330,7 +329,7 @@ void Cpu::and_a_d8() {
 }
 
 void Cpu::bit(const u8& bit_num, const u8& val) {
-  bool bit_set = val & (0x01 << bit_num);
+  bool bit_set = (val & (0x01 << bit_num)) != 0;
 
   if (bit_set) {
     clear_flag(FLAG_ZERO);
@@ -351,13 +350,13 @@ void Cpu::bit_r8(u8 bit_num, const Register& reg) {
 // BIT u3,[HL]
 void Cpu::bit_hl(u8 bit_num) {
   u16& addr = get_r16(Register::HL);
-  const u8* val = memory->at(addr);
-  bit(bit_num, *val);
+  const u8 val = memory->at(addr);
+  bit(bit_num, val);
 }
 
 // CALL,nn
 void Cpu::call() {
-  u16 addr = read_operand<u16>();
+  const u16 addr = read_operand<u16>();
   // u16 next_op = pc + 2;
   // u8 pc_low = (next_op & 0xff00) >> 8;
   // bu8 pc_high = (next_op & 0x00ff);
@@ -435,7 +434,7 @@ void Cpu::cp_a_hl() {
 
 // CP A,n8
 void Cpu::cp_a_d8() {
-  u8 val = read_operand();
+  const u8 val = read_operand();
   compare_a(val);
 }
 
@@ -563,7 +562,7 @@ void Cpu::jump(const u16& addr) {
 
 // JP n16
 void Cpu::jp_d16() {
-  u16 addr = read_operand<u16>();
+  const u16 addr = read_operand<u16>();
   jump(addr);
 }
 
@@ -584,13 +583,13 @@ void Cpu::jump_conditional(const u16& addr, int index_offset) {
 
 // JP cc,n16
 void Cpu::jp_cc_n16() {
-  u16 addr = read_operand<u16>();
+  const u16 addr = read_operand<u16>();
   jump_conditional(addr);
 }
 
 // JP HL
 void Cpu::jp_hl() {
-  const u16& hl = get_r16(Register::HL);
+  const u16 hl = get_r16(Register::HL);
   pc = hl;
 }
 
@@ -645,8 +644,8 @@ void Cpu::ld_hl_d8() {
 // LD r8,[HL]
 void Cpu::ld_r8_hl(const Register& reg) {
   const u16& hl = get_r16(Register::HL);
-  const u8* val = memory->at(hl);
-  regs[reg] = *val;
+  const u8 val = memory->at(hl);
+  regs[reg] = val;
 }
 
 // LD [r16], A
@@ -688,13 +687,13 @@ void Cpu::ld_a_r16(const Register& reg) {
 // LD A,[n16]
 void Cpu::ld_a_d16() {
   const u16& addr = read_operand<u16>();
-  const u8* val = memory->at(addr);
-  regs[Register::A] = *val;
+  const u8 val = memory->at(addr);
+  regs[Register::A] = val;
 }
 
 void Cpu::read_offset_from_memory(const u8& offset, u8& dest) {
-  const u8* val = memory->at(0xff00 + offset);
-  dest = *val;
+  const u8 val = memory->at(0xff00 + offset);
+  dest = val;
 }
 
 // LD A,[$FF00 + n8]
@@ -745,7 +744,7 @@ void Cpu::ld_a_hl_dec() {
 
 // LD SP,n16
 void Cpu::ld_sp_d16() {
-  const u16& val = read_operand<u16>();
+  const u16 val = read_operand<u16>();
   sp = val;
 }
 
@@ -807,8 +806,8 @@ void Cpu::or_a_d8() {
 }
 
 void Cpu::pop(u16& reg) {
-  u8 low = *memory->at(sp + 1);
-  u8 high = *memory->at(sp);
+  const u8 low = memory->at(sp + 1);
+  const u8 high = memory->at(sp);
   sp += 2;
 
   reg = (((u16)low) << 8) | high;
@@ -1275,7 +1274,6 @@ u16& Cpu::get_r16(const Register& reg) {
 
 u8 Cpu::value_at_r16(const Register& reg) {
   u16& addr = get_r16(reg);
-  const u8* val = memory->at(addr);
-  return *val;
+  return memory->at(addr);
 }
 }  // namespace gb
