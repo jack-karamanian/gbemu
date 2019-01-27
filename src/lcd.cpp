@@ -62,10 +62,12 @@ void Lcd::update(unsigned int ticks) {
   }
 }
 void Lcd::write_lcd_stat() const {
-  u8* lcdc = memory->at(LCD_STAT_REGISTER);
-  *lcdc = (u8)mode;
+  // u8* lcdc = memory->at(LCD_STAT_REGISTER);
+  //*lcdc = (u8)mode;
+  memory->set(LCD_STAT_REGISTER, mode);
 
-  u8* lcdc_y = memory->at(LCDC_Y_COORD);
-  *lcdc_y = scanlines;
+  // u8* lcdc_y = memory->at(LCDC_Y_COORD);
+  //*lcdc_y = scanlines;
+  memory->set(LCDC_Y_COORD, scanlines);
 }
 }  // namespace gb

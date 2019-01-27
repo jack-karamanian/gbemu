@@ -137,7 +137,7 @@ void Gpu::render_background(int scanline) {
   }
 
   auto [tile_map_begin_addr, tile_map_end_addr] = lcdc->bg_tile_map_range();
-  u8* tile_map_begin = memory->at(tile_map_begin_addr);
+  const u8* tile_map_begin = memory->at(tile_map_begin_addr);
 
   const u16 tile_data_base = lcdc->bg_tile_data_base();
   const bool is_signed = lcdc->is_tile_map_signed();
@@ -157,7 +157,7 @@ void Gpu::render_background(int scanline) {
     u16 tile_addr;
 
     if (is_signed) {
-      int16_t signed_index = (*reinterpret_cast<const s8*>(tile));
+      int16_t signed_index = static_cast<s8>(*tile);
       tile_addr = tile_data_base + (16 * (signed_index + 128));
     } else {
       tile_addr = tile_data_base + (16 * (*tile));

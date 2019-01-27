@@ -5,7 +5,7 @@ Input::Input(Memory& memory) : memory{&memory} {}
 
 bool Input::update() {
   bool request_interrupt{false};
-  u8* input_state = memory->get_input_register();
+  const u8* input_state = memory->get_input_register();
   const bool select_buttons{!(*input_state & 0x20)};
   const bool select_dpad{!(*input_state & 0x10)};
 
@@ -33,7 +33,7 @@ bool Input::update() {
       }
     }
 
-    *input_state = 0xc0 | (*input_state & 0x30) | button_bits;
+    memory->set_input_register(0xc0 | (*input_state & 0x30) | button_bits);
   }
   return request_interrupt;
 }

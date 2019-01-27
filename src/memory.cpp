@@ -23,7 +23,11 @@ void Memory::do_dma_transfer(const u8& data) {
   }
 }
 
-u8* Memory::get_input_register() {
+const u8* Memory::get_input_register() {
   return &memory[0xff00];
+}
+
+void Memory::set_input_register(u8 val) {
+  set(0xff00, val);
 }
 }  // namespace gb

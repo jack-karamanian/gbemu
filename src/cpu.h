@@ -65,7 +65,7 @@ struct Cpu {
   unsigned int ticks;
 
   u8 current_opcode = 0x00;
-  u8* current_operand;
+  const u8* current_operand;
 
   bool interrupts_enabled = false;
   bool stopped = false;
@@ -83,7 +83,7 @@ struct Cpu {
   bool handle_interrupt(u8 interrupt);
   void debug_write();
 
-  u8* get_interrupts_register() const;
+  const u8* get_interrupts_register() const;
 
   bool interrupt_enabled(u8 interrupt) const;
 
@@ -114,7 +114,7 @@ struct Cpu {
   }
   template <typename T = u8>
   T read_operand() {
-    return *reinterpret_cast<T*>(current_operand);
+    return *reinterpret_cast<const T*>(current_operand);
   }
 
   // void set_half_carry(const u8 &a, const u8 &b) {

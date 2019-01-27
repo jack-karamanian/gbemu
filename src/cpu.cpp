@@ -13,15 +13,16 @@ Cpu::Cpu(Memory& memory)
       pc{0},
       m{0},
       ticks{0},
+      current_operand{memory.at(pc)},
       memory{&memory},
       instruction_table(*this) {}
 
 const Instruction& Cpu::fetch() {
-  u8 opcode = memory->memory[pc];
+  const u8 opcode = *memory->at(pc);
   if (opcode == 0xCB) {
     pc++;
     ticks += 4;
-    return instruction_table.cb_instructions[memory->memory[pc]];
+    return instruction_table.cb_instructions[*memory->at(pc)];
   }
   return instruction_table.instructions[opcode];
 }
@@ -32,7 +33,7 @@ int Cpu::fetch_and_decode() {
   }
   const Instruction& inst = fetch();
   std::cout << inst.name << std::endl;
-  std::cout << "opcode: " << std::hex << +memory->memory[pc] << std::endl;
+  std::cout << "opcode: " << std::hex << +*memory->at(pc) << std::endl;
   const int operands_size = (inst.size - 1);
 
   if (operands_size == 1) {
@@ -41,8 +42,8 @@ int Cpu::fetch_and_decode() {
     std::cout << std::hex << *memory->at<u16>(pc + 1) << std::endl;
   }
 
-  current_opcode = memory->memory[pc];
-  current_operand = &memory->memory[pc + 1];
+  current_opcode = *memory->at(pc);
+  current_operand = memory->at(pc + 1);
 
   pc += inst.size;
   ticks += inst.cycles;
@@ -126,28 +127,31 @@ void Cpu::set_half_carry_subtract(const u8& a, const u8& b) {
   }
 }
 
-u8* Cpu::get_interrupts_register() const {
+const u8* Cpu::get_interrupts_register() const {
   return memory->at(MemoryRegister::InterruptRequest);
 }
 
 bool Cpu::interrupt_enabled(u8 interrupt) const {
-  return *memory->at(MemoryRegister::InterruptEnabled) & interrupt;
+  const u8 interrupts = *memory->at(MemoryRegister::InterruptEnabled);
+  return (interrupts & interrupt) != 0;
 }
 
 bool Cpu::has_interrupt(u8 interrupt) const {
-  return *memory->at(MemoryRegister::InterruptRequest) & interrupt;
+  return (*memory->at(MemoryRegister::InterruptRequest) & interrupt) != 0;
 }
 
 void Cpu::request_interrupt(Interrupt interrupt) {
   if (interrupts_enabled) {
-    *memory->at(MemoryRegister::InterruptRequest) |= interrupt;
+    const u8 interrupts = *memory->at(MemoryRegister::InterruptRequest);
+    memory->set(MemoryRegister::InterruptRequest, interrupts | interrupt);
   }
   halted = false;
   stopped = false;
 }
 
 void Cpu::clear_interrupt(const u8 interrupt) const {
-  *memory->at(0xff0f) &= ~interrupt;
+  const u8 interrupts = *memory->at(0xff0f);
+  memory->set(0xff0f, interrupts & ~interrupt);
 }
 
 void Cpu::invalid() const {
@@ -313,7 +317,7 @@ void Cpu::and_a_r8(const Register& reg) {
 // AND A,[HL]
 void Cpu::and_a_hl() {
   u16& addr = get_r16(Register::HL);
-  u8* val = memory->at(addr);
+  const u8* val = memory->at(addr);
 
   and_a(*val);
 }
@@ -347,7 +351,7 @@ void Cpu::bit_r8(u8 bit_num, const Register& reg) {
 // BIT u3,[HL]
 void Cpu::bit_hl(u8 bit_num) {
   u16& addr = get_r16(Register::HL);
-  u8* val = memory->at(addr);
+  const u8* val = memory->at(addr);
   bit(bit_num, *val);
 }
 
@@ -641,7 +645,7 @@ void Cpu::ld_hl_d8() {
 // LD r8,[HL]
 void Cpu::ld_r8_hl(const Register& reg) {
   const u16& hl = get_r16(Register::HL);
-  u8* val = memory->at(hl);
+  const u8* val = memory->at(hl);
   regs[reg] = *val;
 }
 
@@ -747,9 +751,10 @@ void Cpu::ld_sp_d16() {
 
 // LD [n16],SP
 void Cpu::ld_d16_sp() {
-  const u16& addr = read_operand<u16>();
-  u16* val = memory->at<u16>(addr);
-  *val = sp;
+  const u16 addr = read_operand<u16>();
+
+  memory->set(addr, sp & 0xff);
+  memory->set(addr + 1, sp >> 8);
 }
 
 // LD HL,SP+e8
@@ -1270,7 +1275,7 @@ u16& Cpu::get_r16(const Register& reg) {
 
 u8 Cpu::value_at_r16(const Register& reg) {
   u16& addr = get_r16(reg);
-  u8* val = memory->at(addr);
+  const u8* val = memory->at(addr);
   return *val;
 }
 }  // namespace gb
