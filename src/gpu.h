@@ -15,7 +15,6 @@ class Gpu {
 
   std::array<Pixel, DISPLAY_SIZE> pixels = {{}};
 
-  void dump_vram();
   u8 get_scx() const;
   u8 get_scy() const;
   void render_pixel(const u8 byte1,
