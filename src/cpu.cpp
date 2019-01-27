@@ -13,7 +13,6 @@ Cpu::Cpu(Memory& memory)
       pc{0},
       m{0},
       ticks{0},
-      current_operand{memory.at(pc)},
       memory{&memory},
       instruction_table(*this) {}
 
@@ -37,13 +36,14 @@ int Cpu::fetch_and_decode() {
   const int operands_size = (inst.size - 1);
 
   if (operands_size == 1) {
-    std::cout << std::hex << +*memory->at(pc + 1) << std::endl;
+    std::cout << std::hex << +memory->at(pc + 1) << std::endl;
+    current_operand = memory->at(pc + 1);
   } else if (operands_size == 2) {
-    std::cout << std::hex << *memory->at<u16>(pc + 1) << std::endl;
+    std::cout << std::hex << memory->at<u16>(pc + 1) << std::endl;
+    current_operand = memory->at<u16>(pc + 1);
   }
 
-  current_opcode = *memory->at(pc);
-  current_operand = memory->at(pc + 1);
+  current_opcode = memory->at(pc);
 
   pc += inst.size;
   ticks += inst.cycles;
@@ -279,7 +279,7 @@ void Cpu::add_hl_sp() {
 
 // ADD SP,s8
 void Cpu::add_sp_s8() {
-  s8 val = read_operand<s8>();
+  const s8 val = read_operand();
   int res = sp + val;
 
   if (res & 0xffffff00) {
@@ -596,13 +596,13 @@ void Cpu::jp_hl() {
 
 // JR e8
 void Cpu::jr_e8() {
-  const s8& offset = read_operand<s8>();
+  const s8 offset = read_operand();
   jump(pc + offset);
 }
 
 // JR cc,e8
 void Cpu::jr_cc_e8() {
-  const s8& offset = read_operand<s8>();
+  const s8 offset = read_operand();
   std::cout << "offset " << std::hex << +offset << std::endl;
   jump_conditional(pc + offset, 4);
 }
@@ -761,7 +761,7 @@ void Cpu::ld_d16_sp() {
 void Cpu::ld_hl_sp_s8() {
   u16& hl = get_r16(Register::HL);
 
-  const s8& val = read_operand<s8>();
+  const s8 val = read_operand();
   int res = sp + val;
   if (res & 0xffff0000) {
     set_flag(FLAG_CARRY);

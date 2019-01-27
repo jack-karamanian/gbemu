@@ -6,6 +6,7 @@
 #include <iostream>
 #include <sstream>
 #include <string>
+#include <variant>
 #include "memory.h"
 #include "types.h"
 
@@ -65,7 +66,7 @@ struct Cpu {
   unsigned int ticks;
 
   u8 current_opcode = 0x00;
-  const u8* current_operand;
+  std::variant<u8, u16> current_operand;
 
   bool interrupts_enabled = false;
   bool stopped = false;
@@ -114,7 +115,7 @@ struct Cpu {
   }
   template <typename T = u8>
   T read_operand() {
-    return *reinterpret_cast<const T*>(current_operand);
+    return std::get<T>(current_operand);
   }
 
   // void set_half_carry(const u8 &a, const u8 &b) {
