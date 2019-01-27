@@ -13,5 +13,7 @@ struct Memory {
   void set(const u16& addr, const u8& val);
 
   void do_dma_transfer(const u8& val);
+
+  u8* get_input_register();
 };
 }  // namespace gb
