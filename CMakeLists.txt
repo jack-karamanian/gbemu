@@ -27,10 +27,12 @@ add_executable(
   src/registers/lcdc.h
   src/input.h
   src/input.cpp
+  src/utils.h
 )
 
 target_include_directories(gbemu PRIVATE include)
+target_compile_definitions(gbemu PRIVATE span_FEATURE_MEMBER_AT=1)
 
 target_link_libraries(gbemu SDL2 boost_program_options)
-target_compile_options(gbemu PRIVATE -Wall -Wextra -pedantic -O3 )
+target_compile_options(gbemu PRIVATE -Wall -Wextra -pedantic -g)
 

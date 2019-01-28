@@ -1,9 +1,9 @@
 #include <SDL2/SDL.h>
 #include <boost/program_options.hpp>
-#include <chrono>
 #include <fstream>
 #include <iostream>
 #include <string>
+#include <vector>
 #include "cpu.h"
 #include "gpu.h"
 #include "input.h"
@@ -12,6 +12,26 @@
 #include "sdl_renderer.h"
 
 namespace po = boost::program_options;
+
+static void load_rom(const std::string& rom_name, gb::Memory& memory) {
+  std::ifstream rom(rom_name, std::ios::in | std::ios::binary);
+  rom.seekg(0, std::ios::end);
+
+  int rom_size = rom.tellg();
+
+  std::cout << "rom size: " << rom_size << std::endl;
+
+  rom.seekg(0);
+  std::vector<u8> rom_data(rom_size);
+
+  rom.read(reinterpret_cast<char*>(&rom_data[0]), rom_size);
+
+  std::cout << std::endl;
+
+  rom.close();
+
+  memory.load_rom(rom_data);
+}
 
 int main(int argc, const char** argv) {
   po::options_description option_desc{"Options"};
@@ -26,21 +46,13 @@ int main(int argc, const char** argv) {
   po::notify(vm);
   const bool trace = vm["trace"].as<bool>();
 
-  gb::Memory memory;
-  std::string rom_name = argv[1];
+  gb::Memory memory{};
+  memory.reset();
 
+  std::string rom_name = argv[1];
   std::cout << rom_name << std::endl;
 
-  std::ifstream rom(rom_name, std::ios::in | std::ios::binary);
-  rom.seekg(0, std::ios::end);
-
-  int rom_size = rom.tellg();
-
-  rom.seekg(0);
-
-  rom.read(reinterpret_cast<char*>(&memory.memory[0]), rom_size);
-
-  rom.close();
+  load_rom(rom_name, memory);
 
   gb::Cpu cpu{memory};
 
@@ -58,7 +70,7 @@ int main(int argc, const char** argv) {
           SDL_CreateRenderer(
               window, -1, SDL_RENDERER_ACCELERATED | SDL_RENDERER_PRESENTVSYNC),
           delete_renderer};
-  if (!sdl_renderer.get()) {
+  if (!sdl_renderer) {
     std::cout << "SDL Error: " << SDL_GetError() << std::endl;
   }
 
@@ -69,37 +81,6 @@ int main(int argc, const char** argv) {
   gb::Input input{memory};
 
   cpu.pc = 0x100;
-  memory.memory[0xFF05] = 0x00;
-  memory.memory[0xFF06] = 0x00;
-  memory.memory[0xFF07] = 0x00;
-  memory.memory[0xFF10] = 0x80;
-  memory.memory[0xFF11] = 0xBF;
-  memory.memory[0xFF12] = 0xF3;
-  memory.memory[0xFF14] = 0xBF;
-  memory.memory[0xFF16] = 0x3F;
-  memory.memory[0xFF17] = 0x00;
-  memory.memory[0xFF19] = 0xBF;
-  memory.memory[0xFF1A] = 0x7F;
-  memory.memory[0xFF1B] = 0xFF;
-  memory.memory[0xFF1C] = 0x9F;
-  memory.memory[0xFF1E] = 0xBF;
-  memory.memory[0xFF20] = 0xFF;
-  memory.memory[0xFF21] = 0x00;
-  memory.memory[0xFF22] = 0x00;
-  memory.memory[0xFF23] = 0xBF;
-  memory.memory[0xFF24] = 0x77;
-  memory.memory[0xFF25] = 0xF3;
-  memory.memory[0xFF26] = 0xF1;
-  memory.memory[0xFF40] = 0x91;
-  memory.memory[0xFF42] = 0x00;
-  memory.memory[0xFF43] = 0x00;
-  memory.memory[0xFF45] = 0x00;
-  memory.memory[0xFF47] = 0xFC;
-  memory.memory[0xFF48] = 0xFF;
-  memory.memory[0xFF49] = 0xFF;
-  memory.memory[0xFF4A] = 0x00;
-  memory.memory[0xFF4B] = 0x00;
-  memory.memory[0xFFFE] = 0x00;
 
   while (true) {
     SDL_Event e;

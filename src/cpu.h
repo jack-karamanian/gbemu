@@ -6,6 +6,7 @@
 #include <iostream>
 #include <sstream>
 #include <string>
+#include <variant>
 #include "memory.h"
 #include "types.h"
 
@@ -65,7 +66,7 @@ struct Cpu {
   unsigned int ticks;
 
   u8 current_opcode = 0x00;
-  u8* current_operand;
+  std::variant<u8, u16> current_operand;
 
   bool interrupts_enabled = false;
   bool stopped = false;
@@ -83,7 +84,7 @@ struct Cpu {
   bool handle_interrupt(u8 interrupt);
   void debug_write();
 
-  u8* get_interrupts_register() const;
+  u8 get_interrupts_register() const;
 
   bool interrupt_enabled(u8 interrupt) const;
 
@@ -114,7 +115,7 @@ struct Cpu {
   }
   template <typename T = u8>
   T read_operand() {
-    return *reinterpret_cast<T*>(current_operand);
+    return std::get<T>(current_operand);
   }
 
   // void set_half_carry(const u8 &a, const u8 &b) {
@@ -174,10 +175,10 @@ struct Cpu {
   void add_carry_a_d8();
 
   // ADC A,r8
-  void add_carry_a_r8(const Register& reg);
+  void add_carry_a_r8(Register reg);
 
   // ADD A,r8
-  void add_a_r8(const Register& reg);
+  void add_a_r8(Register reg);
 
   // ADD A,[HL]
   void add_a_hl();
@@ -186,7 +187,7 @@ struct Cpu {
   void add_a_d8();
 
   // ADD HL,r16
-  void add_hl_r16(const Register& reg);
+  void add_hl_r16(Register reg);
 
   // ADD HL,SP
   void add_hl_sp();
@@ -197,7 +198,7 @@ struct Cpu {
   void and_a(const u8& val);
 
   // AND A,r8
-  void and_a_r8(const Register& reg);
+  void and_a_r8(Register reg);
 
   // AND A,[HL]
   void and_a_hl();
@@ -208,7 +209,7 @@ struct Cpu {
   void bit(const u8& bit_num, const u8& val);
 
   // BIT u8,r8
-  void bit_r8(u8 bit_num, const Register& reg);
+  void bit_r8(u8 bit_num, Register reg);
 
   // BIT u3,[HL]
   void bit_hl(u8 bit_num);
@@ -233,7 +234,7 @@ struct Cpu {
 
   void compare_a(const u8& val);
 
-  void cp_a_r8(const Register& reg);
+  void cp_a_r8(Register reg);
 
   // CP A,[HL]
   void cp_a_hl();
@@ -252,13 +253,13 @@ struct Cpu {
   void dec(u8& val);
 
   // DEC r8
-  void dec_r8(const Register& reg);
+  void dec_r8(Register reg);
 
   // DEC [HL]
   void dec_hl();
 
   // DEC r16
-  void dec_r16(const Register& reg);
+  void dec_r16(Register reg);
 
   // DEC SP
   void dec_sp();
@@ -274,13 +275,13 @@ struct Cpu {
   void inc(u8& val);
 
   // INC r8
-  void inc_r8(const Register& reg);
+  void inc_r8(Register reg);
 
   // INC [HL]
   void inc_hl();
 
   // INC r16
-  void inc_r16(const Register& reg);
+  void inc_r16(Register reg);
 
   // INC SP
   void inc_sp();
@@ -307,25 +308,25 @@ struct Cpu {
   void jr_cc_e8();
 
   // LD r8,r8
-  void ld_r8_r8(const Register& dst, const Register& src);
+  void ld_r8_r8(Register dst, Register src);
 
   // LD r8,n8
-  void ld_r8_d8(const Register& dst);
+  void ld_r8_d8(Register dst);
 
   // LD r16,n16
-  void ld_r16_d16(const Register& dst);
+  void ld_r16_d16(Register dst);
 
   // LD [HL],r8
-  void ld_hl_r8(const Register& reg);
+  void ld_hl_r8(Register reg);
 
   // LD [HL],n8
   void ld_hl_d8();
 
   // LD r8,[HL]
-  void ld_r8_hl(const Register& reg);
+  void ld_r8_hl(Register reg);
 
   // LD [r16], A
-  void ld_r16_a(const Register& reg);
+  void ld_r16_a(Register reg);
 
   // LD [n16],A
   void ld_d16_a();
@@ -339,7 +340,7 @@ struct Cpu {
   void ld_offset_c_a();
 
   // LD A,[r16]
-  void ld_a_r16(const Register& reg);
+  void ld_a_r16(Register reg);
 
   // LD A,[n16]
   void ld_a_d16();
@@ -384,7 +385,7 @@ struct Cpu {
   void or_a(const u8& val);
 
   // OR A,r8
-  void or_a_r8(const Register& reg);
+  void or_a_r8(Register reg);
 
   // OR A,[HL]
   void or_a_hl();
@@ -398,7 +399,7 @@ struct Cpu {
   void pop_af();
 
   // POP r16
-  void pop_r16(const Register& reg);
+  void pop_r16(Register reg);
 
   void push(const u16& val);
 
@@ -406,12 +407,12 @@ struct Cpu {
   void push_af();
 
   // PUSH r16
-  void push_r16(const Register& reg);
+  void push_r16(Register reg);
 
   void set_bit(u8& dest, const u8& bit, bool set);
 
   // RES u3,r8
-  void res_u3_r8(const u8 bit, const Register& reg);
+  void res_u3_r8(const u8 bit, Register reg);
 
   // RES u3,[HL]
   void res_u3_hl(const u8 bit);
@@ -430,7 +431,7 @@ struct Cpu {
   void rotate_zero(u8& val, bool left = true);
 
   // RL r8
-  void rl_r8(const Register& reg);
+  void rl_r8(Register reg);
 
   // RL, [HL]
   void rl_hl();
@@ -442,7 +443,7 @@ struct Cpu {
   void rotate_carry_zero(u8& val, bool left = true);
 
   // RLC r8
-  void rlc_r8(const Register& reg);
+  void rlc_r8(Register reg);
 
   // RLC [HL]
   void rlc_hl();
@@ -451,7 +452,7 @@ struct Cpu {
   void rlca();
 
   // RR r8
-  void rr_r8(const Register& reg);
+  void rr_r8(Register reg);
 
   // RR [HL]
   void rr_hl();
@@ -460,7 +461,7 @@ struct Cpu {
   void rra();
 
   // RRC r8
-  void rrc_r8(const Register& reg);
+  void rrc_r8(Register reg);
 
   // RRC [HL]
   void rrc_hl();
@@ -474,7 +475,7 @@ struct Cpu {
   void carried_subtract(u8& dst, const u8& src);
 
   // SBC A,r8
-  void sbc_a_r8(const Register& reg);
+  void sbc_a_r8(Register reg);
 
   // SBC A,[HL]
   void sbc_a_hl();
@@ -486,7 +487,7 @@ struct Cpu {
   void scf();
 
   // SET u3,r8
-  void set_u3_r8(const u8& bit, const Register& reg);
+  void set_u3_r8(const u8& bit, Register reg);
 
   // SET u3,[HL]
   void set_u3_hl(const u8& bit);
@@ -494,13 +495,13 @@ struct Cpu {
   void shift_arithmetic(u8& val, bool left = true);
 
   // SLA r8
-  void sla_r8(const Register& reg);
+  void sla_r8(Register reg);
 
   // SLA [HL]
   void sla_hl();
 
   // SRA r8
-  void sra_r8(const Register& reg);
+  void sra_r8(Register reg);
 
   // SRA [HL]
   void sra_hl();
@@ -508,7 +509,7 @@ struct Cpu {
   void shift(u8& val);
 
   // SRL r8
-  void srl_r8(const Register& reg);
+  void srl_r8(Register reg);
 
   // SRL [HL]
   void srl_hl();
@@ -519,7 +520,7 @@ struct Cpu {
   void subtract(u8& dst, const u8& src);
 
   // SUB A,r8
-  void sub_a_r8(const Register& reg);
+  void sub_a_r8(Register reg);
 
   // SUB A,[HL]
   void sub_a_hl();
@@ -530,7 +531,7 @@ struct Cpu {
   void swap(u8& val);
 
   // SWAP r8
-  void swap_r8(const Register reg);
+  void swap_r8(Register reg);
 
   // SWAP [HL]
   void swap_hl();
@@ -539,7 +540,7 @@ struct Cpu {
   void exclusive_or(u8& dst, const u8& src);
 
   // XOR A,r8
-  void xor_a_r8(const Register& reg);
+  void xor_a_r8(Register reg);
 
   // XOR A,[HL]
   void xor_a_hl();
@@ -552,13 +553,13 @@ struct Cpu {
   //  reg_low = (val & 0xFF);
   //}
 
-  void load_reg_to_addr(const Register& dst, const Register& src);
+  void load_reg_to_addr(Register dst, Register src);
 
-  u16& get_r16(const Register& reg);
+  u16& get_r16(Register reg);
 
-  u8 value_at_r16(const Register& reg);
+  u8 value_at_r16(Register reg);
   template <typename F, typename... Args>
-  void mutate(const Register reg, F f, Args... args) {
+  void mutate(Register reg, F f, Args... args) {
     u8 val = value_at_r16(reg);
     (this->*f)(val, args...);
     memory->set(get_r16(reg), val);
