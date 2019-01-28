@@ -212,7 +212,7 @@ void Cpu::add_carry_a_d8() {
 }
 
 // ADC A,r8
-void Cpu::add_carry_a_r8(const Register& reg) {
+void Cpu::add_carry_a_r8(Register reg) {
   u8& a = regs[Register::A];
   const u8& val = regs[reg];
 
@@ -220,7 +220,7 @@ void Cpu::add_carry_a_r8(const Register& reg) {
 }
 
 // ADD A,r8
-void Cpu::add_a_r8(const Register& reg) {
+void Cpu::add_a_r8(Register reg) {
   u8& a = regs[Register::A];
   u8& val = regs[reg];
 
@@ -245,7 +245,7 @@ void Cpu::add_a_d8() {
 }
 
 // ADD HL,r16
-void Cpu::add_hl_r16(const Register& reg) {
+void Cpu::add_hl_r16(Register reg) {
   u16& hl = get_r16(Register::HL);
   u16& r16 = get_r16(reg);
 
@@ -308,7 +308,7 @@ void Cpu::and_a(const u8& val) {
 }
 
 // AND A,r8
-void Cpu::and_a_r8(const Register& reg) {
+void Cpu::and_a_r8(Register reg) {
   u8& r = regs[reg];
   and_a(r);
 }
@@ -342,7 +342,7 @@ void Cpu::bit(const u8& bit_num, const u8& val) {
 }
 
 // BIT u8,r8
-void Cpu::bit_r8(u8 bit_num, const Register& reg) {
+void Cpu::bit_r8(u8 bit_num, Register reg) {
   u8& val = regs[reg];
   bit(bit_num, val);
 }
@@ -423,7 +423,7 @@ void Cpu::compare_a(const u8& val) {
 }
 
 // CP A,r8
-void Cpu::cp_a_r8(const Register& reg) {
+void Cpu::cp_a_r8(Register reg) {
   compare_a(regs[reg]);
 }
 
@@ -487,7 +487,7 @@ void Cpu::dec(u8& val) {
 }
 
 // DEC r8
-void Cpu::dec_r8(const Register& reg) {
+void Cpu::dec_r8(Register reg) {
   dec(regs[reg]);
 }
 
@@ -499,7 +499,7 @@ void Cpu::dec_hl() {
 }
 
 // DEC r16
-void Cpu::dec_r16(const Register& reg) {
+void Cpu::dec_r16(Register reg) {
   u16& val = get_r16(reg);
   val--;
 }
@@ -534,7 +534,7 @@ void Cpu::inc(u8& val) {
 }
 
 // INC r8
-void Cpu::inc_r8(const Register& reg) {
+void Cpu::inc_r8(Register reg) {
   inc(regs[reg]);
 }
 
@@ -546,7 +546,7 @@ void Cpu::inc_hl() {
 }
 
 // INC r16
-void Cpu::inc_r16(const Register& reg) {
+void Cpu::inc_r16(Register reg) {
   u16& r16 = get_r16(reg);
   r16++;
 }
@@ -607,18 +607,18 @@ void Cpu::jr_cc_e8() {
 }
 
 // LD r8,r8
-void Cpu::ld_r8_r8(const Register& dst, const Register& src) {
+void Cpu::ld_r8_r8(Register dst, Register src) {
   regs[dst] = regs[src];
 }
 
 // LD r8,n8
-void Cpu::ld_r8_d8(const Register& dst) {
+void Cpu::ld_r8_d8(Register dst) {
   const u8& val = read_operand();
   regs[dst] = val;
 }
 
 // LD r16,n16
-void Cpu::ld_r16_d16(const Register& dst) {
+void Cpu::ld_r16_d16(Register dst) {
   u16& r16 = get_r16(dst);
   const u16& val = read_operand<u16>();
 
@@ -626,7 +626,7 @@ void Cpu::ld_r16_d16(const Register& dst) {
 }
 
 // LD [HL],r8
-void Cpu::ld_hl_r8(const Register& reg) {
+void Cpu::ld_hl_r8(Register reg) {
   const u16& hl = get_r16(Register::HL);
   // u8* val = memory->at(hl);
   //*val = regs[reg];
@@ -642,14 +642,14 @@ void Cpu::ld_hl_d8() {
 }
 
 // LD r8,[HL]
-void Cpu::ld_r8_hl(const Register& reg) {
+void Cpu::ld_r8_hl(Register reg) {
   const u16& hl = get_r16(Register::HL);
   const u8 val = memory->at(hl);
   regs[reg] = val;
 }
 
 // LD [r16], A
-void Cpu::ld_r16_a(const Register& reg) {
+void Cpu::ld_r16_a(Register reg) {
   // u8& val = value_at_r16(reg);
   // val = regs[Register::A];
   memory->set(get_r16(reg), regs[Register::A]);
@@ -679,7 +679,7 @@ void Cpu::ld_offset_c_a() {
 }
 
 // LD A,[r16]
-void Cpu::ld_a_r16(const Register& reg) {
+void Cpu::ld_a_r16(Register reg) {
   const u8& val = value_at_r16(reg);
   regs[Register::A] = val;
 }
@@ -791,7 +791,7 @@ void Cpu::or_a(const u8& val) {
 }
 
 // OR A,r8
-void Cpu::or_a_r8(const Register& reg) {
+void Cpu::or_a_r8(Register reg) {
   or_a(regs[reg]);
 }
 
@@ -822,7 +822,7 @@ void Cpu::pop_af() {
 }
 
 // POP r16
-void Cpu::pop_r16(const Register& reg) {
+void Cpu::pop_r16(Register reg) {
   pop(get_r16(reg));
 }
 
@@ -840,7 +840,7 @@ void Cpu::push_af() {
 }
 
 // PUSH r16
-void Cpu::push_r16(const Register& reg) {
+void Cpu::push_r16(Register reg) {
   push(get_r16(reg));
 }
 
@@ -854,7 +854,7 @@ void Cpu::set_bit(u8& dest, const u8& bit, bool set) {
 }
 
 // RES u3,r8
-void Cpu::res_u3_r8(const u8 bit, const Register& reg) {
+void Cpu::res_u3_r8(const u8 bit, Register reg) {
   set_bit(regs[reg], bit, false);
 }
 
@@ -916,7 +916,7 @@ void Cpu::rotate_zero(u8& val, bool left) {
 }
 
 // RL r8
-void Cpu::rl_r8(const Register& reg) {
+void Cpu::rl_r8(Register reg) {
   rotate_zero(regs[reg]);
 }
 
@@ -967,7 +967,7 @@ void Cpu::rotate_carry_zero(u8& val, bool left) {
 }
 
 // RLC r8
-void Cpu::rlc_r8(const Register& reg) {
+void Cpu::rlc_r8(Register reg) {
   rotate_carry_zero(regs[reg]);
 }
 
@@ -987,7 +987,7 @@ void Cpu::rlca() {
 }
 
 // RR r8
-void Cpu::rr_r8(const Register& reg) {
+void Cpu::rr_r8(Register reg) {
   rotate_zero(regs[reg], false);
 }
 
@@ -1007,7 +1007,7 @@ void Cpu::rra() {
 }
 
 // RRC r8
-void Cpu::rrc_r8(const Register& reg) {
+void Cpu::rrc_r8(Register reg) {
   rotate_carry_zero(regs[reg], false);
 }
 
@@ -1070,7 +1070,7 @@ void Cpu::carried_subtract(u8& dst, const u8& src) {
 }
 
 // SBC A,r8
-void Cpu::sbc_a_r8(const Register& reg) {
+void Cpu::sbc_a_r8(Register reg) {
   carried_subtract(regs[Register::A], regs[reg]);
 }
 
@@ -1092,7 +1092,7 @@ void Cpu::scf() {
 }
 
 // SET u3,r8
-void Cpu::set_u3_r8(const u8& bit, const Register& reg) {
+void Cpu::set_u3_r8(const u8& bit, Register reg) {
   set_bit(regs[reg], bit, true);
 }
 
@@ -1126,7 +1126,7 @@ void Cpu::shift_arithmetic(u8& val, bool left) {
 }
 
 // SLA r8
-void Cpu::sla_r8(const Register& reg) {
+void Cpu::sla_r8(Register reg) {
   shift_arithmetic(regs[reg]);
 }
 
@@ -1138,7 +1138,7 @@ void Cpu::sla_hl() {
 }
 
 // SRA r8
-void Cpu::sra_r8(const Register& reg) {
+void Cpu::sra_r8(Register reg) {
   shift_arithmetic(regs[reg], false);
 }
 
@@ -1166,7 +1166,7 @@ void Cpu::shift(u8& val) {
 }
 
 // SRL r8
-void Cpu::srl_r8(const Register& reg) {
+void Cpu::srl_r8(Register reg) {
   shift(regs[reg]);
 }
 
@@ -1198,7 +1198,7 @@ void Cpu::subtract(u8& dst, const u8& src) {
 }
 
 // SUB A,r8
-void Cpu::sub_a_r8(const Register& reg) {
+void Cpu::sub_a_r8(Register reg) {
   subtract(regs[Register::A], regs[reg]);
 }
 
@@ -1224,7 +1224,7 @@ void Cpu::swap(u8& val) {
 }
 
 // SWAP r8
-void Cpu::swap_r8(const Register reg) {
+void Cpu::swap_r8(Register reg) {
   swap(regs[reg]);
 }
 
@@ -1244,7 +1244,7 @@ void Cpu::exclusive_or(u8& dst, const u8& src) {
 }
 
 // XOR A,r8
-void Cpu::xor_a_r8(const Register& reg) {
+void Cpu::xor_a_r8(Register reg) {
   exclusive_or(regs[Register::A], regs[reg]);
 }
 
@@ -1263,16 +1263,16 @@ void Cpu::xor_a_d8() {
 //  reg_low = (val & 0xFF);
 //}
 
-void Cpu::load_reg_to_addr(const Register& dst, const Register& src) {
+void Cpu::load_reg_to_addr(Register dst, Register src) {
   u16 addr = regs[dst];
   memory->set(addr, src);
 }
 
-u16& Cpu::get_r16(const Register& reg) {
+u16& Cpu::get_r16(Register reg) {
   return (u16&)*&regs[reg];
 }
 
-u8 Cpu::value_at_r16(const Register& reg) {
+u8 Cpu::value_at_r16(Register reg) {
   u16& addr = get_r16(reg);
   return memory->at(addr);
 }
