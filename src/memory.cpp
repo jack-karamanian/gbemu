@@ -3,22 +3,65 @@
 #include "memory.h"
 
 namespace gb {
+
+std::pair<u16, nonstd::span<const u8>> Memory::select_storage(u16 addr) {
+  if (addr < 0x8000) {
+    switch (addr & 0xf000) {
+      case 0x0000:
+      case 0x1000:
+      case 0x2000:
+      case 0x3000:
+        return std::make_pair(addr,
+                              nonstd::span<const u8>(rom.data(), SIXTEEN_KB));
+
+      case 0x4000:
+      case 0x5000:
+      case 0x6000:
+      case 0x7000: {
+        const int start_addr =
+            SIXTEEN_KB * rom_bank_selected.get_rom_bank_selected();
+        return std::make_pair(
+            addr - 0x4000,
+            nonstd::span<const u8>(&rom.at(start_addr), SIXTEEN_KB));
+      }
+    }
+  }
+  return std::make_pair(addr, nonstd::span<const u8>(memory));
+}
 nonstd::span<const u8> Memory::get_range(std::pair<u16, u16> range) {
   const auto [begin, end] = range;
 
   return nonstd::span<const u8>(&memory.at(begin), &memory.at(end + 1));
 }
+
 void Memory::set(const u16& addr, const u8& val) {
-  if (addr == 0xff46) {
-    do_dma_transfer(val);
+  switch (addr & 0xf000) {
+    case 0x2000:
+    case 0x3000:
+      // Set lower 5 rom bank bits
+      rom_bank_selected.set_lower(val);
+      break;
+    case 0x4000:
+    case 0x5000:
+      // Set upper two rom bank bits
+      rom_bank_selected.set_upper(val);
+      break;
   }
+  switch (addr) {
+    case 0xff46:
+      do_dma_transfer(val);
+      break;
+    case 0xff02:
+      if (val == 0x81) {
+        std::cout << "char: " << memory[0xff01] << std::endl;
+      }
+      break;
 
-  if (addr == 0xff02 && val == 0x81) {
-    std::cout << "char: " << memory[0xff01] << std::endl;
-  }
-
-  if (addr >= 0x8000) {
-    memory[addr] = val;
+    default:
+      if (addr >= 0x8000) {
+        memory[addr] = val;
+      }
+      break;
   }
 }
 
@@ -57,7 +100,7 @@ void Memory::reset() {
 }
 
 void Memory::load_rom(const std::vector<u8>& data) {
-  std::copy(data.begin(), data.end(), &memory[0]);
+  std::copy(data.begin(), data.end(), &rom[0]);
 }
 
 void Memory::do_dma_transfer(const u8& data) {
