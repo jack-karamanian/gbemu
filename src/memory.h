@@ -21,14 +21,14 @@ class RomBank {
   void set_upper(u8 val) { upper = val & 0x03; }
 
   u8 get_rom_bank_selected() {
-    const u8 res = (upper << 5) | lower;
-    if (res == 0) {
+    const u8 bank = (upper << 5) | lower;
+    if (bank == 0) {
       return 1;
     }
-    if (res == 0x20 || res == 0x40 || res == 0x60) {
-      return res + 1;
+    if (bank == 0x20 || bank == 0x40 || bank == 0x60) {
+      return bank + 1;
     }
-    return res;
+    return bank;
   }
 };
 
