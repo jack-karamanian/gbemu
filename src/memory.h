@@ -28,6 +28,7 @@ class RomBank {
     if (res == 0x20 || res == 0x40 || res == 0x60) {
       return res + 1;
     }
+    return res;
   }
 };
 
