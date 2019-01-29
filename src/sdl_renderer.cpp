@@ -18,7 +18,7 @@ SdlRenderer::SdlRenderer(
   }
 }
 
-void SdlRenderer::draw_pixels(const std::array<Pixel, DISPLAY_SIZE>& pixels) {
+void SdlRenderer::draw_pixels(const std::vector<Pixel>& pixels) {
   Uint32* texture_pixels = nullptr;
   int pitch = -1;
 
@@ -34,8 +34,6 @@ void SdlRenderer::draw_pixels(const std::array<Pixel, DISPLAY_SIZE>& pixels) {
       texture_pixels[160 * y + x] = SDL_MapRGBA(format.get(), r, g, b, a);
     }
   }
-
-  std::cout << "HERE" << std::endl;
 
   SDL_UnlockTexture(texture.get());
 

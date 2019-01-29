@@ -25,7 +25,7 @@ static constexpr std::array<Pixel, 4> SPRITE_COLORS = {{
     {0, 0, 0, 0},
 }};
 Gpu::Gpu(Memory& memory, std::unique_ptr<IRenderer> renderer)
-    : memory{&memory}, renderer{std::move(renderer)} {}
+    : memory{&memory}, renderer{std::move(renderer)}, pixels(DISPLAY_SIZE) {}
 
 u8 Gpu::get_scx() const {
   return memory->at(0xff43);

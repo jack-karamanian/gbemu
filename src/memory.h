@@ -1,13 +1,14 @@
 #pragma once
 #include <algorithm>
-#include <array>
 #include <functional>
 #include <utility>
+#include <vector>
 #include "nonstd/span.hpp"
 #include "sprite_attribute.h"
 #include "utils.h"
 
 #define SIXTEEN_KB 16384
+#define SIXTYFOUR_KB 0x10000
 #define TWO_MB 0x200000
 
 namespace gb {
@@ -23,8 +24,8 @@ class RomBank {
 };
 
 class Memory {
-  std::array<u8, 0x10000> memory;
-  std::array<u8, TWO_MB> rom;
+  std::vector<u8> memory;
+  std::vector<u8> rom;
 
   bool external_ram_enabled = false;
 
@@ -33,6 +34,7 @@ class Memory {
   std::pair<u16, nonstd::span<const u8>> select_storage(u16 addr);
 
  public:
+  Memory() : memory(SIXTYFOUR_KB), rom(TWO_MB) {}
   template <typename T = u8>
   T at(u16 addr) {
     const auto [normalized_addr, storage] = select_storage(addr);

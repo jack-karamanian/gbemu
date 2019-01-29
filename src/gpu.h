@@ -1,7 +1,7 @@
 #pragma once
 #include <SDL2/SDL.h>
-#include <array>
 #include <memory>
+#include <vector>
 #include "constants.h"
 #include "pixel.h"
 #include "renderer.h"
@@ -13,7 +13,7 @@ class Gpu {
   Memory* memory;
   std::unique_ptr<IRenderer> renderer;
 
-  std::array<Pixel, DISPLAY_SIZE> pixels = {{}};
+  std::vector<Pixel> pixels;
 
   u8 get_scx() const;
   u8 get_scy() const;
