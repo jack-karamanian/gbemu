@@ -7,5 +7,11 @@ struct SpriteAttribute {
   u8 x;
   u8 tile_index;
   u8 flags;
+
+  bool above_bg() const { return (flags & 0x80) == 0; }
+
+  bool flip_y() const { return (flags & 0x40) != 0; }
+
+  bool flip_x() const { return (flags & 0x20) != 0; }
 };
 }  // namespace gb

@@ -88,7 +88,8 @@ void Gpu::render_sprites(int scanline) {
       const int x = sprite_attrib.x - 8;
 
       for (int pixel_x = 0; pixel_x < 8; pixel_x++) {
-        render_pixel(byte1, byte2, pixel_x, x + pixel_x, y, SPRITE_COLORS);
+        const int xpos = sprite_attrib.flip_x() ? x - pixel_x : x + pixel_x;
+        render_pixel(byte1, byte2, pixel_x, xpos, y, SPRITE_COLORS);
       }
     }
   }
@@ -114,8 +115,8 @@ void Gpu::render_background(int scanline) {
   const int scanline_tile_row = (scanline + scy) / 8;
   const u16 tile_scroll_offset = 32 * scanline_tile_row;
 
-  std::cout << "range size: " << tile_map_range.size() << std::endl;
   const int tile_y = ((scanline + scy) % 8);
+
   for (int x = 0; x < 160; ++x) {
     int pixel_x = x + scx;
     const u16 tile_index = (pixel_x / 8);
