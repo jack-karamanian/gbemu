@@ -30,9 +30,12 @@ add_executable(
   src/utils.h
 )
 
+find_library(SDL2_LIB NAMES SDL2)
+find_library(BOOST_PROGRAM_OPTIONS_LIB NAMES boost_program_options)
+
 target_include_directories(gbemu PRIVATE include)
 target_compile_definitions(gbemu PRIVATE span_FEATURE_MEMBER_AT=1)
 
-target_link_libraries(gbemu SDL2 boost_program_options)
+target_link_libraries(gbemu ${SDL2_LIB} ${BOOST_PROGRAM_OPTIONS_LIB})
 target_compile_options(gbemu PRIVATE -Wall -Wextra -pedantic -g)
 
