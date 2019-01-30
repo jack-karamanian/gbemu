@@ -10,7 +10,7 @@ class Lcdc {
  public:
   Lcdc(u8 value) : value{value} {}
   enum class SpriteMode { EightByEight, EightBySixteen };
-  static constexpr const u16 Address = 0xff40;
+  static constexpr u16 Address = 0xff40;
 
   // Bit 7
   bool controller_on() const { return value & 0x80; }
