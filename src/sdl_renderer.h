@@ -18,7 +18,6 @@ class SdlRenderer : public IRenderer {
  public:
   SdlRenderer(std::unique_ptr<SDL_Renderer, std::function<void(SDL_Renderer*)>>
                   renderer);
-  ~SdlRenderer() { std::cout << "SDL RENDERER DIED" << std::endl; }
   virtual void draw_pixels(const std::vector<Pixel>& pixels) override;
 };
 }  // namespace gb
