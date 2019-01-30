@@ -25,6 +25,8 @@ add_executable(
   src/sprite_attribute.h
   src/constants.h
   src/registers/lcdc.h
+  src/registers/lcd_stat.h
+  src/registers/lyc.h
   src/input.h
   src/input.cpp
   src/utils.h
