@@ -53,16 +53,6 @@ void Gpu::render_pixel(const u8 byte1,
   }
 }
 
-void Gpu::render_tile(const u8 byte1,
-                      const u8 byte2,
-                      const int screen_x,
-                      const int screen_y,
-                      const std::array<Pixel, 4>& colors) {
-  for (int pixel_x = 0; pixel_x < 8; ++pixel_x) {
-    render_pixel(byte1, byte2, pixel_x, screen_x, screen_y, colors);
-  }
-}
-
 void Gpu::render_sprites(int scanline) {
   auto sprite_attribs = memory->get_sprite_attributes();
 
