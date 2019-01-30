@@ -20,7 +20,7 @@ class RomBank {
   void set_lower(u8 val) { lower = val & 0x1f; }
   void set_upper(u8 val) { upper = val & 0x03; }
 
-  u8 get_rom_bank_selected() {
+  u8 get_rom_bank_selected() const {
     const u8 bank = (upper << 5) | lower;
     if (bank == 0) {
       return 1;
