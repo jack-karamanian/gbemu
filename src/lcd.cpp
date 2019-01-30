@@ -3,19 +3,20 @@
 #include "gpu.h"
 #include "lcd.h"
 #include "memory.h"
+#include "registers/lcd_stat.h"
+#include "registers/lyc.h"
 #include "types.h"
 
 namespace gb {
 void Lcd::update(unsigned int ticks) {
-  write_lcd_stat();
+  Registers::LcdStat lcd_stat{memory->at(Registers::LcdStat::Address)};
+  const u8 lyc = memory->at(Registers::Lyc::Address);
+
   lcd_ticks += ticks;
-  std::cout << "mode: " << mode << std::endl;
   switch (mode) {
     case 2: {
-      std::cout << "ticks: " << std::dec << lcd_ticks << std::endl;
       if (lcd_ticks >= 80) {
         mode = 3;
-        std::cout << "to mode 3" << std::endl;
         lcd_ticks = 0;
       }
       break;
@@ -23,26 +24,38 @@ void Lcd::update(unsigned int ticks) {
     case 3: {
       if (lcd_ticks >= 172) {
         mode = 0;
-        std::cout << "to mode 0" << std::endl;
         lcd_ticks = 0;
+        if (lcd_stat.hblank_check_enabled()) {
+          cpu->request_interrupt(Cpu::Interrupt::LcdStat);
+        }
+        // Render scanline
         gpu->render_scanline(scanlines);
       }
-      // Render scanline
-
       break;
     }
     case 0: {
       if (lcd_ticks >= 204) {
         scanlines++;
+        if (lcd_stat.ly_equals_lyc_enabled() && scanlines == lyc) {
+          lcd_stat.set_ly_equals_lyc(true);
+          cpu->request_interrupt(Cpu::Interrupt::LcdStat);
+        } else {
+          lcd_stat.set_ly_equals_lyc(false);
+        }
         lcd_ticks = 0;
         if (scanlines >= 144) {
           mode = 1;
-          std::cout << "VBLANK" << std::endl;
+          if (lcd_stat.vblank_check_enabled() || lcd_stat.oam_check_enabled()) {
+            cpu->request_interrupt(Cpu::Interrupt::LcdStat);
+          }
           // Render image
           gpu->render();
           cpu->request_interrupt(Cpu::Interrupt::VBlank);
         } else {
           mode = 2;
+          if (lcd_stat.oam_check_enabled()) {
+            cpu->request_interrupt(Cpu::Interrupt::LcdStat);
+          }
         }
       }
       break;
@@ -60,14 +73,13 @@ void Lcd::update(unsigned int ticks) {
       break;
     }
   }
+
+  lcd_stat.set_mode(mode);
+
+  memory->set(Registers::LcdStat::Address, lcd_stat.get_value());
+  memory->set(LCDC_Y_COORD, scanlines);
 }
 void Lcd::write_lcd_stat() const {
-  // u8* lcdc = memory->at(LCD_STAT_REGISTER);
-  //*lcdc = (u8)mode;
-  memory->set(LCD_STAT_REGISTER, mode);
-
-  // u8* lcdc_y = memory->at(LCDC_Y_COORD);
-  //*lcdc_y = scanlines;
-  memory->set(LCDC_Y_COORD, scanlines);
+  // memory->set(LCD_STAT_REGISTER, mode);
 }
 }  // namespace gb
