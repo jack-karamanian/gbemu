@@ -11,8 +11,7 @@ std::pair<u16, nonstd::span<const u8>> Memory::select_storage(u16 addr) {
       case 0x1000:
       case 0x2000:
       case 0x3000:
-        return std::make_pair(addr,
-                              nonstd::span<const u8>(rom.data(), SIXTEEN_KB));
+        return {addr, {rom.data(), SIXTEEN_KB}};
 
       case 0x4000:
       case 0x5000:
@@ -20,18 +19,16 @@ std::pair<u16, nonstd::span<const u8>> Memory::select_storage(u16 addr) {
       case 0x7000: {
         const int start_addr =
             SIXTEEN_KB * rom_bank_selected.get_rom_bank_selected();
-        return std::make_pair(
-            addr - 0x4000,
-            nonstd::span<const u8>(&rom.at(start_addr), SIXTEEN_KB));
+        return {addr - 0x4000, {&rom.at(start_addr), SIXTEEN_KB}};
       }
     }
   }
-  return std::make_pair(addr, nonstd::span<const u8>(memory));
+  return {addr, {memory}};
 }
 nonstd::span<const u8> Memory::get_range(std::pair<u16, u16> range) {
   const auto [begin, end] = range;
 
-  return nonstd::span<const u8>(&memory.at(begin), &memory.at(end + 1));
+  return {&memory.at(begin), &memory.at(end + 1)};
 }
 
 void Memory::set(const u16& addr, const u8& val) {
