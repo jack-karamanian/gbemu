@@ -52,7 +52,7 @@ void Lcd::update(unsigned int ticks) {
         scanlines++;
         lcd_ticks = 0;
 
-        if (scanlines == 153) {
+        if (scanlines > 153) {
           mode = 2;
           scanlines = 0;
         }
