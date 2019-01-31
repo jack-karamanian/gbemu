@@ -13,7 +13,11 @@ class Gpu {
   Memory* memory;
   std::unique_ptr<IRenderer> renderer;
 
-  std::vector<Pixel> pixels;
+  Texture background_texture;
+  Texture sprite_texture;
+
+  std::vector<Pixel> background_framebuffer;
+  std::vector<Pixel> sprite_framebuffer;
 
   u8 get_scx() const;
   u8 get_scy() const;
