@@ -30,6 +30,7 @@ add_executable(
   src/input.h
   src/input.cpp
   src/utils.h
+  src/sdl_utils.h
 )
 
 find_library(SDL2_LIB NAMES SDL2)
