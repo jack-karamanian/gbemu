@@ -2,7 +2,6 @@
 #include <SDL2/SDL.h>
 #include <memory>
 #include <vector>
-#include "constants.h"
 #include "pixel.h"
 #include "renderer.h"
 #include "types.h"
@@ -13,11 +12,16 @@ class Gpu {
   Memory* memory;
   std::unique_ptr<IRenderer> renderer;
 
-  std::vector<Pixel> pixels;
+  Texture background_texture;
+  Texture sprite_texture;
+
+  std::vector<Pixel> background_framebuffer;
+  std::vector<Pixel> sprite_framebuffer;
 
   u8 get_scx() const;
   u8 get_scy() const;
-  void render_pixel(const u8 byte1,
+  void render_pixel(std::vector<Pixel>& pixels,
+                    const u8 byte1,
                     const u8 byte2,
                     const u8 pixel_x,
                     const int x,

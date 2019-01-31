@@ -1,4 +1,5 @@
 #include <iostream>
+#include "constants.h"
 #include "gpu.h"
 #include "memory.h"
 #include "registers/lcdc.h"
@@ -19,13 +20,20 @@ static constexpr std::array<Pixel, 4> COLORS = {{
 }};
 
 static constexpr std::array<Pixel, 4> SPRITE_COLORS = {{
-    {255, 255, 255, 0},
+    {0, 0, 0, 0},
     {128, 128, 128, 255},
     {100, 100, 100, 255},
-    {0, 0, 0, 0},
+    {0, 0, 0, 255},
 }};
 Gpu::Gpu(Memory& memory, std::unique_ptr<IRenderer> renderer)
-    : memory{&memory}, renderer{std::move(renderer)}, pixels(DISPLAY_SIZE) {}
+    : memory{&memory},
+      renderer{std::move(renderer)},
+      background_texture{
+          this->renderer->create_texture(SCREEN_WIDTH, SCREEN_HEIGHT, false)},
+      sprite_texture{
+          this->renderer->create_texture(SCREEN_WIDTH, SCREEN_HEIGHT, true)},
+      background_framebuffer(DISPLAY_SIZE),
+      sprite_framebuffer(DISPLAY_SIZE) {}
 
 u8 Gpu::get_scx() const {
   return memory->at(0xff43);
@@ -35,7 +43,8 @@ u8 Gpu::get_scy() const {
   return memory->at(0xff42);
 }
 
-void Gpu::render_pixel(const u8 byte1,
+void Gpu::render_pixel(std::vector<Pixel>& pixels,
+                       const u8 byte1,
                        const u8 byte2,
                        const u8 pixel_x,
                        const int screen_x,
@@ -79,11 +88,12 @@ void Gpu::render_sprites(int scanline) {
 
       for (int pixel_x = 0; pixel_x < 8; pixel_x++) {
         const int xpos = sprite_attrib.flip_x() ? x - pixel_x : x + pixel_x;
-        render_pixel(byte1, byte2, pixel_x, xpos, y, SPRITE_COLORS);
+        render_pixel(sprite_framebuffer, byte1, byte2, pixel_x, xpos, y,
+                     SPRITE_COLORS);
       }
     }
   }
-}  // namespace gb
+}
 
 void Gpu::render_background(int scanline) {
   const Registers::Lcdc lcdc{memory->at(Registers::Lcdc::Address)};
@@ -126,13 +136,12 @@ void Gpu::render_background(int scanline) {
 
     tile_addr += 2 * tile_y;
 
-    // const u8* tile_data = memory->at(tile_addr);
-
     const int screen_x = x;
     const u8 byte1 = memory->at(tile_addr);
     const u8 byte2 = memory->at(tile_addr + 1);
 
-    render_pixel(byte1, byte2, pixel_x % 8, screen_x, scanline, COLORS);
+    render_pixel(background_framebuffer, byte1, byte2, pixel_x % 8, screen_x,
+                 scanline, COLORS);
   }
 }
 
@@ -142,6 +151,11 @@ void Gpu::render_scanline(int scanline) {
 }
 
 void Gpu::render() {
-  renderer->draw_pixels(pixels);
+  renderer->clear();
+  renderer->draw_pixels(background_texture, background_framebuffer);
+  renderer->draw_pixels(sprite_texture, sprite_framebuffer);
+  renderer->present();
+  std::fill(sprite_framebuffer.begin(), sprite_framebuffer.end(),
+            Pixel{0, 0, 0, 0});
 }
 }  // namespace gb

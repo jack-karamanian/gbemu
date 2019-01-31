@@ -3,21 +3,26 @@
 #include <functional>
 #include <iostream>
 #include <memory>
+#include <unordered_map>
 #include "constants.h"
 #include "renderer.h"
+#include "sdl_utils.h"
 
 namespace gb {
 class SdlRenderer : public IRenderer {
   std::unique_ptr<SDL_Renderer, std::function<void(SDL_Renderer*)>> renderer;
 
-  std::unique_ptr<SDL_Texture, std::function<void(SDL_Texture*)>> texture;
+  sdl::sdl_unique_ptr<SDL_PixelFormat> format;
 
-  std::unique_ptr<SDL_PixelFormat, std::function<void(SDL_PixelFormat*)>>
-      format;
+  std::unordered_map<int, sdl::sdl_unique_ptr<SDL_Texture>> textures;
 
  public:
   SdlRenderer(std::unique_ptr<SDL_Renderer, std::function<void(SDL_Renderer*)>>
                   renderer);
-  virtual void draw_pixels(const std::vector<Pixel>& pixels) override;
+  virtual Texture create_texture(int width, int height, bool blend) override;
+  virtual void clear() override;
+  virtual void draw_pixels(Texture texture,
+                           const std::vector<Pixel>& pixels) override;
+  virtual void present() override;
 };
 }  // namespace gb
