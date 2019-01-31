@@ -1,3 +1,5 @@
 #pragma once
 
-constexpr int DISPLAY_SIZE = 144 * 160;
+constexpr int SCREEN_WIDTH = 160;
+constexpr int SCREEN_HEIGHT = 144;
+constexpr int DISPLAY_SIZE = SCREEN_WIDTH * SCREEN_HEIGHT;
