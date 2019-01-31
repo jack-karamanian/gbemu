@@ -35,7 +35,8 @@ u8 Gpu::get_scy() const {
   return memory->at(0xff42);
 }
 
-void Gpu::render_pixel(const u8 byte1,
+void Gpu::render_pixel(std::vector<Pixel>& pixels,
+                       const u8 byte1,
                        const u8 byte2,
                        const u8 pixel_x,
                        const int screen_x,
