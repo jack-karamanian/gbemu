@@ -20,10 +20,10 @@ static constexpr std::array<Pixel, 4> COLORS = {{
 }};
 
 static constexpr std::array<Pixel, 4> SPRITE_COLORS = {{
-    {255, 255, 255, 0},
+    {0, 0, 0, 0},
     {128, 128, 128, 255},
     {100, 100, 100, 255},
-    {0, 0, 0, 0},
+    {0, 0, 0, 255},
 }};
 Gpu::Gpu(Memory& memory, std::unique_ptr<IRenderer> renderer)
     : memory{&memory},
