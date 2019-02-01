@@ -63,7 +63,19 @@ void Gpu::render_pixel(std::vector<Pixel>& pixels,
 }
 
 void Gpu::render_sprites(int scanline) {
+  const Registers::Lcdc lcdc{memory->at(Registers::Lcdc::Address)};
   auto sprite_attribs = memory->get_sprite_attributes();
+
+  int sprite_height;
+
+  switch (lcdc.sprite_size()) {
+    case Registers::Lcdc::SpriteMode::EightByEight:
+      sprite_height = 8;
+      break;
+    case Registers::Lcdc::SpriteMode::EightBySixteen:
+      sprite_height = 16;
+      break;
+  }
 
   for (const auto& sprite_attrib : sprite_attribs) {
     if (sprite_attrib.x <= 0 || sprite_attrib.x >= 168 ||
@@ -74,9 +86,10 @@ void Gpu::render_sprites(int scanline) {
     // The scanline's Y value relative to the sprite's
     const int sprite_y = scanline % sprite_attrib.y;
 
-    if (scanline >= sprite_attrib.y && scanline < sprite_attrib.y + 8) {
-      // Get the tile at the sprite's index offset by the scanline relative to
-      // the sprite's Y
+    if (scanline >= sprite_attrib.y &&
+        scanline < sprite_attrib.y + sprite_height) {
+      // Get the tile at the sprite's index offset by the scanline relative
+      // to the sprite's Y
       const int tile_addr =
           VRAM_START + (16 * sprite_attrib.tile_index) + (2 * (sprite_y));
 
