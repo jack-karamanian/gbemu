@@ -4,7 +4,7 @@
 namespace gb {
 namespace Registers {
 namespace Lyc {
-constexpr const u16 Address = 0xff45;
+constexpr u16 Address = 0xff45;
 }
 }  // namespace Registers
 }  // namespace gb
