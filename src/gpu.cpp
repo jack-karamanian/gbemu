@@ -84,7 +84,11 @@ void Gpu::render_sprites(int scanline) {
     }
 
     // The scanline's Y value relative to the sprite's
-    const int sprite_y = scanline % sprite_attrib.y;
+    int sprite_y = (scanline % sprite_attrib.y);
+
+    if (sprite_attrib.flip_y()) {
+      sprite_y = sprite_height - sprite_y;
+    }
 
     if (scanline >= sprite_attrib.y &&
         scanline < sprite_attrib.y + sprite_height) {
