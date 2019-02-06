@@ -100,9 +100,10 @@ void Gpu::render_sprites(int scanline) {
       const int x = sprite_attrib.x - 8;
 
       for (int pixel_x = 0; pixel_x < 8; pixel_x++) {
-        const int xpos = sprite_attrib.flip_x() ? x - pixel_x : x + pixel_x;
-        render_pixel(sprite_framebuffer, byte1, byte2, pixel_x, xpos, y,
-                     SPRITE_COLORS);
+        const int flipped_pixel_x =
+            sprite_attrib.flip_x() ? 7 - pixel_x : pixel_x;
+        render_pixel(sprite_framebuffer, byte1, byte2, flipped_pixel_x,
+                     x + pixel_x, y, SPRITE_COLORS);
       }
     }
   }
