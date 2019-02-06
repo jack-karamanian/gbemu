@@ -937,9 +937,7 @@ void Cpu::rl_a() {
 }
 
 void Cpu::rotate_carry(u8& val, bool left) {
-  int carry_val = (left ? 0x80 : 0x01);
-
-  // TODO: This is wrong. Set the carry flag only if bit 7 is set
+  bool carry = (val & (left ? 0x80 : 0x01)) != 0;
 
   if (left) {
     val <<= 1;
@@ -947,13 +945,13 @@ void Cpu::rotate_carry(u8& val, bool left) {
     val >>= 1;
   }
 
-  if (val & carry_val) {
-    set_flag(FLAG_CARRY);
+  if (carry) {
     if (left) {
       val |= 0x01;
     } else {
       val |= 0x80;
     }
+    set_flag(FLAG_CARRY);
   } else {
     clear_flag(FLAG_CARRY);
   }
