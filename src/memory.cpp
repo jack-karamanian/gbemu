@@ -94,6 +94,7 @@ void Memory::reset() {
   memory[0xFF4A] = 0x00;
   memory[0xFF4B] = 0x00;
   memory[0xFFFE] = 0x00;
+  memory[0xFF00] = 0xFF;
 }
 
 void Memory::load_rom(const std::vector<u8>& data) {
@@ -112,7 +113,7 @@ u8 Memory::get_input_register() {
 }
 
 void Memory::set_input_register(u8 val) {
-  set(0xff00, val);
+  memory[0xFF00] = val;
 }
 
 nonstd::span<const SpriteAttribute> Memory::get_sprite_attributes() {
