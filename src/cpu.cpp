@@ -1034,34 +1034,21 @@ void Cpu::rst() {
 
 void Cpu::carried_subtract(u8& dst, const u8& src) {
   const u8 carry = get_flag(FLAG_CARRY) ? 1 : 0;
-  const u8 res = dst - src - carry;
-  const u16 res1 = dst - src - carry;
+  const u8 res = (dst - src) - carry;
 
-  const u16 magnitude = src + carry;
-
-  bool half_carry = (res1 ^ src) & 0x10;
-
-  if (((dst & 0x0f) - (src - 0x0f) - carry) < 0) {
+  if ((dst & 0x0f) < static_cast<u16>(src & 0x0f) + carry) {
     set_flag(FLAG_HALF_CARRY);
   } else {
     clear_flag(FLAG_HALF_CARRY);
   }
 
-  std::cout << "dst: " << +dst << std::endl;
-  std::cout << "src: " << +src << std::endl;
-  std::cout << "res: " << +res << std::endl;
-  std::cout << "carry: " << +carry << std::endl;
-  std::cout << "half carry: " << std::boolalpha << !!get_flag(FLAG_HALF_CARRY)
-            << std::endl;
-
   set_zero(res);
 
-  if (src > dst) {
+  if (static_cast<u16>(src) + carry > dst) {
     set_flag(FLAG_CARRY);
   } else {
     clear_flag(FLAG_CARRY);
   }
-  std::cout << "flag carry: " << !!get_flag(FLAG_CARRY) << std::endl;
   set_flag(FLAG_SUBTRACT);
 
   dst = res;
