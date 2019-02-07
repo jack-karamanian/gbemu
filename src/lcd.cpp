@@ -36,12 +36,6 @@ void Lcd::update(unsigned int ticks) {
     case 0: {
       if (lcd_ticks >= 204) {
         scanlines++;
-        if (lcd_stat.ly_equals_lyc_enabled() && scanlines == lyc) {
-          lcd_stat.set_ly_equals_lyc(true);
-          cpu->request_interrupt(Cpu::Interrupt::LcdStat);
-        } else {
-          lcd_stat.set_ly_equals_lyc(false);
-        }
         lcd_ticks = 0;
         if (scanlines >= 144) {
           mode = 1;
@@ -72,6 +66,13 @@ void Lcd::update(unsigned int ticks) {
       }
       break;
     }
+  }
+
+  if (lcd_stat.ly_equals_lyc_enabled() && scanlines == lyc) {
+    lcd_stat.set_ly_equals_lyc(true);
+    cpu->request_interrupt(Cpu::Interrupt::LcdStat);
+  } else {
+    lcd_stat.set_ly_equals_lyc(false);
   }
 
   lcd_stat.set_mode(mode);
