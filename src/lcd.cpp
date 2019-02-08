@@ -62,6 +62,9 @@ void Lcd::update(unsigned int ticks) {
         if (scanlines > 153) {
           mode = 2;
           scanlines = 0;
+          if (lcd_stat.oam_check_enabled()) {
+            cpu->request_interrupt(Cpu::Interrupt::LcdStat);
+          }
         }
       }
       break;
