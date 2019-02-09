@@ -10,6 +10,7 @@
 #include "lcd.h"
 #include "memory.h"
 #include "sdl_renderer.h"
+#include "timers.h"
 
 namespace po = boost::program_options;
 
@@ -54,6 +55,7 @@ int main(int argc, const char** argv) {
 
   load_rom(rom_name, memory);
 
+  gb::Timers timers{memory};
   gb::Cpu cpu{memory};
 
   SDL_Init(SDL_INIT_VIDEO);
@@ -121,12 +123,6 @@ int main(int argc, const char** argv) {
       }
     }
 
-    memory.set(0xff04, rand());
-    const bool request_interrupt = input.update();
-    if (request_interrupt) {
-      cpu.request_interrupt(gb::Cpu::Interrupt::Joypad);
-    }
-
     int ticks = cpu.fetch_and_decode();
     if (!cpu.halted) {
       if (trace) {
@@ -135,6 +131,16 @@ int main(int argc, const char** argv) {
     }
     ticks += cpu.handle_interrupts();
     lcd.update(ticks);
+
+    bool request_interrupt = input.update();
+    if (request_interrupt) {
+      cpu.request_interrupt(gb::Cpu::Interrupt::Joypad);
+    }
+    request_interrupt = timers.update(ticks);
+
+    if (request_interrupt) {
+      cpu.request_interrupt(gb::Cpu::Interrupt::Timer);
+    }
   }
 
   return 0;
