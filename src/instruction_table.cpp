@@ -356,7 +356,7 @@ std::array<Instruction, 256> bind_cb_instructions(Cpu* cpu) {
       {"BIT 0,E", 2, 8, call(&Cpu::bit_r8, cpu, 0, E)},      // 0x43
       {"BIT 0,H", 2, 8, call(&Cpu::bit_r8, cpu, 0, H)},      // 0x44
       {"BIT 0,L", 2, 8, call(&Cpu::bit_r8, cpu, 0, L)},      // 0x45
-      {"BIT 0,(HL)", 2, 16, call(&Cpu::bit_hl, cpu, 0)},     // 0x46
+      {"BIT 0,(HL)", 2, 12, call(&Cpu::bit_hl, cpu, 0)},     // 0x46
       {"BIT 0,A", 2, 8, call(&Cpu::bit_r8, cpu, 0, A)},      // 0x47
       {"BIT 1,B", 2, 8, call(&Cpu::bit_r8, cpu, 1, B)},      // 0x48
       {"BIT 1,C", 2, 8, call(&Cpu::bit_r8, cpu, 1, C)},      // 0x49
@@ -364,7 +364,7 @@ std::array<Instruction, 256> bind_cb_instructions(Cpu* cpu) {
       {"BIT 1,E", 2, 8, call(&Cpu::bit_r8, cpu, 1, E)},      // 0x4b
       {"BIT 1,H", 2, 8, call(&Cpu::bit_r8, cpu, 1, H)},      // 0x4c
       {"BIT 1,L", 2, 8, call(&Cpu::bit_r8, cpu, 1, L)},      // 0x4d
-      {"BIT 1,(HL)", 2, 16, call(&Cpu::bit_hl, cpu, 1)},     // 0x4e
+      {"BIT 1,(HL)", 2, 12, call(&Cpu::bit_hl, cpu, 1)},     // 0x4e
       {"BIT 1,A", 2, 8, call(&Cpu::bit_r8, cpu, 1, A)},      // 0x4f
       {"BIT 2,B", 2, 8, call(&Cpu::bit_r8, cpu, 2, B)},      // 0x50
       {"BIT 2,C", 2, 8, call(&Cpu::bit_r8, cpu, 2, C)},      // 0x51
@@ -372,7 +372,7 @@ std::array<Instruction, 256> bind_cb_instructions(Cpu* cpu) {
       {"BIT 2,E", 2, 8, call(&Cpu::bit_r8, cpu, 2, E)},      // 0x53
       {"BIT 2,H", 2, 8, call(&Cpu::bit_r8, cpu, 2, H)},      // 0x54
       {"BIT 2,L", 2, 8, call(&Cpu::bit_r8, cpu, 2, L)},      // 0x55
-      {"BIT 2,(HL)", 2, 16, call(&Cpu::bit_hl, cpu, 2)},     // 0x56
+      {"BIT 2,(HL)", 2, 12, call(&Cpu::bit_hl, cpu, 2)},     // 0x56
       {"BIT 2,A", 2, 8, call(&Cpu::bit_r8, cpu, 2, A)},      // 0x57
       {"BIT 3,B", 2, 8, call(&Cpu::bit_r8, cpu, 3, B)},      // 0x58
       {"BIT 3,C", 2, 8, call(&Cpu::bit_r8, cpu, 3, C)},      // 0x59
@@ -380,7 +380,7 @@ std::array<Instruction, 256> bind_cb_instructions(Cpu* cpu) {
       {"BIT 3,E", 2, 8, call(&Cpu::bit_r8, cpu, 3, E)},      // 0x5b
       {"BIT 3,H", 2, 8, call(&Cpu::bit_r8, cpu, 3, H)},      // 0x5c
       {"BIT 3,L", 2, 8, call(&Cpu::bit_r8, cpu, 3, L)},      // 0x5d
-      {"BIT 3,(HL)", 2, 16, call(&Cpu::bit_hl, cpu, 3)},     // 0x5e
+      {"BIT 3,(HL)", 2, 12, call(&Cpu::bit_hl, cpu, 3)},     // 0x5e
       {"BIT 3,A", 2, 8, call(&Cpu::bit_r8, cpu, 3, A)},      // 0x5f
       {"BIT 4,B", 2, 8, call(&Cpu::bit_r8, cpu, 4, B)},      // 0x60
       {"BIT 4,C", 2, 8, call(&Cpu::bit_r8, cpu, 4, C)},      // 0x61
@@ -388,7 +388,7 @@ std::array<Instruction, 256> bind_cb_instructions(Cpu* cpu) {
       {"BIT 4,E", 2, 8, call(&Cpu::bit_r8, cpu, 4, E)},      // 0x63
       {"BIT 4,H", 2, 8, call(&Cpu::bit_r8, cpu, 4, H)},      // 0x64
       {"BIT 4,L", 2, 8, call(&Cpu::bit_r8, cpu, 4, L)},      // 0x65
-      {"BIT 4,(HL)", 2, 16, call(&Cpu::bit_hl, cpu, 4)},     // 0x66
+      {"BIT 4,(HL)", 2, 12, call(&Cpu::bit_hl, cpu, 4)},     // 0x66
       {"BIT 4,A", 2, 8, call(&Cpu::bit_r8, cpu, 4, A)},      // 0x67
       {"BIT 5,B", 2, 8, call(&Cpu::bit_r8, cpu, 5, B)},      // 0x68
       {"BIT 5,C", 2, 8, call(&Cpu::bit_r8, cpu, 5, C)},      // 0x69
@@ -396,7 +396,7 @@ std::array<Instruction, 256> bind_cb_instructions(Cpu* cpu) {
       {"BIT 5,E", 2, 8, call(&Cpu::bit_r8, cpu, 5, E)},      // 0x6b
       {"BIT 5,H", 2, 8, call(&Cpu::bit_r8, cpu, 5, H)},      // 0x6c
       {"BIT 5,L", 2, 8, call(&Cpu::bit_r8, cpu, 5, L)},      // 0x6d
-      {"BIT 5,(HL)", 2, 16, call(&Cpu::bit_hl, cpu, 5)},     // 0x6e
+      {"BIT 5,(HL)", 2, 12, call(&Cpu::bit_hl, cpu, 5)},     // 0x6e
       {"BIT 5,A", 2, 8, call(&Cpu::bit_r8, cpu, 5, A)},      // 0x6f
       {"BIT 6,B", 2, 8, call(&Cpu::bit_r8, cpu, 6, B)},      // 0x70
       {"BIT 6,C", 2, 8, call(&Cpu::bit_r8, cpu, 6, C)},      // 0x71
@@ -404,7 +404,7 @@ std::array<Instruction, 256> bind_cb_instructions(Cpu* cpu) {
       {"BIT 6,E", 2, 8, call(&Cpu::bit_r8, cpu, 6, E)},      // 0x73
       {"BIT 6,H", 2, 8, call(&Cpu::bit_r8, cpu, 6, H)},      // 0x74
       {"BIT 6,L", 2, 8, call(&Cpu::bit_r8, cpu, 6, L)},      // 0x75
-      {"BIT 6,(HL)", 2, 16, call(&Cpu::bit_hl, cpu, 6)},     // 0x76
+      {"BIT 6,(HL)", 2, 12, call(&Cpu::bit_hl, cpu, 6)},     // 0x76
       {"BIT 6,A", 2, 8, call(&Cpu::bit_r8, cpu, 6, A)},      // 0x77
       {"BIT 7,B", 2, 8, call(&Cpu::bit_r8, cpu, 7, B)},      // 0x78
       {"BIT 7,C", 2, 8, call(&Cpu::bit_r8, cpu, 7, C)},      // 0x79
@@ -412,7 +412,7 @@ std::array<Instruction, 256> bind_cb_instructions(Cpu* cpu) {
       {"BIT 7,E", 2, 8, call(&Cpu::bit_r8, cpu, 7, E)},      // 0x7b
       {"BIT 7,H", 2, 8, call(&Cpu::bit_r8, cpu, 7, H)},      // 0x7c
       {"BIT 7,L", 2, 8, call(&Cpu::bit_r8, cpu, 7, L)},      // 0x7d
-      {"BIT 7,(HL)", 2, 16, call(&Cpu::bit_hl, cpu, 7)},     // 0x7e
+      {"BIT 7,(HL)", 2, 12, call(&Cpu::bit_hl, cpu, 7)},     // 0x7e
       {"BIT 7,A", 2, 8, call(&Cpu::bit_r8, cpu, 7, A)},      // 0x7f
       {"RES 0,B", 2, 8, call(&Cpu::res_u3_r8, cpu, 0, B)},   // 0x80
       {"RES 0,C", 2, 8, call(&Cpu::res_u3_r8, cpu, 0, C)},   // 0x81
