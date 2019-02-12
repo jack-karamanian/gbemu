@@ -79,7 +79,6 @@ bool Cpu::handle_interrupt(u8 interrupt) {
   push(pc);
   switch (interrupt) {
     case Interrupt::VBlank:
-      std::cout << "INT VBLANK" << std::endl;
       pc = 0x40;
       break;
     case Interrupt::LcdStat:
@@ -115,7 +114,6 @@ void Cpu::debug_write() {
             << " HL: " << std::setw(6) << get_r16(Register::HL) << std::endl
             << "PC: " << std::setw(6) << pc << std::endl
             << "SP: " << std::setw(6) << sp << std::endl
-            << "memory[SP]: " << std::setw(6) << memory->at<u16>(sp)
             << std::endl
             << std::endl;
 }
@@ -159,7 +157,6 @@ void Cpu::invalid() const {
   std::ostringstream s;
   s << "invalid instruction: " << std::hex << +memory->at(pc - 1) << std::endl;
   throw std::runtime_error(s.str());
-  // std::cout << s.str();
 }
 
 void Cpu::carried_add(u8& dest, const u8& a, const u8& b) {
@@ -822,7 +819,6 @@ void Cpu::pop(u16& reg) {
   sp += 2;
 
   reg = (((u16)low) << 8) | high;
-  std::cout << "popped " << std::hex << +reg << std::endl;
 }
 
 // POP AF
