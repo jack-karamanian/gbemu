@@ -32,6 +32,10 @@ nonstd::span<const u8> Memory::get_range(std::pair<u16, u16> range) {
 }
 
 void Memory::set(const u16& addr, const u8& val) {
+  if (addr == 0xff44) {
+    memory[0xff44] = 0;
+    return;
+  }
   switch (addr & 0xf000) {
     case 0x2000:
     case 0x3000:
