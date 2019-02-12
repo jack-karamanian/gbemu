@@ -159,7 +159,7 @@ struct Cpu {
 
   template <typename T, typename U = T>
   void set_carry(const T& a, const U& b) {
-    typename next_largest_type<T>::type res = a + b;
+    int res = a + b;
     // if (res > 0xff) {
     if (res > boost::integer_traits<T>::const_max) {
       set_flag(FLAG_CARRY);
