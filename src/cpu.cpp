@@ -27,6 +27,7 @@ const Instruction& Cpu::fetch() {
 }
 
 int Cpu::fetch_and_decode() {
+  ticks = 0;
   if (stopped || halted) {
     return 4;
   }
@@ -50,9 +51,7 @@ int Cpu::fetch_and_decode() {
 
   inst.impl();
 
-  return inst.cycles;
-
-  // debug_write();
+  return ticks;
 }
 
 int Cpu::handle_interrupts() {
@@ -368,6 +367,8 @@ void Cpu::call() {
 void Cpu::call_z() {
   if (get_flag(FLAG_ZERO)) {
     call();
+  } else {
+    ticks = 12;
   }
 }
 
@@ -375,6 +376,8 @@ void Cpu::call_z() {
 void Cpu::call_nz() {
   if (!get_flag(FLAG_ZERO)) {
     call();
+  } else {
+    ticks = 12;
   }
 }
 
@@ -382,6 +385,8 @@ void Cpu::call_nz() {
 void Cpu::call_c() {
   if (get_flag(FLAG_CARRY)) {
     call();
+  } else {
+    ticks = 12;
   }
 }
 
@@ -389,6 +394,8 @@ void Cpu::call_c() {
 void Cpu::call_nc() {
   if (!get_flag(FLAG_CARRY)) {
     call();
+  } else {
+    ticks = 12;
   }
 }
 
@@ -576,6 +583,8 @@ bool Cpu::can_jump(const u8& opcode, int offset) {
 void Cpu::jump_conditional(const u16& addr, int index_offset) {
   if (can_jump(current_opcode, index_offset)) {
     jump(addr);
+  } else {
+    ticks -= 4;
   }
 }
 
@@ -871,6 +880,8 @@ void Cpu::ret() {
 void Cpu::ret_conditional() {
   if (can_jump(current_opcode, 0)) {
     ret();
+  } else {
+    ticks = 8;
   }
 }
 

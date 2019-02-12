@@ -27,10 +27,16 @@ add_executable(
   src/registers/lcdc.h
   src/registers/lcd_stat.h
   src/registers/lyc.h
+  src/registers/div.h
+  src/registers/tac.h
+  src/registers/tima.h
+  src/registers/tma.h
   src/input.h
   src/input.cpp
   src/utils.h
   src/sdl_utils.h
+  src/timers.h
+  src/timers.cpp
 )
 
 find_library(SDL2_LIB NAMES SDL2)
