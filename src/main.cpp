@@ -61,13 +61,17 @@ int main(int argc, const char** argv) {
 
   SDL_Init(SDL_INIT_VIDEO);
 
+#if __linux__ && !defined RASPBERRYPI
   SDL_SetHint(SDL_HINT_VIDEO_X11_NET_WM_BYPASS_COMPOSITOR, "0");
-  SDL_Window* window = SDL_CreateWindow("gbemu", SDL_WINDOWPOS_UNDEFINED,
-                                        SDL_WINDOWPOS_UNDEFINED, 160, 144, 0);
-  auto delete_renderer = [](SDL_Renderer* r) {
-    std::cout << "DESTROY SDL RENDERER" << std::endl;
-    SDL_DestroyRenderer(r);
-  };
+#endif
+
+  SDL_SetHint(SDL_HINT_RENDER_VSYNC, "1");
+  SDL_Window* window =
+      SDL_CreateWindow("gbemu", SDL_WINDOWPOS_UNDEFINED,
+                       SDL_WINDOWPOS_UNDEFINED, 160, 144, SDL_WINDOW_SHOWN);
+
+  auto delete_renderer = [](SDL_Renderer* r) { SDL_DestroyRenderer(r); };
+
   std::unique_ptr<SDL_Renderer, std::function<void(SDL_Renderer*)>>
       sdl_renderer{
           SDL_CreateRenderer(
