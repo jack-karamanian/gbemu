@@ -25,7 +25,7 @@ static constexpr std::array<Pixel, 4> SPRITE_COLORS = {{
     {100, 100, 100, 255},
     {0, 0, 0, 255},
 }};
-Gpu::Gpu(Memory& memory, std::unique_ptr<IRenderer> renderer)
+Gpu::Gpu(Memory& memory, std::shared_ptr<IRenderer> renderer)
     : memory{&memory},
       renderer{std::move(renderer)},
       background_texture{
@@ -58,7 +58,7 @@ void Gpu::render_pixel(std::vector<Pixel>& pixels,
   const u8 color_index = (high_bit << 1) | low_bit;
 
   if (screen_x < 160 && screen_y >= 0) {
-    pixels[144 * screen_x + screen_y] = colors.at(color_index);
+    pixels[160 * screen_y + screen_x] = colors.at(color_index);
   }
 }
 
@@ -77,7 +77,7 @@ void Gpu::render_sprites(int scanline) {
       break;
   }
 
-  for (const auto& sprite_attrib : sprite_attribs) {
+  for (const auto sprite_attrib : sprite_attribs) {
     if (sprite_attrib.x <= 0 || sprite_attrib.x >= 168 ||
         sprite_attrib.y <= 0 || sprite_attrib.y >= 160) {
       continue;
@@ -120,7 +120,7 @@ void Gpu::render_background(int scanline) {
   const u8 scy = get_scy();
 
   if (!lcdc.bg_on()) {
-    // return;
+    return;
   }
 
   nonstd::span<const u8> tile_map_range =
@@ -135,11 +135,16 @@ void Gpu::render_background(int scanline) {
 
   const int tile_y = ((scanline + scy) % 8);
 
+  const int tile_map_range_size = tile_map_range.size();
+
   for (int x = 0; x < 160; ++x) {
     int pixel_x = x + scx;
     const u16 tile_index = (pixel_x / 8);
-    const u16 offset_tile_index =
-        (tile_scroll_offset + (tile_index % 32)) % tile_map_range.size();
+    u16 offset_tile_index = (tile_scroll_offset + (tile_index % 32));
+
+    if (offset_tile_index > tile_map_range_size - 1) {
+      offset_tile_index -= tile_map_range_size;
+    }
 
     const u8 tile = tile_map_range.at(offset_tile_index);
 
@@ -169,10 +174,10 @@ void Gpu::render_scanline(int scanline) {
 }
 
 void Gpu::render() {
-  renderer->clear();
+  // renderer->clear();
   renderer->draw_pixels(background_texture, background_framebuffer);
   renderer->draw_pixels(sprite_texture, sprite_framebuffer);
-  renderer->present();
+  // renderer->present();
   std::fill(sprite_framebuffer.begin(), sprite_framebuffer.end(),
             Pixel{0, 0, 0, 0});
 }

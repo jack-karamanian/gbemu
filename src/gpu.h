@@ -10,7 +10,7 @@ namespace gb {
 struct Memory;
 class Gpu {
   Memory* memory;
-  std::unique_ptr<IRenderer> renderer;
+  std::shared_ptr<IRenderer> renderer;
 
   Texture background_texture;
   Texture sprite_texture;
@@ -31,7 +31,7 @@ class Gpu {
   void render_background(int scanline);
 
  public:
-  Gpu(Memory& memory, std::unique_ptr<IRenderer> renderer);
+  Gpu(Memory& memory, std::shared_ptr<IRenderer> renderer);
 
   void render();
   void render_scanline(int scanline);

@@ -77,9 +77,9 @@ int main(int argc, const char** argv) {
     std::cout << "SDL Error: " << SDL_GetError() << std::endl;
   }
 
-  std::unique_ptr<gb::SdlRenderer> renderer =
-      std::make_unique<gb::SdlRenderer>(std::move(sdl_renderer));
-  gb::Gpu gpu{memory, std::move(renderer)};
+  std::shared_ptr<gb::SdlRenderer> renderer =
+      std::make_shared<gb::SdlRenderer>(std::move(sdl_renderer));
+  gb::Gpu gpu{memory, renderer};
   gb::Lcd lcd{cpu, memory, gpu};
   gb::Input input{memory};
 
@@ -124,23 +124,32 @@ int main(int argc, const char** argv) {
       }
     }
 
-    int ticks = cpu.fetch_and_decode();
-    if (!cpu.halted) {
-      if (trace) {
-        cpu.debug_write();
+    bool draw_frame = false;
+
+    while (!draw_frame) {
+      int ticks = cpu.fetch_and_decode();
+      if (!cpu.halted) {
+        if (trace) {
+          cpu.debug_write();
+        }
+      }
+
+      ticks += cpu.handle_interrupts();
+      draw_frame = lcd.update(ticks);
+
+      bool request_interrupt = input.update();
+      if (request_interrupt) {
+        cpu.request_interrupt(gb::Cpu::Interrupt::Joypad);
+      }
+      request_interrupt = timers.update(ticks);
+
+      if (request_interrupt) {
+        cpu.request_interrupt(gb::Cpu::Interrupt::Timer);
       }
     }
-    ticks += cpu.handle_interrupts();
-    lcd.update(ticks);
 
-    bool request_interrupt = input.update();
-    if (request_interrupt) {
-      cpu.request_interrupt(gb::Cpu::Interrupt::Joypad);
-    }
-    request_interrupt = timers.update(ticks);
-
-    if (request_interrupt) {
-      cpu.request_interrupt(gb::Cpu::Interrupt::Timer);
+    renderer->clear();
+    renderer->present();
     }
   }
 
