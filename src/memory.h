@@ -4,6 +4,9 @@
 #include <utility>
 #include <vector>
 #include "nonstd/span.hpp"
+#include "registers/interrupt_enabled.h"
+#include "registers/interrupt_request.h"
+#include "registers/lcd_stat.h"
 #include "sprite_attribute.h"
 #include "utils.h"
 
@@ -36,6 +39,8 @@ class Memory {
   std::vector<u8> memory;
   std::vector<u8> rom;
 
+  nonstd::span<const u8> memory_span;
+
   bool external_ram_enabled = false;
 
   RomBank rom_bank_selected;
@@ -43,7 +48,7 @@ class Memory {
   std::pair<u16, nonstd::span<const u8>> select_storage(u16 addr);
 
  public:
-  Memory() : memory(SIXTYFOUR_KB), rom(TWO_MB) {}
+  Memory() : memory(SIXTYFOUR_KB), rom(TWO_MB), memory_span{memory} {}
   template <typename T = u8>
   T at(u16 addr) {
     const auto [normalized_addr, storage] = select_storage(addr);
@@ -70,8 +75,29 @@ class Memory {
 
   void do_dma_transfer(const u8& val);
 
-  u8 get_input_register();
-  void set_input_register(u8 val);
+  u8 get_input_register() const { return memory[0xff00]; }
+  void set_input_register(u8 val) { memory[0xff00] = val; }
+
+  u8 get_lcd_stat() { return memory[Registers::LcdStat::Address]; }
+  void set_lcd_stat(u8 val) { memory[Registers::LcdStat::Address] = val; }
+
+  u8 get_interrupts_enabled() {
+    return memory[Registers::InterruptEnabled::Address];
+  }
+
+  void set_interrupts_enabled(u8 val) {
+    memory[Registers::InterruptEnabled::Address] = val;
+  }
+
+  u8 get_interrupts_request() {
+    return memory[Registers::InterruptRequest::Address];
+  }
+
+  void set_interrupts_request(u8 val) {
+    memory[Registers::InterruptRequest::Address] = val;
+  }
+
+  void set_ly(u8 val) { memory[0xff44] = val; }
 
   nonstd::span<const SpriteAttribute> get_sprite_attributes();
 };

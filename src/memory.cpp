@@ -23,7 +23,7 @@ std::pair<u16, nonstd::span<const u8>> Memory::select_storage(u16 addr) {
       }
     }
   }
-  return {addr, {memory}};
+  return {addr, memory_span};
 }
 nonstd::span<const u8> Memory::get_range(std::pair<u16, u16> range) {
   const auto [begin, end] = range;
@@ -54,7 +54,7 @@ void Memory::set(const u16& addr, const u8& val) {
       break;
     case 0xff02:
       if (val == 0x81) {
-        std::cout << "char: " << memory[0xff01] << std::endl;
+        std::cout << memory[0xff01];
       }
       break;
 
@@ -110,14 +110,6 @@ void Memory::do_dma_transfer(const u8& data) {
   for (u16 i = 0; i < 160; i++) {
     memory[0xfe00 + i] = memory[addr + i];
   }
-}
-
-u8 Memory::get_input_register() {
-  return memory[0xff00];
-}
-
-void Memory::set_input_register(u8 val) {
-  memory[0xFF00] = val;
 }
 
 nonstd::span<const SpriteAttribute> Memory::get_sprite_attributes() {
