@@ -31,6 +31,8 @@ add_executable(
   src/registers/tac.h
   src/registers/tima.h
   src/registers/tma.h
+  src/registers/interrupt_enabled.h
+  src/registers/interrupt_request.h
   src/input.h
   src/input.cpp
   src/utils.h
