@@ -133,12 +133,12 @@ u8 Cpu::get_interrupts_register() const {
 }
 
 bool Cpu::interrupt_enabled(u8 interrupt) const {
-  const u8 interrupts = memory->at(MemoryRegister::InterruptEnabled);
+  const u8 interrupts = memory->get_interrupts_enabled();
   return (interrupts & interrupt) != 0;
 }
 
 bool Cpu::has_interrupt(u8 interrupt) const {
-  return (memory->at(MemoryRegister::InterruptRequest) & interrupt) != 0;
+  return (memory->get_interrupts_request() & interrupt) != 0;
 }
 
 void Cpu::request_interrupt(Interrupt interrupt) {
