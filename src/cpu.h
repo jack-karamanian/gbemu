@@ -72,6 +72,8 @@ struct Cpu {
   bool stopped = false;
   bool halted = false;
 
+  bool debug = false;
+
   Memory* memory;
   InstructionTable instruction_table;
 
@@ -82,6 +84,8 @@ struct Cpu {
   int fetch_and_decode();
   int handle_interrupts();
   bool handle_interrupt(u8 interrupt);
+
+  void set_debug(bool value) { debug = value; }
   void debug_write();
 
   u8 get_interrupts_register() const;

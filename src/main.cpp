@@ -57,6 +57,7 @@ int main(int argc, const char** argv) {
 
   gb::Timers timers{memory};
   gb::Cpu cpu{memory};
+  cpu.set_debug(trace);
 
   SDL_Init(SDL_INIT_VIDEO);
 

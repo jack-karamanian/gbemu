@@ -32,15 +32,21 @@ int Cpu::fetch_and_decode() {
     return 4;
   }
   const Instruction& inst = fetch();
-  std::cout << inst.name << std::endl;
-  std::cout << "opcode: " << std::hex << +memory->at(pc) << std::endl;
+  if (debug) {
+    std::cout << inst.name << std::endl;
+    std::cout << "opcode: " << std::hex << +memory->at(pc) << std::endl;
+  }
   const int operands_size = (inst.size - 1);
 
   if (operands_size == 1) {
-    std::cout << std::hex << +memory->at(pc + 1) << std::endl;
+    if (debug) {
+      std::cout << std::hex << +memory->at(pc + 1) << std::endl;
+    }
     current_operand = memory->at(pc + 1);
   } else if (operands_size == 2) {
-    std::cout << std::hex << memory->at<u16>(pc + 1) << std::endl;
+    if (debug) {
+      std::cout << std::hex << memory->at<u16>(pc + 1) << std::endl;
+    }
     current_operand = memory->at<u16>(pc + 1);
   }
 
