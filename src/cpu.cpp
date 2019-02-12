@@ -64,11 +64,9 @@ int Cpu::handle_interrupts() {
   if (interrupts_enabled) {
     for (int i = 0; i < 5; i++) {
       u8 interrupt = 0x01 << i;
-      if (has_interrupt(interrupt)) {
-        if (interrupt_enabled(interrupt)) {
-          handle_interrupt(interrupt);
-          return 20;
-        }
+      if (has_interrupt(interrupt) && interrupt_enabled(interrupt)) {
+        handle_interrupt(interrupt);
+        return 20;
       }
     }
   }
