@@ -79,7 +79,7 @@ struct Cpu {
 
   Cpu(Memory& memory);
 
-  const Instruction& fetch();
+  Instruction fetch();
 
   int fetch_and_decode();
   int handle_interrupts();
