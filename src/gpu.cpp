@@ -83,24 +83,23 @@ void Gpu::render_sprites(int scanline) {
       continue;
     }
 
-    // The scanline's Y value relative to the sprite's
-    int sprite_y = (scanline % sprite_attrib.y);
+    const int adjusted_y = sprite_attrib.y - 16;
 
-    if (sprite_attrib.flip_y()) {
-      sprite_y = sprite_height - sprite_y;
-    }
+    if (scanline >= adjusted_y && scanline < adjusted_y + sprite_height) {
+      // The scanline's Y value relative to the sprite's
+      const int sprite_y = scanline - adjusted_y;
+      const int sprite_offset =
+          sprite_attrib.flip_y() ? sprite_height - sprite_y - 1 : sprite_y;
 
-    if (scanline >= sprite_attrib.y &&
-        scanline < sprite_attrib.y + sprite_height) {
       // Get the tile at the sprite's index offset by the scanline relative
       // to the sprite's Y
       const int tile_addr =
-          VRAM_START + (16 * sprite_attrib.tile_index) + (2 * (sprite_y));
+          VRAM_START + (16 * sprite_attrib.tile_index) + (2 * (sprite_offset));
 
       const u8 byte1 = memory->at(tile_addr);
       const u8 byte2 = memory->at(tile_addr + 1);
 
-      const int y = scanline - 16;
+      const int y = adjusted_y + sprite_y;
       const int x = sprite_attrib.x - 8;
 
       for (int pixel_x = 0; pixel_x < 8; pixel_x++) {
