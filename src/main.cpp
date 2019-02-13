@@ -154,7 +154,6 @@ int main(int argc, const char** argv) {
 
     renderer->clear();
     renderer->present();
-    }
   }
 
   return 0;
