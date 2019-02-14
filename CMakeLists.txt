@@ -33,6 +33,7 @@ add_executable(
   src/registers/tma.h
   src/registers/interrupt_enabled.h
   src/registers/interrupt_request.h
+  src/registers/palette.h
   src/input.h
   src/input.cpp
   src/utils.h
