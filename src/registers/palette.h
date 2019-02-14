@@ -5,7 +5,10 @@ namespace gb {
 struct Palette {
   u8 value;
 
-  int get_color(int index) const { return value & (0x3 << (2 * index)); }
+  int get_color(int index) const {
+    const int shift = 2 * index;
+    return (value & (0x3 << shift)) >> shift;
+  }
 };
 namespace Registers {
 namespace Palette {
