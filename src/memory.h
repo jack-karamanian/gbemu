@@ -1,6 +1,7 @@
 #pragma once
 #include <algorithm>
 #include <functional>
+#include <unordered_map>
 #include <utility>
 #include <vector>
 #include "nonstd/span.hpp"
@@ -35,6 +36,8 @@ class RomBank {
   }
 };
 
+using MemoryListener = std::function<void(u8 val, u8 prev_val)>;
+
 class Memory {
   std::vector<u8> memory;
   std::vector<u8> rom;
@@ -44,6 +47,8 @@ class Memory {
   bool external_ram_enabled = false;
 
   RomBank rom_bank_selected;
+
+  std::unordered_map<u16, std::vector<MemoryListener>> write_callbacks;
 
   std::pair<u16, nonstd::span<const u8>> select_storage(u16 addr);
 
@@ -67,21 +72,27 @@ class Memory {
 
   nonstd::span<const u8> get_range(std::pair<u16, u16> range);
 
-  void set(const u16& addr, const u8& val);
+  void set(u16 addr, u8 val);
 
   void reset();
 
   void load_rom(const std::vector<u8>& data);
 
+  void add_write_listener(u16 addr, MemoryListener callback) {
+    write_callbacks[addr].emplace_back(callback);
+  }
+
   void do_dma_transfer(const u8& val);
+
+  u8 get_ram(u16 addr) const { return memory[addr]; }
 
   u8 get_input_register() const { return memory[0xff00]; }
   void set_input_register(u8 val) { memory[0xff00] = val; }
 
-  u8 get_lcd_stat() { return memory[Registers::LcdStat::Address]; }
+  u8 get_lcd_stat() const { return memory[Registers::LcdStat::Address]; }
   void set_lcd_stat(u8 val) { memory[Registers::LcdStat::Address] = val; }
 
-  u8 get_interrupts_enabled() {
+  u8 get_interrupts_enabled() const {
     return memory[Registers::InterruptEnabled::Address];
   }
 
@@ -89,7 +100,7 @@ class Memory {
     memory[Registers::InterruptEnabled::Address] = val;
   }
 
-  u8 get_interrupts_request() {
+  u8 get_interrupts_request() const {
     return memory[Registers::InterruptRequest::Address];
   }
 

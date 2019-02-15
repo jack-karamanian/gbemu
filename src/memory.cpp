@@ -31,7 +31,10 @@ nonstd::span<const u8> Memory::get_range(std::pair<u16, u16> range) {
   return {&memory.at(begin), &memory.at(end + 1)};
 }
 
-void Memory::set(const u16& addr, const u8& val) {
+void Memory::set(u16 addr, u8 val) {
+  for (const auto& callback : write_callbacks[addr]) {
+    callback(val, memory[addr]);
+  }
   if (addr == 0xff44) {
     memory[0xff44] = 0;
     return;
