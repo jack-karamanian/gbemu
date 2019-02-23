@@ -14,6 +14,6 @@ struct SpriteAttribute {
 
   bool flip_x() const { return (flags & 0x20) != 0; }
 
-  int palette_number() const { return flags & 0x10; }
+  int palette_number() const { return (flags & 0x10) >> 4; }
 };
 }  // namespace gb
