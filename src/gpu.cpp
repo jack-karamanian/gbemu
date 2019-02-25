@@ -20,7 +20,7 @@ static constexpr std::array<Pixel, 4> COLORS = {{
 }};
 
 static constexpr std::array<Pixel, 4> SPRITE_COLORS = {{
-    {0, 0, 0, 0},
+    {255, 255, 255, 255},
     {128, 128, 128, 255},
     {100, 100, 100, 255},
     {0, 0, 0, 255},
@@ -33,7 +33,33 @@ Gpu::Gpu(Memory& memory, std::shared_ptr<IRenderer> renderer)
       sprite_texture{
           this->renderer->create_texture(SCREEN_WIDTH, SCREEN_HEIGHT, true)},
       background_framebuffer(DISPLAY_SIZE),
-      sprite_framebuffer(DISPLAY_SIZE) {}
+      sprite_framebuffer(DISPLAY_SIZE),
+      background_colors(COLORS),
+      sprite_colors{SPRITE_COLORS, SPRITE_COLORS},
+      background_palette_callback{memory.add_write_listener(
+          Registers::Palette::Background::Address,
+          [this](u8 palette, u8) {
+            background_colors = generate_colors({palette});
+          })},
+      obj0_palette_callback{memory.add_write_listener(
+          Registers::Palette::Obj0::Address,
+          [this](u8 palette, u8) {
+            sprite_colors[0] = generate_colors({palette}, true);
+          })},
+      obj1_palette_callback{memory.add_write_listener(
+          Registers::Palette::Obj1::Address,
+          [this](u8 palette, u8) {
+            sprite_colors[1] = generate_colors({palette}, true);
+          })} {}
+
+Gpu::~Gpu() {
+  memory->remove_write_listener(Registers::Palette::Background::Address,
+                                background_palette_callback);
+  memory->remove_write_listener(Registers::Palette::Obj0::Address,
+                                obj0_palette_callback);
+  memory->remove_write_listener(Registers::Palette::Obj1::Address,
+                                obj1_palette_callback);
+}
 
 u8 Gpu::get_scx() const {
   return memory->at(0xff43);
@@ -83,6 +109,8 @@ void Gpu::render_sprites(int scanline) {
       continue;
     }
 
+    const auto& colors = sprite_colors.at(sprite_attrib.palette_number());
+
     const int adjusted_y = sprite_attrib.y - 16;
 
     if (scanline >= adjusted_y && scanline < adjusted_y + sprite_height) {
@@ -106,7 +134,7 @@ void Gpu::render_sprites(int scanline) {
         const int flipped_pixel_x =
             sprite_attrib.flip_x() ? 7 - pixel_x : pixel_x;
         render_pixel(sprite_framebuffer, byte1, byte2, flipped_pixel_x,
-                     x + pixel_x, y, SPRITE_COLORS);
+                     x + pixel_x, y, colors);
       }
     }
   }
@@ -163,8 +191,19 @@ void Gpu::render_background(int scanline) {
     const u8 byte2 = memory->at(tile_addr + 1);
 
     render_pixel(background_framebuffer, byte1, byte2, pixel_x % 8, screen_x,
-                 scanline, COLORS);
+                 scanline, background_colors);
   }
+}
+
+std::array<Pixel, 4> Gpu::generate_colors(Palette palette, bool is_sprite) {
+  const auto& base_colors = is_sprite ? SPRITE_COLORS : COLORS;
+  std::array<Pixel, 4> colors;
+  std::generate(colors.begin(), colors.end(),
+                [palette, base_colors, i = 0]() mutable {
+                  return base_colors.at(palette.get_color(i++));
+                });
+  colors[0].a = 0;
+  return colors;
 }
 
 void Gpu::render_scanline(int scanline) {
