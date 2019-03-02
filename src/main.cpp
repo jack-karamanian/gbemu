@@ -9,7 +9,11 @@
 #include "input.h"
 #include "lcd.h"
 #include "memory.h"
+#include "registers/palette.h"
+#include "registers/sound.h"
+#include "renderer.h"
 #include "sdl_renderer.h"
+#include "sound.h"
 #include "timers.h"
 
 namespace po = boost::program_options;
@@ -57,9 +61,10 @@ int main(int argc, const char** argv) {
 
   gb::Timers timers{memory};
   gb::Cpu cpu{memory};
+
   cpu.set_debug(trace);
 
-  SDL_Init(SDL_INIT_VIDEO);
+  SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO);
 
 #if __linux__ && !defined RASPBERRYPI
   SDL_SetHint(SDL_HINT_VIDEO_X11_NET_WM_BYPASS_COMPOSITOR, "0");
@@ -81,6 +86,19 @@ int main(int argc, const char** argv) {
     std::cout << "SDL Error: " << SDL_GetError() << std::endl;
   }
 
+  SDL_AudioSpec want, have;
+  std::memset(&want, 0, sizeof(want));
+
+  want.freq = 48000;
+  want.format = AUDIO_F32;
+  want.channels = 1;
+  want.samples = 1024;
+
+  SDL_AudioDeviceID audio_device =
+      SDL_OpenAudioDevice(nullptr, 0, &want, &have, SDL_AUDIO_ALLOW_ANY_CHANGE);
+
+  SDL_PauseAudioDevice(audio_device, 0);
+
   std::shared_ptr<gb::SdlRenderer> renderer =
       std::make_shared<gb::SdlRenderer>(std::move(sdl_renderer));
   gb::Gpu gpu{memory, renderer};
@@ -97,6 +115,30 @@ int main(int argc, const char** argv) {
 
   gb::Lcd lcd{cpu, memory, gpu};
   gb::Input input{memory};
+  gb::Sound sound{memory};
+
+  memory.add_write_listener_for_addrs(
+      [&sound](u16 addr, u8 val, u8) { sound.handle_memory_write(addr, val); },
+      gb::Registers::Sound::Square1::NR10::Address,
+      gb::Registers::Sound::Square1::NR11::Address,
+      gb::Registers::Sound::Square1::NR12::Address,
+      gb::Registers::Sound::Square1::NR13::Address,
+      gb::Registers::Sound::Square1::NR14::Address,
+      gb::Registers::Sound::Square2::NR21::Address,
+      gb::Registers::Sound::Square2::NR22::Address,
+      gb::Registers::Sound::Square2::NR23::Address,
+      gb::Registers::Sound::Square2::NR23::Address);
+
+  sound.set_samples_ready_listener(
+      [audio_device](const std::vector<float>& square1_samples) {
+        while (SDL_GetQueuedAudioSize(audio_device) > 4096 * sizeof(float)) {
+          SDL_Delay(1);
+        }
+        if (SDL_QueueAudio(audio_device, square1_samples.data(),
+                           square1_samples.size() * sizeof(float))) {
+          std::cout << "SDL Error: " << SDL_GetError() << std::endl;
+        }
+      });
 
   cpu.pc = 0x100;
 

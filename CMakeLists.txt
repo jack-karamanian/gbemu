@@ -34,12 +34,17 @@ add_executable(
   src/registers/interrupt_enabled.h
   src/registers/interrupt_request.h
   src/registers/palette.h
+  src/registers/sound.h
   src/input.h
   src/input.cpp
   src/utils.h
   src/sdl_utils.h
   src/timers.h
   src/timers.cpp
+  src/sound.h
+  src/sound.cpp
+  src/square_channel.h
+  src/square_channel.cpp
 )
 
 find_library(SDL2_LIB NAMES SDL2)
