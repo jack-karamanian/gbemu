@@ -84,6 +84,17 @@ int main(int argc, const char** argv) {
   std::shared_ptr<gb::SdlRenderer> renderer =
       std::make_shared<gb::SdlRenderer>(std::move(sdl_renderer));
   gb::Gpu gpu{memory, renderer};
+
+  memory.add_write_listener(
+      gb::Registers::Palette::Background::Address,
+      [&gpu](u8 palette, u8) { gpu.compute_background_palette(palette); });
+  memory.add_write_listener(
+      gb::Registers::Palette::Obj0::Address,
+      [&gpu](u8 palette, u8) { gpu.compute_sprite_palette(0, palette); });
+  memory.add_write_listener(
+      gb::Registers::Palette::Obj1::Address,
+      [&gpu](u8 palette, u8) { gpu.compute_sprite_palette(1, palette); });
+
   gb::Lcd lcd{cpu, memory, gpu};
   gb::Input input{memory};
 

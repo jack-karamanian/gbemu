@@ -35,31 +35,7 @@ Gpu::Gpu(Memory& memory, std::shared_ptr<IRenderer> renderer)
       background_framebuffer(DISPLAY_SIZE),
       sprite_framebuffer(DISPLAY_SIZE),
       background_colors(COLORS),
-      sprite_colors{SPRITE_COLORS, SPRITE_COLORS},
-      background_palette_callback{memory.add_write_listener(
-          Registers::Palette::Background::Address,
-          [this](u8 palette, u8) {
-            background_colors = generate_colors({palette});
-          })},
-      obj0_palette_callback{memory.add_write_listener(
-          Registers::Palette::Obj0::Address,
-          [this](u8 palette, u8) {
-            sprite_colors[0] = generate_colors({palette}, true);
-          })},
-      obj1_palette_callback{memory.add_write_listener(
-          Registers::Palette::Obj1::Address,
-          [this](u8 palette, u8) {
-            sprite_colors[1] = generate_colors({palette}, true);
-          })} {}
-
-Gpu::~Gpu() {
-  memory->remove_write_listener(Registers::Palette::Background::Address,
-                                background_palette_callback);
-  memory->remove_write_listener(Registers::Palette::Obj0::Address,
-                                obj0_palette_callback);
-  memory->remove_write_listener(Registers::Palette::Obj1::Address,
-                                obj1_palette_callback);
-}
+      sprite_colors{SPRITE_COLORS, SPRITE_COLORS} {}
 
 u8 Gpu::get_scx() const {
   return memory->at(0xff43);
@@ -204,6 +180,14 @@ std::array<Pixel, 4> Gpu::generate_colors(Palette palette, bool is_sprite) {
                 });
   colors[0].a = 0;
   return colors;
+}
+
+void Gpu::compute_background_palette(u8 palette) {
+  background_colors = generate_colors({palette});
+}
+
+void Gpu::compute_sprite_palette(int palette_number, u8 palette) {
+  sprite_colors.at(palette_number) = generate_colors({palette}, true);
 }
 
 void Gpu::render_scanline(int scanline) {
