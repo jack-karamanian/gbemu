@@ -105,6 +105,16 @@ void Memory::reset() {
   memory[0xFF00] = 0xFF;
 }
 
+void Memory::add_write_listener_for_range(u16 begin,
+                                          u16 end,
+                                          const AddrMemoryListener& callback) {
+  for (u16 addr = begin; addr <= end; addr++) {
+    add_write_listener(addr, [callback, addr](u8 val, u8 prev_val) {
+      callback(addr, val, prev_val);
+    });
+  }
+}
+
 void Memory::load_rom(const std::vector<u8>& data) {
   std::copy(data.begin(), data.end(), &rom[0]);
 }

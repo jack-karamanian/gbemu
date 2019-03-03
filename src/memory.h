@@ -37,6 +37,7 @@ class RomBank {
 };
 
 using MemoryListener = std::function<void(u8 val, u8 prev_val)>;
+using AddrMemoryListener = std::function<void(u16 addr, u8 val, u8 prev_val)>;
 
 class Memory {
   std::vector<u8> memory;
@@ -84,6 +85,20 @@ class Memory {
   void add_write_listener(u16 addr, MemoryListener callback) {
     write_callbacks.emplace(addr, std::move(callback));
   }
+
+  template <typename... Addrs>
+  void add_write_listener_for_addrs(AddrMemoryListener callback,
+                                    Addrs... args) {
+    for (u16 addr : {args...}) {
+      add_write_listener(addr, [callback, addr](u8 val, u8 prev_val) {
+        callback(addr, val, prev_val);
+      });
+    }
+  }
+
+  void add_write_listener_for_range(u16 begin,
+                                    u16 end,
+                                    const AddrMemoryListener& callback);
 
   void do_dma_transfer(const u8& val);
 
