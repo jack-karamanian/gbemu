@@ -203,6 +203,8 @@ int main(int argc, const char** argv) {
       if (request_interrupt) {
         cpu.request_interrupt(gb::Cpu::Interrupt::Timer);
       }
+
+      sound.update(ticks);
     }
 
     renderer->clear();
