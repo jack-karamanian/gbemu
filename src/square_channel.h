@@ -1,36 +1,39 @@
 #pragma once
 #include <array>
+#include <functional>
 #include <utility>
+#include "sound_length.h"
 
 namespace gb {
 class SquareChannel {
-  // Timer/frequency
-  int timer_base = 0;
-  int timer = 0;
-
-  int wave_progress = 0;
-
-  int length_counter = 0;
-  bool length_enabled = false;
-
   bool enabled = false;
 
-  std::array<bool, 8> duty_cycle;
+  int envelope_period = 0;
+  int envelope_timer = 0;
+  int starting_volume = 0;
+  int volume = 0;
+  bool increase_volume = false;
 
  public:
-  void set_timer_base(int value) { timer_base = (2048 - value) * 4; }
+  SampleTracker<8, bool> sample_tracker;
+  LengthTracker<64> length_tracker;
 
-  void set_duty_cycle(const std::array<bool, 8>& value) { duty_cycle = value; }
-
-  void set_length(int length) { length_counter = length; }
-
-  void set_length_enabled(bool enabled) { length_enabled = enabled; }
+  void set_starting_volume(int value) { starting_volume = value; }
+  void set_increase_volume(bool value) { increase_volume = value; }
+  void set_envelope_period(int value) {
+    envelope_period = value == 0 ? 8 : value;
+  }
 
   bool is_enabled() const { return enabled; }
+
   void enable();
+
+  void disable() { enabled = false; }
 
   float update();
 
-  void clock_length();
+  void clock_length() { enabled = length_tracker.clock(); }
+
+  void clock_envelope();
 };
 }  // namespace gb

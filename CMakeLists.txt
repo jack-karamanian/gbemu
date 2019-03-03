@@ -45,6 +45,9 @@ add_executable(
   src/sound.cpp
   src/square_channel.h
   src/square_channel.cpp
+  src/wave_channel.h
+  src/wave_channel.cpp
+  src/sound_length.h
 )
 
 find_library(SDL2_LIB NAMES SDL2)
@@ -54,5 +57,6 @@ target_include_directories(gbemu PRIVATE include)
 target_compile_definitions(gbemu PRIVATE span_FEATURE_MEMBER_AT=1)
 
 target_link_libraries(gbemu ${SDL2_LIB} ${BOOST_PROGRAM_OPTIONS_LIB})
-target_compile_options(gbemu PRIVATE -Wall -Wextra -pedantic -g)
+target_compile_options(gbemu PRIVATE -Wall -Wextra -pedantic -O3 -g)
+target_link_options(gbemu PRIVATE -fuse-ld=gold)
 

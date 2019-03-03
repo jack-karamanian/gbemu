@@ -13,33 +13,80 @@ constexpr std::array<std::array<bool, 8>, 4> DUTY_CYCLES = {{
 }};
 
 namespace gb {
-Sound::Sound(Memory& memory) : memory{&memory}, sample_buffer(4096) {}
+Sound::Sound(Memory& memory)
+    : memory{&memory},
+      wave{memory.get_range({0xff30, 0xff3f})},
+      sample_buffer(4096) {}
 
 void Sound::handle_memory_write(u16 addr, u8 value) {
-  SquareChannel& square =
+  auto& square =
       addr <= Registers::Sound::Square1::NR14::Address ? square1 : square2;
   switch (addr) {
     case Registers::Sound::Square1::NR11::Address:
     case Registers::Sound::Square2::NR21::Address:
-      square.set_duty_cycle(DUTY_CYCLES.at((value & 0xC0) >> 6));
-      square.set_length(64 - (value & 0x3f));
+      square.sample_tracker.set_duty_cycle(DUTY_CYCLES.at((value & 0xC0) >> 6));
+      square.length_tracker.set_length(value & 0x3f);
       // TODO: Length load
+      break;
+    case Registers::Sound::Square1::NR12::Address:
+    case Registers::Sound::Square2::NR22::Address:
+      square.set_starting_volume((value & 0xf0) >> 4);
+      square.set_increase_volume((value & 0x08) != 0);
+      square.set_envelope_period(value & 0x07);
       break;
     case Registers::Sound::Square1::NR13::Address:
       break;
 
     case Registers::Sound::Square1::NR14::Address:
     case Registers::Sound::Square2::NR24::Address: {
+      square.length_tracker.set_length_enabled((value & 0x40) != 0);
+      const u16 lsb_addr = addr - 1;
+      const u16 frequency = (value & 0x07) << 8 | memory->get_ram(lsb_addr);
+      square.sample_tracker.set_timer_base(frequency);
       if ((value & 0x80) != 0) {
-        const u16 lsb_addr = addr == Registers::Sound::Square1::NR14::Address
-                                 ? Registers::Sound::Square1::NR13::Address
-                                 : Registers::Sound::Square2::NR23::Address;
-        const u16 frequency = (value & 0x07) << 8 | memory->get_ram(lsb_addr);
-        square.set_length_enabled((value & 0x40) != 0);
-        square.set_timer_base(frequency);
         square.enable();
       }
 
+      break;
+    }
+    case Registers::Sound::Wave::NR31::Address:
+      wave.length_tracker.set_length(value);
+      break;
+    case Registers::Sound::Wave::NR32::Address:
+      wave.set_volume_shift((value & 0x60) >> 5);
+      break;
+    case Registers::Sound::Wave::NR33::Address: {
+      const u16 frequency = (memory->get_ram(addr + 1) & 0x07) << 8 | value;
+      wave.set_timer_base(frequency);
+      break;
+    }
+    case Registers::Sound::Wave::NR34::Address: {
+      const u16 lsb_addr = addr - 1;
+      const u16 frequency = (value & 0x07) << 8 | memory->get_ram(lsb_addr);
+      wave.set_timer_base(frequency);
+      wave.length_tracker.set_length_enabled((value & 0x40) != 0);
+      if ((value & 0x80) != 0) {
+        wave.enable();
+      }
+
+      break;
+    }
+    case Registers::Sound::Control::NR52::Address: {
+      if ((value & 0x01) != 0) {
+        square1.enable();
+      } else {
+        square1.disable();
+      }
+      if ((value & 0x02) != 0) {
+        square2.enable();
+      } else {
+        square2.disable();
+      }
+      if ((value & 0x04) != 0) {
+        wave.enable();
+      } else {
+        wave.disable();
+      }
       break;
     }
   }
@@ -52,6 +99,7 @@ void Sound::update(int ticks) {
   for (int i = 0; i < ticks; i++) {
     float square1_sample = square1.update();
     float square2_sample = square2.update();
+    float wave_sample = wave.update();
 
     if (++sample_ticks > 87) {
       float mixed_sample = 0;
@@ -62,11 +110,14 @@ void Sound::update(int ticks) {
       SDL_MixAudioFormat(reinterpret_cast<Uint8*>(&mixed_sample),
                          reinterpret_cast<Uint8*>(&square2_sample),
                          AUDIO_F32SYS, sizeof(float), 128);
+      SDL_MixAudioFormat(reinterpret_cast<Uint8*>(&mixed_sample),
+                         reinterpret_cast<Uint8*>(&wave_sample), AUDIO_F32SYS,
+                         sizeof(float), 128);
 
       sample_buffer.emplace_back(mixed_sample);
       sample_ticks = 0;
     }
-    if (sample_buffer.size() >= 1024) {
+    if (sample_buffer.size() >= 4096) {
       samples_ready_callback(sample_buffer);
       sample_buffer.clear();
     }
@@ -75,9 +126,12 @@ void Sound::update(int ticks) {
       if (sequencer_step % 2 == 0) {
         square1.clock_length();
         square2.clock_length();
+        wave.clock_length();
       }
 
       if (sequencer_step == 7) {
+        square1.clock_envelope();
+        square2.clock_envelope();
         sequencer_step = 0;
       } else {
         sequencer_step++;

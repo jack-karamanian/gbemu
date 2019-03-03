@@ -3,6 +3,7 @@
 #include <vector>
 #include "square_channel.h"
 #include "types.h"
+#include "wave_channel.h"
 
 namespace gb {
 class Memory;
@@ -15,6 +16,7 @@ class Sound {
 
   SquareChannel square1;
   SquareChannel square2;
+  WaveChannel wave;
 
   std::vector<float> sample_buffer;
 

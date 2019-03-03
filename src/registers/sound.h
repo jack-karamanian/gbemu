@@ -34,8 +34,29 @@ namespace NR24 {
 constexpr u16 Address = 0xff19;
 }
 }  // namespace Square2
+namespace Wave {
+namespace NR30 {
+constexpr u16 Address = 0xff1a;
+}
+namespace NR31 {
+constexpr u16 Address = 0xff1b;
+}
+namespace NR32 {
+constexpr u16 Address = 0xff1c;
+}
+namespace NR33 {
+constexpr u16 Address = 0xff1d;
+}
+namespace NR34 {
+constexpr u16 Address = 0xff1e;
+}
+}  // namespace Wave
 namespace Noise {}
-namespace Control {}
+namespace Control {
+namespace NR52 {
+constexpr u16 Address = 0xff26;
+}
+}  // namespace Control
 }  // namespace Sound
 }  // namespace Registers
 }  // namespace gb
