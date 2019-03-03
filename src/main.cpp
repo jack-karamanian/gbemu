@@ -117,17 +117,9 @@ int main(int argc, const char** argv) {
   gb::Input input{memory};
   gb::Sound sound{memory};
 
-  memory.add_write_listener_for_addrs(
-      [&sound](u16 addr, u8 val, u8) { sound.handle_memory_write(addr, val); },
-      gb::Registers::Sound::Square1::NR10::Address,
-      gb::Registers::Sound::Square1::NR11::Address,
-      gb::Registers::Sound::Square1::NR12::Address,
-      gb::Registers::Sound::Square1::NR13::Address,
-      gb::Registers::Sound::Square1::NR14::Address,
-      gb::Registers::Sound::Square2::NR21::Address,
-      gb::Registers::Sound::Square2::NR22::Address,
-      gb::Registers::Sound::Square2::NR23::Address,
-      gb::Registers::Sound::Square2::NR23::Address);
+  memory.add_write_listener_for_range(
+      0xff10, 0xff26,
+      [&sound](u16 addr, u8 val, u8) { sound.handle_memory_write(addr, val); });
 
   sound.set_samples_ready_listener(
       [audio_device](const std::vector<float>& square1_samples) {
