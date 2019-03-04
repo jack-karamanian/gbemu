@@ -48,6 +48,8 @@ add_executable(
   src/wave_channel.h
   src/wave_channel.cpp
   src/sound_length.h
+  src/wave_source.h
+  src/wave_source.cpp
 )
 
 find_library(SDL2_LIB NAMES SDL2)
