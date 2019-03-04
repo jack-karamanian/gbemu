@@ -610,7 +610,6 @@ void Cpu::jr_e8() {
 // JR cc,e8
 void Cpu::jr_cc_e8() {
   const s8 offset = read_operand();
-  std::cout << "offset " << std::hex << +offset << std::endl;
   jump_conditional(pc + offset, 4);
 }
 
