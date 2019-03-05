@@ -24,7 +24,10 @@ class Channel {
 
  public:
   Source source;
+
   Channel(Source source) : source(std::move(source)) {}
+
+  Channel() {}
 
   float update() {
     if (enabled) {
