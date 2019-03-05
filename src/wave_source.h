@@ -6,8 +6,8 @@
 namespace gb {
 class WaveSource {
   bool enabled = false;
-  int timer_base = 0;
   int timer = 0;
+  int timer_base = 0;
 
   int wave_progress = 0;
 

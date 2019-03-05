@@ -14,6 +14,16 @@ float SquareChannel::update() {
   return sample * (volume / 16.0f);
 }
 
+void SquareChannel::sequencer_clock(int cycle) {
+  if (cycle % 2 == 0) {
+    enabled = length_tracker.clock();
+  }
+
+  if (cycle == 7) {
+    clock_envelope();
+  }
+}
+
 void SquareChannel::clock_envelope() {
   if (--envelope_timer <= 0) {
     envelope_timer = envelope_period;

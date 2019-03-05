@@ -32,6 +32,8 @@ class SquareChannel {
 
   float update();
 
+  void sequencer_clock(int cycle);
+
   void clock_length() { enabled = length_tracker.clock(); }
 
   void clock_envelope();

@@ -15,7 +15,7 @@ constexpr std::array<std::array<bool, 8>, 4> DUTY_CYCLES = {{
 namespace gb {
 Sound::Sound(Memory& memory)
     : memory{&memory},
-      wave{memory.get_range({0xff30, 0xff3f})},
+      wave_channel{{memory.get_range({0xff30, 0xff3f})}},
       sample_buffer(4096) {}
 
 void Sound::handle_memory_write(u16 addr, u8 value) {
@@ -26,7 +26,6 @@ void Sound::handle_memory_write(u16 addr, u8 value) {
     case Registers::Sound::Square2::NR21::Address:
       square.sample_tracker.set_duty_cycle(DUTY_CYCLES.at((value & 0xC0) >> 6));
       square.length_tracker.set_length(value & 0x3f);
-      // TODO: Length load
       break;
     case Registers::Sound::Square1::NR12::Address:
     case Registers::Sound::Square2::NR22::Address:
@@ -50,23 +49,23 @@ void Sound::handle_memory_write(u16 addr, u8 value) {
       break;
     }
     case Registers::Sound::Wave::NR31::Address:
-      wave.length_tracker.set_length(value);
+      wave_channel.dispatch(SetLengthCommand{value});
       break;
     case Registers::Sound::Wave::NR32::Address:
-      wave.set_volume_shift((value & 0x60) >> 5);
+      wave_channel.dispatch(VolumeShiftCommand{(value & 0x60) >> 5});
       break;
     case Registers::Sound::Wave::NR33::Address: {
       const u16 frequency = (memory->get_ram(addr + 1) & 0x07) << 8 | value;
-      wave.set_timer_base(frequency);
+      wave_channel.source.set_timer_base(frequency);
       break;
     }
     case Registers::Sound::Wave::NR34::Address: {
       const u16 lsb_addr = addr - 1;
       const u16 frequency = (value & 0x07) << 8 | memory->get_ram(lsb_addr);
-      wave.set_timer_base(frequency);
-      wave.length_tracker.set_length_enabled((value & 0x40) != 0);
+      wave_channel.source.set_timer_base(frequency);
+      wave_channel.dispatch(SetLengthEnabledCommand{(value & 0x40) != 0});
       if ((value & 0x80) != 0) {
-        wave.enable();
+        wave_channel.enable();
       }
 
       break;
@@ -83,9 +82,9 @@ void Sound::handle_memory_write(u16 addr, u8 value) {
         square2.disable();
       }
       if ((value & 0x04) != 0) {
-        wave.enable();
+        wave_channel.enable();
       } else {
-        wave.disable();
+        // wave_channel.disable();
       }
       break;
     }
@@ -99,7 +98,7 @@ void Sound::update(int ticks) {
   for (int i = 0; i < ticks; i++) {
     float square1_sample = square1.update();
     float square2_sample = square2.update();
-    float wave_sample = wave.update();
+    float wave_sample = wave_channel.update();
 
     if (++sample_ticks > 87) {
       float mixed_sample = 0;
@@ -123,10 +122,11 @@ void Sound::update(int ticks) {
     }
 
     if (++sequencer_ticks >= 8192) {
+      wave_channel.clock(sequencer_step);
       if (sequencer_step % 2 == 0) {
         square1.clock_length();
         square2.clock_length();
-        wave.clock_length();
+        // wave.clock_length();
       }
 
       if (sequencer_step == 7) {

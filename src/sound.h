@@ -1,9 +1,13 @@
 #pragma once
 #include <functional>
 #include <vector>
+#include "channel.h"
+#include "sound_mods/length_mod.h"
+#include "sound_mods/quiet_mod.h"
+#include "sound_mods/volume_shift_mod.h"
 #include "square_channel.h"
 #include "types.h"
-#include "wave_channel.h"
+#include "wave_source.h"
 
 namespace gb {
 class Memory;
@@ -16,7 +20,8 @@ class Sound {
 
   SquareChannel square1;
   SquareChannel square2;
-  WaveChannel wave;
+
+  Channel<WaveSource, LengthMod<256>, VolumeShiftMod, QuietMod> wave_channel;
 
   std::vector<float> sample_buffer;
 
