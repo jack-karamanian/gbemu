@@ -20,29 +20,36 @@ class Channel {
   void dispatch_command(...) {}
 
   std::tuple<Mods...> mods;
+  bool enabled = false;
 
  public:
   Source source;
   Channel(Source source) : source(std::move(source)) {}
 
   float update() {
-    float res = source.update();
-    for_static<sizeof...(Mods)>(
-        [&res, this](auto i) { res = std::get<i>(mods).update(res); });
-    return res;
+    if (enabled) {
+      float res = source.update();
+      for_static<sizeof...(Mods)>(
+          [&res, this](auto i) { res = std::get<i>(mods).update(res); });
+      return res;
+    }
+    return 0;
   }
 
   void clock(int step) {
-    for_static<sizeof...(Mods)>(
-        [this, step](auto i) { std::get<i>(mods).clock(step); });
+    if (enabled) {
+      for_static<sizeof...(Mods)>(
+          [this, step](auto i) { std::get<i>(mods).clock(step); });
+    }
   }
 
   void enable() {
+    enabled = true;
     source.enable();
     for_static<sizeof...(Mods)>([this](auto i) { std::get<i>(mods).enable(); });
   }
 
-  void disable() { source.disable(); }
+  void disable() { enabled = false; }
 
   template <typename T>
   void dispatch(T command) {
@@ -51,6 +58,6 @@ class Channel {
       dispatch_command(mod, command);
     });
   }
-};
+};  // namespace gb
 
 }  // namespace gb

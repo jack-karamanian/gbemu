@@ -84,7 +84,7 @@ void Sound::handle_memory_write(u16 addr, u8 value) {
       if ((value & 0x04) != 0) {
         wave_channel.enable();
       } else {
-        // wave_channel.disable();
+        wave_channel.disable();
       }
       break;
     }
