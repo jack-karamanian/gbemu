@@ -2,10 +2,11 @@
 #include <functional>
 #include <vector>
 #include "channel.h"
+#include "sound_mods/envelope_mod.h"
 #include "sound_mods/length_mod.h"
 #include "sound_mods/quiet_mod.h"
 #include "sound_mods/volume_shift_mod.h"
-#include "square_channel.h"
+#include "square_source.h"
 #include "types.h"
 #include "wave_source.h"
 
@@ -13,6 +14,8 @@ namespace gb {
 class Memory;
 class Sound {
   using SamplesCallback = std::function<void(const std::vector<float>&)>;
+  using SquareChannel =
+      Channel<SquareSource, LengthMod<64>, EnvelopeMod, QuietMod>;
   Memory* memory;
   int sequencer_ticks = 0;
   int sequencer_step = 0;

@@ -24,24 +24,23 @@ void Sound::handle_memory_write(u16 addr, u8 value) {
   switch (addr) {
     case Registers::Sound::Square1::NR11::Address:
     case Registers::Sound::Square2::NR21::Address:
-      square.sample_tracker.set_duty_cycle(DUTY_CYCLES.at((value & 0xC0) >> 6));
-      square.length_tracker.set_length(value & 0x3f);
+      square.source.set_duty_cycle((value & 0xC0) >> 6);
+      square.dispatch(SetLengthCommand{value & 0x3f});
       break;
     case Registers::Sound::Square1::NR12::Address:
     case Registers::Sound::Square2::NR22::Address:
-      square.set_starting_volume((value & 0xf0) >> 4);
-      square.set_increase_volume((value & 0x08) != 0);
-      square.set_envelope_period(value & 0x07);
+      square.dispatch(SetStartingVolumeCommand{(value & 0xf0) >> 4});
+      square.dispatch(SetIncreaseVolumeCommand{(value & 0x08) != 0});
+      square.dispatch(SetPeriodCommand{value & 0x07});
       break;
     case Registers::Sound::Square1::NR13::Address:
       break;
-
     case Registers::Sound::Square1::NR14::Address:
     case Registers::Sound::Square2::NR24::Address: {
-      square.length_tracker.set_length_enabled((value & 0x40) != 0);
+      square.dispatch(SetLengthEnabledCommand{(value & 0x40) != 0});
       const u16 lsb_addr = addr - 1;
       const u16 frequency = (value & 0x07) << 8 | memory->get_ram(lsb_addr);
-      square.sample_tracker.set_timer_base(frequency);
+      square.source.set_timer_base(frequency);
       if ((value & 0x80) != 0) {
         square.enable();
       }
@@ -122,16 +121,11 @@ void Sound::update(int ticks) {
     }
 
     if (++sequencer_ticks >= 8192) {
+      square1.clock(sequencer_step);
+      square2.clock(sequencer_step);
       wave_channel.clock(sequencer_step);
-      if (sequencer_step % 2 == 0) {
-        square1.clock_length();
-        square2.clock_length();
-        // wave.clock_length();
-      }
 
       if (sequencer_step == 7) {
-        square1.clock_envelope();
-        square2.clock_envelope();
         sequencer_step = 0;
       } else {
         sequencer_step++;
@@ -140,7 +134,5 @@ void Sound::update(int ticks) {
       sequencer_ticks = 0;
     }
   }
-
-  // > 8192
 }
 }  // namespace gb

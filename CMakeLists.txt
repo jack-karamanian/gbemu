@@ -43,9 +43,8 @@ add_executable(
   src/timers.cpp
   src/sound.h
   src/sound.cpp
-  src/square_channel.h
-  src/square_channel.cpp
-  src/sound_length.h
+  src/square_source.h
+  src/square_source.cpp
   src/wave_source.h
   src/wave_source.cpp
   src/sound_mods/length_mod.h
