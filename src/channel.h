@@ -1,7 +1,6 @@
 #pragma once
 #include <functional>
 #include <tuple>
-#include "sound_length.h"
 #include "types.h"
 #include "utils.h"
 #include "wave_source.h"
