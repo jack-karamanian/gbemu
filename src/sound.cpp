@@ -58,6 +58,7 @@ void Sound::handle_memory_write(u16 addr, u8 value) {
       const u16 lsb_addr = addr - 1;
       const u16 frequency = (value & 0x07) << 8 | memory->get_ram(lsb_addr);
       square.source.set_timer_base(frequency);
+      square.dispatch(SetLengthEnabledCommand{(value & 0x40) != 0});
       if ((value & 0x80) != 0) {
         square.enable();
       }
