@@ -5,13 +5,6 @@
 #include "registers/sound.h"
 #include "sound.h"
 
-constexpr std::array<std::array<bool, 8>, 4> DUTY_CYCLES = {{
-    {false, false, false, false, false, false, false, true},
-    {true, false, false, false, false, false, false, true},
-    {true, false, false, false, false, true, true, true},
-    {false, true, true, true, true, true, true, false},
-}};
-
 namespace gb {
 Sound::Sound(Memory& memory)
     : memory{&memory},
