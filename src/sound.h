@@ -2,6 +2,7 @@
 #include <functional>
 #include <vector>
 #include "channel.h"
+#include "noise_source.h"
 #include "sound_mods/envelope_mod.h"
 #include "sound_mods/length_mod.h"
 #include "sound_mods/quiet_mod.h"
@@ -49,6 +50,7 @@ class Sound {
 
   Channel<WaveSource, LengthMod<256>, VolumeShiftMod, QuietMod> wave_channel;
 
+  Channel<NoiseSource, LengthMod<64>, EnvelopeMod, QuietMod> noise_channel;
 
   OutputControl left_output;
   OutputControl right_output;

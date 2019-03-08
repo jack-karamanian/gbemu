@@ -51,8 +51,24 @@ namespace NR34 {
 constexpr u16 Address = 0xff1e;
 }
 }  // namespace Wave
-namespace Noise {}
+namespace Noise {
+namespace NR41 {
+constexpr u16 Address = 0xff20;
+}
+namespace NR42 {
+constexpr u16 Address = 0xff21;
+}
+namespace NR43 {
+constexpr u16 Address = 0xff22;
+}
+namespace NR44 {
+constexpr u16 Address = 0xff23;
+}
+}  // namespace Noise
 namespace Control {
+namespace NR51 {
+constexpr u16 Address = 0xff25;
+}
 namespace NR52 {
 constexpr u16 Address = 0xff26;
 }

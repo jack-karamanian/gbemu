@@ -47,6 +47,8 @@ add_executable(
   src/square_source.cpp
   src/wave_source.h
   src/wave_source.cpp
+  src/noise_source.h
+  src/noise_source.cpp
   src/sound_mods/length_mod.h
   src/sound_mods/envelope_mod.h
   src/sound_mods/envelope_mod.cpp

@@ -28,6 +28,11 @@ float Sound::mix_samples(AudioFrame& frame, const OutputControl& control) {
                        reinterpret_cast<Uint8*>(&frame.wave_sample),
                        AUDIO_F32SYS, sizeof(float), 128);
   }
+  if (control.noise) {
+    SDL_MixAudioFormat(reinterpret_cast<Uint8*>(&mixed_sample),
+                       reinterpret_cast<Uint8*>(&frame.noise_sample),
+                       AUDIO_F32SYS, sizeof(float), 128);
+  }
   return mixed_sample;
 }
 
@@ -53,7 +58,6 @@ void Sound::handle_memory_write(u16 addr, u8 value) {
       const u16 lsb_addr = addr - 1;
       const u16 frequency = (value & 0x07) << 8 | memory->get_ram(lsb_addr);
       square.source.set_timer_base(frequency);
-      square.dispatch(SetLengthEnabledCommand{(value & 0x40) != 0});
       if ((value & 0x80) != 0) {
         square.enable();
       }
@@ -82,6 +86,29 @@ void Sound::handle_memory_write(u16 addr, u8 value) {
 
       break;
     }
+
+    case Registers::Sound::Noise::NR41::Address:
+      noise_channel.dispatch(SetLengthCommand{value & 0x3f});
+      break;
+    case Registers::Sound::Noise::NR42::Address:
+      noise_channel.dispatch(SetStartingVolumeCommand{(value & 0xf0) >> 4});
+      noise_channel.dispatch(SetIncreaseVolumeCommand{(value & 0x8) != 0});
+      noise_channel.dispatch(SetPeriodCommand{value & 0x7});
+      break;
+    case Registers::Sound::Noise::NR43::Address:
+      noise_channel.source.set_prescalar_divider((value & 0xf0) >> 4);
+      noise_channel.source.set_num_stages((value & 0x8) != 0);
+      noise_channel.source.set_clock_divisor(value & 0x7);
+      break;
+
+    case Registers::Sound::Noise::NR44::Address: {
+      noise_channel.dispatch(SetLengthEnabledCommand{(value & 0x40) != 0});
+      if ((value & 0x80) != 0) {
+        noise_channel.enable();
+      }
+      break;
+    }
+
     case Registers::Sound::Control::NR51::Address:
       right_output.set_enabled(value & 0xf);
       left_output.set_enabled((value & 0xf0) >> 4);
@@ -103,6 +130,13 @@ void Sound::handle_memory_write(u16 addr, u8 value) {
       } else {
         wave_channel.disable();
       }
+
+      if ((value & 0x80) != 0) {
+        // noise_channel.enable();
+        printf("enable noise\n");
+      } else {
+        printf("disable noise\n");
+      }
       break;
     }
   }
@@ -116,10 +150,11 @@ void Sound::update(int ticks) {
     float square1_sample = square1.update();
     float square2_sample = square2.update();
     float wave_sample = wave_channel.update();
+    float noise_sample = noise_channel.update();
 
     if (++sample_ticks > 87) {
-      AudioFrame frame{square1_sample, square2_sample, wave_sample
-                       };
+      AudioFrame frame{square1_sample, square2_sample, wave_sample,
+                       noise_sample};
 
       float left_sample = mix_samples(frame, left_output);
       float right_sample = mix_samples(frame, right_output);
@@ -138,6 +173,7 @@ void Sound::update(int ticks) {
       square1.clock(sequencer_step);
       square2.clock(sequencer_step);
       wave_channel.clock(sequencer_step);
+      noise_channel.clock(sequencer_step);
 
       if (sequencer_step == 7) {
         sequencer_step = 0;
