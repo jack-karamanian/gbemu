@@ -2,7 +2,7 @@
 
 namespace gb {
 void EnvelopeMod::enable() {
-  volume = initial_starting_volume;
+  volume = starting_volume;
   timer = period;
 }
 void EnvelopeMod::clock(int step) {

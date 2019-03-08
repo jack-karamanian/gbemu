@@ -21,12 +21,10 @@ class EnvelopeMod {
   int volume = 0;
   bool increase_volume = false;
 
-  int initial_starting_volume = 0;
-
  public:
   void enable();
 
-  void set_starting_volume(int value) { initial_starting_volume = value; }
+  void set_starting_volume(int value) { starting_volume = value; }
 
   void set_increase_volume(bool value) { increase_volume = value; }
 
