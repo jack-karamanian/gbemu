@@ -11,6 +11,26 @@ Sound::Sound(Memory& memory)
       wave_channel{{memory.get_range({0xff30, 0xff3f})}},
       sample_buffer(4096) {}
 
+float Sound::mix_samples(AudioFrame& frame, const OutputControl& control) {
+  float mixed_sample = 0.0f;
+  if (control.square1) {
+    SDL_MixAudioFormat(reinterpret_cast<Uint8*>(&mixed_sample),
+                       reinterpret_cast<Uint8*>(&frame.square1_sample),
+                       AUDIO_F32SYS, sizeof(float), 128);
+  }
+  if (control.square2) {
+    SDL_MixAudioFormat(reinterpret_cast<Uint8*>(&mixed_sample),
+                       reinterpret_cast<Uint8*>(&frame.square2_sample),
+                       AUDIO_F32SYS, sizeof(float), 128);
+  }
+  if (control.wave) {
+    SDL_MixAudioFormat(reinterpret_cast<Uint8*>(&mixed_sample),
+                       reinterpret_cast<Uint8*>(&frame.wave_sample),
+                       AUDIO_F32SYS, sizeof(float), 128);
+  }
+  return mixed_sample;
+}
+
 void Sound::handle_memory_write(u16 addr, u8 value) {
   auto& square =
       addr <= Registers::Sound::Square1::NR14::Address ? square1 : square2;
@@ -30,10 +50,10 @@ void Sound::handle_memory_write(u16 addr, u8 value) {
       break;
     case Registers::Sound::Square1::NR14::Address:
     case Registers::Sound::Square2::NR24::Address: {
-      square.dispatch(SetLengthEnabledCommand{(value & 0x40) != 0});
       const u16 lsb_addr = addr - 1;
       const u16 frequency = (value & 0x07) << 8 | memory->get_ram(lsb_addr);
       square.source.set_timer_base(frequency);
+      square.dispatch(SetLengthEnabledCommand{(value & 0x40) != 0});
       if ((value & 0x80) != 0) {
         square.enable();
       }
@@ -62,6 +82,11 @@ void Sound::handle_memory_write(u16 addr, u8 value) {
 
       break;
     }
+    case Registers::Sound::Control::NR51::Address:
+      right_output.set_enabled(value & 0xf);
+      left_output.set_enabled((value & 0xf0) >> 4);
+      break;
+
     case Registers::Sound::Control::NR52::Address: {
       if ((value & 0x01) != 0) {
         square1.enable();
@@ -93,24 +118,20 @@ void Sound::update(int ticks) {
     float wave_sample = wave_channel.update();
 
     if (++sample_ticks > 87) {
-      float mixed_sample = 0;
+      AudioFrame frame{square1_sample, square2_sample, wave_sample
+                       };
 
-      SDL_MixAudioFormat(reinterpret_cast<Uint8*>(&mixed_sample),
-                         reinterpret_cast<Uint8*>(&square1_sample),
-                         AUDIO_F32SYS, sizeof(float), 128);
-      SDL_MixAudioFormat(reinterpret_cast<Uint8*>(&mixed_sample),
-                         reinterpret_cast<Uint8*>(&square2_sample),
-                         AUDIO_F32SYS, sizeof(float), 128);
-      SDL_MixAudioFormat(reinterpret_cast<Uint8*>(&mixed_sample),
-                         reinterpret_cast<Uint8*>(&wave_sample), AUDIO_F32SYS,
-                         sizeof(float), 128);
+      float left_sample = mix_samples(frame, left_output);
+      float right_sample = mix_samples(frame, right_output);
 
-      sample_buffer.emplace_back(mixed_sample);
+      sample_buffer.emplace_back(left_sample);
+      sample_buffer.emplace_back(right_sample);
+
+      if (sample_buffer.size() >= 4096) {
+        samples_ready_callback(sample_buffer);
+        sample_buffer.clear();
+      }
       sample_ticks = 0;
-    }
-    if (sample_buffer.size() >= 4096) {
-      samples_ready_callback(sample_buffer);
-      sample_buffer.clear();
     }
 
     if (++sequencer_ticks >= 8192) {

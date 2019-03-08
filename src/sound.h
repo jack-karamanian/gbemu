@@ -12,11 +12,34 @@
 
 namespace gb {
 class Memory;
+struct OutputControl {
+  bool square1 = false;
+  bool square2 = false;
+  bool wave = false;
+  bool noise = false;
+
+  void set_enabled(u8 map) {
+    square1 = (map & 0x1) != 0;
+    square2 = (map & 0x2) != 0;
+    wave = (map & 0x4) != 0;
+    noise = (map & 0x8) != 0;
+  }
+};
+
+struct AudioFrame {
+  float square1_sample = 0.0f;
+  float square2_sample = 0.0f;
+  float wave_sample = 0.0f;
+  float noise_sample = 0.0f;
+};
+
 class Sound {
   using SamplesCallback = std::function<void(const std::vector<float>&)>;
   using SquareChannel =
       Channel<SquareSource, LengthMod<64>, EnvelopeMod, QuietMod>;
+
   Memory* memory;
+
   int sequencer_ticks = 0;
   int sequencer_step = 0;
   int sample_ticks = 0;
@@ -26,9 +49,15 @@ class Sound {
 
   Channel<WaveSource, LengthMod<256>, VolumeShiftMod, QuietMod> wave_channel;
 
+
+  OutputControl left_output;
+  OutputControl right_output;
+
   std::vector<float> sample_buffer;
 
   SamplesCallback samples_ready_callback;
+
+  float mix_samples(AudioFrame& frame, const OutputControl& control);
 
  public:
   Sound(Memory& memory);
