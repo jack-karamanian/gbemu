@@ -66,6 +66,9 @@ constexpr u16 Address = 0xff23;
 }
 }  // namespace Noise
 namespace Control {
+namespace NR50 {
+constexpr u16 Address = 0xff24;
+}
 namespace NR51 {
 constexpr u16 Address = 0xff25;
 }
