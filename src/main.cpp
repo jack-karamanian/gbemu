@@ -91,8 +91,8 @@ int main(int argc, const char** argv) {
 
   want.freq = 48000;
   want.format = AUDIO_F32;
-  want.channels = 1;
-  want.samples = 1024;
+  want.channels = 2;
+  want.samples = 4096;
 
   SDL_AudioDeviceID audio_device =
       SDL_OpenAudioDevice(nullptr, 0, &want, &have, SDL_AUDIO_ALLOW_ANY_CHANGE);
