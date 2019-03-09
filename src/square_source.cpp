@@ -1,6 +1,10 @@
 #include "square_source.h"
 
 namespace gb {
+void SquareSource::enable() {
+  timer = timer_base;
+}
+
 u8 SquareSource::update() {
   if (--timer <= 0) {
     timer = timer_base;

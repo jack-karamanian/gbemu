@@ -16,7 +16,7 @@ class SquareSource {
   int duty_cycle = 4;
 
  public:
-  void enable() { timer = timer_base; }
+  void enable();
   void set_timer_base(int value) { timer_base = (2048 - value) * 4; }
 
   void set_duty_cycle(int value) { duty_cycle = DUTY_CYCLES.at(value); }
