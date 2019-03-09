@@ -61,7 +61,8 @@ class Sound {
 
   SamplesCallback samples_ready_callback;
 
-  float mix_samples(const AudioFrame& frame, const OutputControl& control);
+  float mix_samples(const AudioFrame& frame,
+                    const OutputControl& control) const;
 
  public:
   Sound(Memory& memory);

@@ -12,7 +12,7 @@ Sound::Sound(Memory& memory)
       sample_buffer(4096) {}
 
 float Sound::mix_samples(const AudioFrame& frame,
-                         const OutputControl& control) {
+                         const OutputControl& control) const {
   float mixed_sample = 0.0f;
 
   int output_volume = ((control.volume * 128) / 16);
