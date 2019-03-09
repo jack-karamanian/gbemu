@@ -19,6 +19,8 @@ struct OutputControl {
   bool wave = false;
   bool noise = false;
 
+  int volume = 0;
+
   void set_enabled(u8 map) {
     square1 = (map & 0x1) != 0;
     square2 = (map & 0x2) != 0;

@@ -13,25 +13,27 @@ Sound::Sound(Memory& memory)
 
 float Sound::mix_samples(AudioFrame& frame, const OutputControl& control) {
   float mixed_sample = 0.0f;
+
+  int output_volume = ((control.volume * 128) / 16);
   if (control.square1) {
     SDL_MixAudioFormat(reinterpret_cast<Uint8*>(&mixed_sample),
                        reinterpret_cast<Uint8*>(&frame.square1_sample),
-                       AUDIO_F32SYS, sizeof(float), 128);
+                       AUDIO_F32SYS, sizeof(float), output_volume);
   }
   if (control.square2) {
     SDL_MixAudioFormat(reinterpret_cast<Uint8*>(&mixed_sample),
                        reinterpret_cast<Uint8*>(&frame.square2_sample),
-                       AUDIO_F32SYS, sizeof(float), 128);
+                       AUDIO_F32SYS, sizeof(float), output_volume);
   }
   if (control.wave) {
     SDL_MixAudioFormat(reinterpret_cast<Uint8*>(&mixed_sample),
                        reinterpret_cast<Uint8*>(&frame.wave_sample),
-                       AUDIO_F32SYS, sizeof(float), 128);
+                       AUDIO_F32SYS, sizeof(float), output_volume);
   }
   if (control.noise) {
     SDL_MixAudioFormat(reinterpret_cast<Uint8*>(&mixed_sample),
                        reinterpret_cast<Uint8*>(&frame.noise_sample),
-                       AUDIO_F32SYS, sizeof(float), 128);
+                       AUDIO_F32SYS, sizeof(float), output_volume);
   }
   return mixed_sample;
 }
@@ -110,6 +112,11 @@ void Sound::handle_memory_write(u16 addr, u8 value) {
       break;
     }
 
+    case Registers::Sound::Control::NR50::Address:
+      left_output.volume = (value & 0x70) >> 4;
+      right_output.volume = (value & 0x7);
+      break;
+
     case Registers::Sound::Control::NR51::Address:
       right_output.set_enabled(value & 0xf);
       left_output.set_enabled((value & 0xf0) >> 4);
@@ -117,17 +124,17 @@ void Sound::handle_memory_write(u16 addr, u8 value) {
 
     case Registers::Sound::Control::NR52::Address: {
       if ((value & 0x01) != 0) {
-        square1.enable();
+        // square1.enable();
       } else {
         square1.disable();
       }
       if ((value & 0x02) != 0) {
-        square2.enable();
+        // square2.enable();
       } else {
         square2.disable();
       }
       if ((value & 0x04) != 0) {
-        wave_channel.enable();
+        // wave_channel.enable();
       } else {
         wave_channel.disable();
       }
