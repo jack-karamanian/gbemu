@@ -11,28 +11,29 @@ Sound::Sound(Memory& memory)
       wave_channel{{memory.get_range({0xff30, 0xff3f})}},
       sample_buffer(4096) {}
 
-float Sound::mix_samples(AudioFrame& frame, const OutputControl& control) {
+float Sound::mix_samples(const AudioFrame& frame,
+                         const OutputControl& control) {
   float mixed_sample = 0.0f;
 
   int output_volume = ((control.volume * 128) / 16);
   if (control.square1) {
     SDL_MixAudioFormat(reinterpret_cast<Uint8*>(&mixed_sample),
-                       reinterpret_cast<Uint8*>(&frame.square1_sample),
+                       reinterpret_cast<const Uint8*>(&frame.square1_sample),
                        AUDIO_F32SYS, sizeof(float), output_volume);
   }
   if (control.square2) {
     SDL_MixAudioFormat(reinterpret_cast<Uint8*>(&mixed_sample),
-                       reinterpret_cast<Uint8*>(&frame.square2_sample),
+                       reinterpret_cast<const Uint8*>(&frame.square2_sample),
                        AUDIO_F32SYS, sizeof(float), output_volume);
   }
   if (control.wave) {
     SDL_MixAudioFormat(reinterpret_cast<Uint8*>(&mixed_sample),
-                       reinterpret_cast<Uint8*>(&frame.wave_sample),
+                       reinterpret_cast<const Uint8*>(&frame.wave_sample),
                        AUDIO_F32SYS, sizeof(float), output_volume);
   }
   if (control.noise) {
     SDL_MixAudioFormat(reinterpret_cast<Uint8*>(&mixed_sample),
-                       reinterpret_cast<Uint8*>(&frame.noise_sample),
+                       reinterpret_cast<const Uint8*>(&frame.noise_sample),
                        AUDIO_F32SYS, sizeof(float), output_volume);
   }
   return mixed_sample;
