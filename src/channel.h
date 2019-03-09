@@ -1,5 +1,4 @@
 #pragma once
-#include <functional>
 #include <tuple>
 #include "types.h"
 #include "utils.h"
@@ -60,6 +59,6 @@ class Channel {
       dispatch_command(mod, command);
     });
   }
-};  // namespace gb
+};
 
 }  // namespace gb
