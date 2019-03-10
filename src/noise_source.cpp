@@ -24,8 +24,10 @@ u8 NoiseSource::update() {
     }
 
     timer = 0;
+
+    output = (lfsr_counter & 0x1) != 0 ? 0 : 15;
   }
 
-  return (lfsr_counter & 0x1) != 0 ? 0 : 15;
+  return output;
 }
 }  // namespace gb

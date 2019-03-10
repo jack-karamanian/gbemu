@@ -59,6 +59,8 @@ class NoiseSource {
 
   int timer_base = 0;
 
+  u8 output = 0;
+
  public:
   void set_num_stages(bool value) { seven_stage = value; }
   void set_clock_divisor(int value) { clock_divisor = value; }
