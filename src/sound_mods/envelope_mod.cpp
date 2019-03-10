@@ -6,21 +6,21 @@ void EnvelopeMod::enable() {
   timer = period;
 }
 void EnvelopeMod::clock(int step) {
-  if (step == 7 && period != 0 && --timer <= 0) {
+  if (step == 7 && --timer <= 0) {
     timer = period;
+    if (period != 0) {
+      if (increase_volume && volume < 16) {
+        volume++;
+      }
 
-    if (increase_volume && volume < 16) {
-      volume++;
-    }
-
-    if (!increase_volume && volume > 0) {
-      volume--;
+      if (!increase_volume && volume > 0) {
+        volume--;
+      }
     }
   }
 }
 
-float EnvelopeMod::update(float input_volume) const {
-  float result = (volume / 16.0f) * input_volume;
-  return result;
+u8 EnvelopeMod::update(u8 input_volume) const {
+  return input_volume != 0 ? volume : 0;
 }
 }  // namespace gb
