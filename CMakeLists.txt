@@ -56,10 +56,11 @@ set(SRCS
   src/sound_mods/volume_shift_mod.cpp
 )
 
-add_executable(
-  gbemu
-  ${SRCS}
-)
+if(ANDROID)
+add_library(gbemu SHARED ${SRCS})
+else()
+add_executable(gbemu ${SRCS})
+endif()
 
 find_library(SDL2_LIB NAMES SDL2)
 find_library(BOOST_PROGRAM_OPTIONS_LIB NAMES boost_program_options)
