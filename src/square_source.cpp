@@ -6,13 +6,18 @@ int SquareSource::calculate_next_frequency(int freq) const {
   return freq;
 }
 
+void SquareSource::overflow_check(int freq) {
+  enabled = !is_overflowed(freq) &&
+            sweep_shift != 0;  // TODO: disable if period == 0?;
+}
+
 void SquareSource::sweep_frequency() {
   int next_frequency = calculate_next_frequency(frequency);
   set_frequency(next_frequency);
-  enabled = !is_overflowed(next_frequency);
-  next_frequency = calculate_next_frequency(next_frequency);
+  overflow_check(next_frequency);
 
-  enabled = !is_overflowed(next_frequency);  // TODO: disable if period == 0?;
+  next_frequency = calculate_next_frequency(next_frequency);
+  overflow_check(next_frequency);
 }
 
 void SquareSource::clock_sweep() {
@@ -30,7 +35,8 @@ void SquareSource::enable() {
   sweep_timer = sweep_period;
   if (sweep_enabled && sweep_shift != 0) {
     int next_frequency = calculate_next_frequency(frequency);
-    enabled = !is_overflowed(next_frequency);
+    // enabled = !is_overflowed(next_frequency);
+    overflow_check(next_frequency);
   }
 }
 

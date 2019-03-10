@@ -37,6 +37,8 @@ class SquareSource {
 
   int calculate_next_frequency(int freq) const;
 
+  void overflow_check(int freq);
+
   u8 output = 0;
 
  public:
