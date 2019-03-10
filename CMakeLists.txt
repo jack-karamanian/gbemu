@@ -3,9 +3,7 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 set(CMAKE_CXX_STANDARD 17)
 project(gbemu)
 
-
-add_executable(
-  gbemu
+set(SRCS
   src/main.cpp
   src/emulator.h
   src/emulator.cpp
@@ -56,6 +54,11 @@ add_executable(
   src/sound_mods/envelope_mod.cpp
   src/sound_mods/volume_shift_mod.h
   src/sound_mods/volume_shift_mod.cpp
+)
+
+add_executable(
+  gbemu
+  ${SRCS}
 )
 
 find_library(SDL2_LIB NAMES SDL2)
