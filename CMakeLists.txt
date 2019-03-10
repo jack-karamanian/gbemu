@@ -7,6 +7,8 @@ project(gbemu)
 add_executable(
   gbemu
   src/main.cpp
+  src/emulator.h
+  src/emulator.cpp
   include/types.h
   src/cpu.h
   src/cpu.cpp
