@@ -24,7 +24,7 @@ class EnvelopeMod {
  public:
   void enable();
 
-  void set_starting_volume(int value) { starting_volume = value; }
+  void set_starting_volume(int value) { starting_volume = volume = value; }
 
   void set_increase_volume(bool value) { increase_volume = value; }
 
