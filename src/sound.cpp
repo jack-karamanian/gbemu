@@ -8,6 +8,8 @@
 namespace gb {
 Sound::Sound(Memory& memory)
     : memory{&memory},
+      square1{{true}},
+      square2{{false}},
       wave_channel{{memory.get_range({0xff30, 0xff3f})}},
       sample_buffer(4096) {}
 
@@ -43,6 +45,11 @@ void Sound::handle_memory_write(u16 addr, u8 value) {
   auto& square =
       addr <= Registers::Sound::Square1::NR14::Address ? square1 : square2;
   switch (addr) {
+    case Registers::Sound::Square1::NR10::Address:
+      square1.source.set_sweep_period((value & 0x70) >> 4);
+      square1.source.set_sweep_negate((value & 0x8) != 0);
+      square1.source.set_sweep_shift(value & 0x7);
+      break;
     case Registers::Sound::Square1::NR11::Address:
     case Registers::Sound::Square2::NR21::Address:
       square.source.set_duty_cycle((value & 0xC0) >> 6);
@@ -55,7 +62,11 @@ void Sound::handle_memory_write(u16 addr, u8 value) {
       square.dispatch(SetPeriodCommand{value & 0x07});
       break;
     case Registers::Sound::Square1::NR13::Address:
+    case Registers::Sound::Square2::NR23::Address: {
+      const u16 frequency = (memory->get_ram(addr + 1) & 0x07) << 8 | value;
+      square.source.set_timer_base(frequency);
       break;
+    }
     case Registers::Sound::Square1::NR14::Address:
     case Registers::Sound::Square2::NR24::Address: {
       const u16 lsb_addr = addr - 1;
@@ -126,8 +137,10 @@ void Sound::handle_memory_write(u16 addr, u8 value) {
     case Registers::Sound::Control::NR52::Address: {
       if ((value & 0x01) != 0) {
         // square1.enable();
+        printf("enable square1\n");
       } else {
         square1.disable();
+        printf("disable square1\n");
       }
       if ((value & 0x02) != 0) {
         // square2.enable();
@@ -183,6 +196,10 @@ void Sound::update(int ticks) {
       square2.clock(sequencer_step);
       wave_channel.clock(sequencer_step);
       noise_channel.clock(sequencer_step);
+
+      if (sequencer_step == 2 || sequencer_step == 6) {
+        square1.source.clock_sweep();
+      }
 
       if (sequencer_step == 7) {
         sequencer_step = 0;
