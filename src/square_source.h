@@ -42,7 +42,10 @@ class SquareSource {
  public:
   SquareSource(bool enabled) : sweep_enabled{enabled} {}
 
-  void set_timer_base(int value) { staged_timer_base = value; }
+  void set_timer_base(int value) {
+    staged_timer_base = value;
+    set_frequency(value);
+  }
 
   void set_duty_cycle(int value) { duty_cycle = DUTY_CYCLES.at(value); }
 
