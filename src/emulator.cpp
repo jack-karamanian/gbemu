@@ -62,6 +62,9 @@ void run_with_options(const std::string& rom_name, bool trace) {
       SDL_CreateWindow("gbemu", SDL_WINDOWPOS_UNDEFINED,
                        SDL_WINDOWPOS_UNDEFINED, 160, 144, SDL_WINDOW_SHOWN);
 
+  if (!window) {
+    std::cout << "SDL Error: " << SDL_GetError() << std::endl;
+  }
   auto delete_renderer = [](SDL_Renderer* r) { SDL_DestroyRenderer(r); };
 
   std::unique_ptr<SDL_Renderer, std::function<void(SDL_Renderer*)>>
