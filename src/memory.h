@@ -60,7 +60,9 @@ class Memory {
 
   template <typename T = u8>
   T at(u16 addr) {
-    const auto [normalized_addr, storage] = select_storage(addr);
+    const auto x = select_storage(addr);
+    const auto& normalized_addr = x.first;
+    const auto& storage = x.second;
     if constexpr (sizeof(T) == 1) {
       return storage.at(normalized_addr);
     } else {
