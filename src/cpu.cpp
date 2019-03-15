@@ -32,6 +32,11 @@ int Cpu::fetch_and_decode() {
     return 4;
   }
   Instruction inst = fetch();
+  if (queue_interrupts_enabled) {
+    interrupts_enabled = true;
+    queue_interrupts_enabled = false;
+  }
+
   if (debug) {
     std::cout << inst.name << std::endl;
     std::cout << "opcode: " << std::hex << +memory->at(pc) << std::endl;
@@ -522,7 +527,7 @@ void Cpu::disable_interrupts() {
 
 // EI
 void Cpu::enable_interrupts() {
-  interrupts_enabled = true;
+  queue_interrupts_enabled = true;
 }
 
 void Cpu::halt() {

@@ -72,6 +72,8 @@ struct Cpu {
   bool stopped = false;
   bool halted = false;
 
+  bool queue_interrupts_enabled = false;
+
   bool debug = false;
 
   Memory* memory;
