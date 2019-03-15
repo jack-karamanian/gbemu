@@ -19,7 +19,7 @@ class Lcd {
   Memory* memory;
   Gpu* gpu;
 
-  int mode = 0;
+  int mode = 2;
   int scanlines = 0;
   unsigned int lcd_ticks = 0;
   void write_lcd_stat() const;
