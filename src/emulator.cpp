@@ -65,23 +65,25 @@ void run_with_options(const std::string& rom_name, bool trace) {
 #endif
 
   SDL_SetHint(SDL_HINT_RENDER_VSYNC, "1");
-  SDL_Window* window =
-      SDL_CreateWindow("gbemu", SDL_WINDOWPOS_UNDEFINED,
-                       SDL_WINDOWPOS_UNDEFINED, 160, 144, SDL_WINDOW_SHOWN);
+  SDL_Window* window = SDL_CreateWindow(
+      "gbemu", SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED, 160, 144,
+      SDL_WINDOW_SHOWN | SDL_WINDOW_RESIZABLE);
 
   if (!window) {
     std::cout << "SDL Error: " << SDL_GetError() << std::endl;
   }
+
   auto delete_renderer = [](SDL_Renderer* r) { SDL_DestroyRenderer(r); };
 
   std::unique_ptr<SDL_Renderer, std::function<void(SDL_Renderer*)>>
-      sdl_renderer{
-          SDL_CreateRenderer(
-              window, -1, SDL_RENDERER_ACCELERATED | SDL_RENDERER_PRESENTVSYNC),
-          delete_renderer};
+      sdl_renderer{SDL_CreateRenderer(window, -1, SDL_RENDERER_ACCELERATED),
+                   delete_renderer};
+
   if (!sdl_renderer) {
     std::cout << "SDL Error: " << SDL_GetError() << std::endl;
   }
+
+  SDL_RenderSetLogicalSize(sdl_renderer.get(), 160, 144);
 
   SDL_AudioSpec want, have;
   std::memset(&want, 0, sizeof(want));
