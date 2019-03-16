@@ -16,7 +16,7 @@ Cpu::Cpu(Memory& memory)
       memory{&memory},
       instruction_table(*this) {}
 
-Instruction Cpu::fetch() {
+const Instruction& Cpu::fetch() {
   const u8 opcode = memory->at(pc);
   if (opcode == 0xCB) {
     pc++;
@@ -31,12 +31,13 @@ int Cpu::fetch_and_decode() {
   if (stopped || halted) {
     return 4;
   }
-  Instruction inst = fetch();
+
   if (queue_interrupts_enabled) {
     interrupts_enabled = true;
     queue_interrupts_enabled = false;
   }
 
+  const Instruction& inst = fetch();
   if (debug) {
     std::cout << inst.name << std::endl;
     std::cout << "opcode: " << std::hex << +memory->at(pc) << std::endl;
