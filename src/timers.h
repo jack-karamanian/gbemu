@@ -5,13 +5,14 @@ namespace gb {
 class Memory;
 class Timers {
   Memory* memory;
-  u8 prev_timer = 0;
-  int total_ticks = 0;
-  int div_ticks = 0;
+  u16 internal_counter = 0;
+
+  int timer_ticks = 0;
 
  public:
   Timers(Memory& memory) : memory{&memory} {}
 
+  void handle_memory_write(u16 addr, u8 value);
   bool update(int ticks);
 };
 }  // namespace gb

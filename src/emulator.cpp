@@ -47,6 +47,12 @@ void run_with_options(const std::string& rom_name, bool trace) {
   load_rom(rom_name, memory);
 
   gb::Timers timers{memory};
+  memory.add_write_listener_for_addrs(
+      [&timers](u16 addr, u8 value, u8) {
+        timers.handle_memory_write(addr, value);
+      },
+      gb::Registers::Div::Address);
+
   gb::Cpu cpu{memory};
 
   cpu.set_debug(trace);
