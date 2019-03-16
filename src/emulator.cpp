@@ -10,6 +10,7 @@
 #include "input.h"
 #include "lcd.h"
 #include "memory.h"
+#include "registers/div.h"
 #include "registers/palette.h"
 #include "registers/sound.h"
 #include "renderer.h"
