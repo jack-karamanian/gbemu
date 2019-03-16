@@ -106,6 +106,8 @@ class Memory {
 
   u8 get_ram(u16 addr) const { return memory[addr]; }
 
+  void set_ram(u16 addr, u8 val) { memory[addr] = val; }
+
   u8 get_input_register() const { return memory[0xff00]; }
   void set_input_register(u8 val) { memory[0xff00] = val; }
 
