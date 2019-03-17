@@ -32,11 +32,9 @@ nonstd::span<const u8> Memory::get_range(std::pair<u16, u16> range) {
 }
 
 void Memory::set(u16 addr, u8 val) {
-  auto write_callbacks_for_addr = write_callbacks.find(addr);
-  if (write_callbacks_for_addr != write_callbacks.end()) {
-    for (const auto& wrapper : write_callbacks_for_addr->second) {
-      wrapper.callback(val, memory[addr]);
-    }
+  auto write_callback_for_addr = write_callbacks.find(addr);
+  if (write_callback_for_addr != write_callbacks.end()) {
+    write_callback_for_addr->second(val, memory[addr]);
   }
   if (addr == 0xff44) {
     memory[0xff44] = 0;
@@ -105,6 +103,16 @@ void Memory::reset() {
   memory[0xFF4B] = 0x00;
   memory[0xFFFE] = 0x00;
   memory[0xFF00] = 0xFF;
+}
+
+void Memory::add_write_listener_for_range(u16 begin,
+                                          u16 end,
+                                          const AddrMemoryListener& callback) {
+  for (u16 addr = begin; addr <= end; addr++) {
+    add_write_listener(addr, [callback, addr](u8 val, u8 prev_val) {
+      callback(addr, val, prev_val);
+    });
+  }
 }
 
 void Memory::load_rom(const std::vector<u8>& data) {

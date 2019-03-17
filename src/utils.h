@@ -30,4 +30,14 @@ T convert_bytes(const std::array<u8, sizeof(T)>& bytes) {
   return res;
 }
 
+template <typename Func, std::size_t... I>
+void for_static_impl(Func&& f, std::index_sequence<I...>) {
+  (f(std::integral_constant<std::size_t, I>{}), ...);
+}
+
+template <std::size_t I, typename Func>
+void for_static(Func&& f) {
+  for_static_impl(f, std::make_index_sequence<I>());
+}
+
 }  // namespace gb

@@ -16,7 +16,7 @@ Cpu::Cpu(Memory& memory)
       memory{&memory},
       instruction_table(*this) {}
 
-Instruction Cpu::fetch() {
+const Instruction& Cpu::fetch() {
   const u8 opcode = memory->at(pc);
   if (opcode == 0xCB) {
     pc++;
@@ -31,7 +31,13 @@ int Cpu::fetch_and_decode() {
   if (stopped || halted) {
     return 4;
   }
-  Instruction inst = fetch();
+
+  if (queue_interrupts_enabled) {
+    interrupts_enabled = true;
+    queue_interrupts_enabled = false;
+  }
+
+  const Instruction& inst = fetch();
   if (debug) {
     std::cout << inst.name << std::endl;
     std::cout << "opcode: " << std::hex << +memory->at(pc) << std::endl;
@@ -74,6 +80,8 @@ int Cpu::handle_interrupts() {
 }
 
 bool Cpu::handle_interrupt(u8 interrupt) {
+  halted = false;
+  stopped = false;
   disable_interrupts();
   clear_interrupt(interrupt);
   push(pc);
@@ -144,8 +152,6 @@ bool Cpu::has_interrupt(u8 interrupt) const {
 void Cpu::request_interrupt(Interrupt interrupt) {
   const u8 interrupts = memory->at(MemoryRegister::InterruptRequest);
   memory->set(MemoryRegister::InterruptRequest, interrupts | interrupt);
-  halted = false;
-  stopped = false;
 }
 
 void Cpu::clear_interrupt(const u8 interrupt) const {
@@ -522,7 +528,7 @@ void Cpu::disable_interrupts() {
 
 // EI
 void Cpu::enable_interrupts() {
-  interrupts_enabled = true;
+  queue_interrupts_enabled = true;
 }
 
 void Cpu::halt() {
@@ -610,7 +616,6 @@ void Cpu::jr_e8() {
 // JR cc,e8
 void Cpu::jr_cc_e8() {
   const s8 offset = read_operand();
-  std::cout << "offset " << std::hex << +offset << std::endl;
   jump_conditional(pc + offset, 4);
 }
 

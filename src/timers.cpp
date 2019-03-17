@@ -7,38 +7,38 @@
 #include "timers.h"
 
 namespace gb {
+void Timers::handle_memory_write(u16 addr, u8 value) {
+  const Registers::Tac timer_control{memory->at(Registers::Tac::Address)};
+  switch (addr) {
+    case Registers::Div::Address:
+      internal_counter = 0;
+      timer_ticks = 0;
+      memory->set_ram(Registers::Div::Address, 0);
+      break;
+  }
+}
+
 bool Timers::update(int ticks) {
   const Registers::Tac timer_control{memory->at(Registers::Tac::Address)};
   bool request_interrupt = false;
+  timer_ticks += ticks;
+  internal_counter += ticks;
+
+  memory->set_ram(Registers::Div::Address, (internal_counter & 0xff00) >> 8);
 
   if (timer_control.enabled()) {
-    // total_ticks = (total_ticks * 4) + ticks;
-    // total_ticks /= 4;
-    total_ticks += ticks;
-
-    while (total_ticks >= timer_control.clock_frequency()) {
-      total_ticks -= timer_control.clock_frequency();
-      u8 timer_value = memory->at(Registers::Tima::Address);
-      timer_value++;
+    while (timer_ticks >= timer_control.clock_frequency()) {
+      timer_ticks -= timer_control.clock_frequency();
+      u8 timer_value = memory->get_ram(Registers::Tima::Address) + 1;
 
       // The timer overflowed
-      if (timer_value == 0 && prev_timer == 0xff) {
+      if (timer_value == 0) {
         request_interrupt = true;
-        timer_value = memory->at(Registers::Tma::Address);
+        timer_value = memory->get_ram(Registers::Tma::Address);
       }
 
-      prev_timer = timer_value;
-
-      memory->set(Registers::Tima::Address, timer_value);
+      memory->set_ram(Registers::Tima::Address, timer_value);
     }
-  }
-
-  div_ticks += ticks;
-
-  while (div_ticks >= 256) {
-    div_ticks -= 256;
-    u8 divider_value = memory->at(Registers::Div::Address);
-    memory->set(Registers::Div::Address, divider_value + 1);
   }
 
   return request_interrupt;

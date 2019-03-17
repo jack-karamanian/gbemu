@@ -1,5 +1,6 @@
 #pragma once
 #include <SDL2/SDL.h>
+#include <array>
 #include <memory>
 #include <vector>
 #include "pixel.h"
@@ -38,13 +39,11 @@ class Gpu {
 
   std::array<Pixel, 4> generate_colors(Palette palette, bool is_sprite = false);
 
-  int background_palette_callback = -1;
-  int obj0_palette_callback = -1;
-  int obj1_palette_callback = -1;
-
  public:
   Gpu(Memory& memory, std::shared_ptr<IRenderer> renderer);
-  ~Gpu();
+
+  void compute_background_palette(u8 palette);
+  void compute_sprite_palette(int palette_number, u8 palette);
 
   void render();
   void render_scanline(int scanline);

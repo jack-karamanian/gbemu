@@ -37,14 +37,7 @@ class RomBank {
 };
 
 using MemoryListener = std::function<void(u8 val, u8 prev_val)>;
-
-template <typename T>
-struct CallbackWrapper {
-  int id;
-  T callback;
-
-  CallbackWrapper(int id, T callback) : id{id}, callback{callback} {}
-};
+using AddrMemoryListener = std::function<void(u16 addr, u8 val, u8 prev_val)>;
 
 class Memory {
   std::vector<u8> memory;
@@ -56,8 +49,7 @@ class Memory {
 
   RomBank rom_bank_selected;
 
-  std::unordered_map<u16, std::vector<CallbackWrapper<MemoryListener>>>
-      write_callbacks;
+  std::unordered_map<u16, MemoryListener> write_callbacks;
 
   int callback_id = 0;
 
@@ -65,9 +57,12 @@ class Memory {
 
  public:
   Memory() : memory(SIXTYFOUR_KB), rom(TWO_MB), memory_span{memory} {}
+
   template <typename T = u8>
   T at(u16 addr) {
-    const auto [normalized_addr, storage] = select_storage(addr);
+    const auto x = select_storage(addr);
+    const auto& normalized_addr = x.first;
+    const auto& storage = x.second;
     if constexpr (sizeof(T) == 1) {
       return storage.at(normalized_addr);
     } else {
@@ -89,26 +84,29 @@ class Memory {
 
   void load_rom(const std::vector<u8>& data);
 
-  int add_write_listener(u16 addr, MemoryListener callback) {
-    int id = callback_id++;
-    write_callbacks[addr].emplace_back(callback_id, std::move(callback));
-    return id;
+  void add_write_listener(u16 addr, MemoryListener callback) {
+    write_callbacks.emplace(addr, std::move(callback));
   }
 
-  void remove_write_listener(u16 addr, int id) {
-    auto write_callbacks_for_addr = write_callbacks.find(addr);
-
-    if (write_callbacks_for_addr != write_callbacks.end()) {
-      auto& list = write_callbacks_for_addr->second;
-      list.erase(std::remove_if(list.begin(), list.end(), [id](auto wrapper) {
-        return wrapper.id == id;
-      }));
+  template <typename... Addrs>
+  void add_write_listener_for_addrs(AddrMemoryListener callback,
+                                    Addrs... args) {
+    for (u16 addr : {args...}) {
+      add_write_listener(addr, [callback, addr](u8 val, u8 prev_val) {
+        callback(addr, val, prev_val);
+      });
     }
   }
+
+  void add_write_listener_for_range(u16 begin,
+                                    u16 end,
+                                    const AddrMemoryListener& callback);
 
   void do_dma_transfer(const u8& val);
 
   u8 get_ram(u16 addr) const { return memory[addr]; }
+
+  void set_ram(u16 addr, u8 val) { memory[addr] = val; }
 
   u8 get_input_register() const { return memory[0xff00]; }
   void set_input_register(u8 val) { memory[0xff00] = val; }

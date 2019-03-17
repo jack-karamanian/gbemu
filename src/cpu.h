@@ -1,9 +1,9 @@
 #pragma once
 #include <array>
-#include <boost/integer_traits.hpp>
 #include <cstdint>
 #include <functional>
 #include <iostream>
+#include <limits>
 #include <sstream>
 #include <string>
 #include <variant>
@@ -72,6 +72,8 @@ struct Cpu {
   bool stopped = false;
   bool halted = false;
 
+  bool queue_interrupts_enabled = false;
+
   bool debug = false;
 
   Memory* memory;
@@ -79,7 +81,7 @@ struct Cpu {
 
   Cpu(Memory& memory);
 
-  Instruction fetch();
+  const Instruction& fetch();
 
   int fetch_and_decode();
   int handle_interrupts();
@@ -161,7 +163,7 @@ struct Cpu {
   void set_carry(const T& a, const U& b) {
     int res = a + b;
     // if (res > 0xff) {
-    if (res > boost::integer_traits<T>::const_max) {
+    if (res > std::numeric_limits<T>::max()) {
       set_flag(FLAG_CARRY);
     } else {
       clear_flag(FLAG_CARRY);
