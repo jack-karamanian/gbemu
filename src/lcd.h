@@ -6,7 +6,7 @@
 
 namespace gb {
 struct Cpu;
-struct Memory;
+class Memory;
 class Gpu;
 class Lcd {
   enum class Mode {
