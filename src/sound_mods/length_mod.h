@@ -18,7 +18,7 @@ class LengthMod {
  public:
   void enable() {
     enabled = true;
-    if (length_counter == 0) {
+    if (length_enabled && length_counter <= 0) {
       length_counter = DefaultLength;
     }
   }
