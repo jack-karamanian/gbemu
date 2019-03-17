@@ -8,6 +8,7 @@
 
 namespace gb {
 void Timers::handle_memory_write(u16 addr, u8 value) {
+  static_cast<void>(value);
   const Registers::Tac timer_control{memory->at(Registers::Tac::Address)};
   switch (addr) {
     case Registers::Div::Address:
