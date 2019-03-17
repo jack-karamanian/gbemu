@@ -9,7 +9,7 @@
 #include "types.h"
 
 namespace gb {
-struct Memory;
+class Memory;
 class Gpu {
   Memory* memory;
   std::shared_ptr<IRenderer> renderer;
