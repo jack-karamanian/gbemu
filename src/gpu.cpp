@@ -38,11 +38,11 @@ Gpu::Gpu(Memory& memory, std::shared_ptr<IRenderer> renderer)
       sprite_colors{SPRITE_COLORS, SPRITE_COLORS} {}
 
 u8 Gpu::get_scx() const {
-  return memory->at(0xff43);
+  return memory->get_ram(0xff43);
 }
 
 u8 Gpu::get_scy() const {
-  return memory->at(0xff42);
+  return memory->get_ram(0xff42);
 }
 
 void Gpu::render_pixel(std::vector<Pixel>& pixels,
@@ -65,7 +65,7 @@ void Gpu::render_pixel(std::vector<Pixel>& pixels,
 }
 
 void Gpu::render_sprites(int scanline) {
-  const Registers::Lcdc lcdc{memory->at(Registers::Lcdc::Address)};
+  const Registers::Lcdc lcdc{memory->get_ram(Registers::Lcdc::Address)};
   auto sprite_attribs = memory->get_sprite_attributes();
 
   int sprite_height;
@@ -100,8 +100,8 @@ void Gpu::render_sprites(int scanline) {
       const int tile_addr =
           VRAM_START + (16 * sprite_attrib.tile_index) + (2 * (sprite_offset));
 
-      const u8 byte1 = memory->at(tile_addr);
-      const u8 byte2 = memory->at(tile_addr + 1);
+      const u8 byte1 = memory->get_ram(tile_addr);
+      const u8 byte2 = memory->get_ram(tile_addr + 1);
 
       const int y = adjusted_y + sprite_y;
       const int x = sprite_attrib.x - 8;
@@ -117,7 +117,7 @@ void Gpu::render_sprites(int scanline) {
 }
 
 void Gpu::render_background(int scanline) {
-  const Registers::Lcdc lcdc{memory->at(Registers::Lcdc::Address)};
+  const Registers::Lcdc lcdc{memory->get_ram(Registers::Lcdc::Address)};
 
   const u8 scx = get_scx();
   const u8 scy = get_scy();
@@ -163,8 +163,8 @@ void Gpu::render_background(int scanline) {
     tile_addr += 2 * tile_y;
 
     const int screen_x = x;
-    const u8 byte1 = memory->at(tile_addr);
-    const u8 byte2 = memory->at(tile_addr + 1);
+    const u8 byte1 = memory->get_ram(tile_addr);
+    const u8 byte2 = memory->get_ram(tile_addr + 1);
 
     render_pixel(background_framebuffer, byte1, byte2, pixel_x % 8, screen_x,
                  scanline, background_colors);
