@@ -36,7 +36,7 @@ class Memory {
   std::pair<u16, nonstd::span<const u8>> select_storage(u16 addr);
 
  public:
-  Memory() : memory(SIXTYFOUR_KB), rom(TWO_MB), memory_span{memory} {}
+  Memory() : memory(SIXTYFOUR_KB), memory_span{memory} {}
 
   template <typename T = u8>
   T at(u16 addr) {
@@ -62,7 +62,7 @@ class Memory {
 
   void reset();
 
-  void load_rom(const std::vector<u8>& data);
+  void load_rom(nonstd::span<const u8> data);
 
   void add_write_listener(u16 addr, MemoryListener callback) {
     write_callbacks.emplace(addr, std::move(callback));

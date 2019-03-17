@@ -115,7 +115,9 @@ void Memory::add_write_listener_for_range(u16 begin,
   }
 }
 
-void Memory::load_rom(const std::vector<u8>& data) {
+void Memory::load_rom(nonstd::span<const u8> data) {
+  rom.resize(data.size());
+
   std::copy(data.begin(), data.end(), &rom[0]);
 }
 
