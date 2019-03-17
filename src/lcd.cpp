@@ -18,7 +18,8 @@ void Lcd::check_scanlines(Registers::LcdStat& lcd_stat) const {
 }
 bool Lcd::update(unsigned int ticks) {
   bool draw_frame = false;
-  Registers::LcdStat lcd_stat{memory->at(Registers::LcdStat::Address)};
+
+  Registers::LcdStat lcd_stat{memory->get_lcd_stat()};
   lcd_stat.set_mode(mode);
 
   lcd_ticks += ticks;
