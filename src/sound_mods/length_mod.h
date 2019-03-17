@@ -1,4 +1,5 @@
 #pragma once
+#include "types.h"
 
 namespace gb {
 struct SetLengthEnabledCommand {
@@ -30,11 +31,9 @@ class LengthMod {
   void set_length_enabled(bool value) { length_enabled = value; }
 
   void clock(int step) {
-    if (step % 2 == 0) {
-      if (length_enabled && --length_counter <= 0) {
-        length_counter = 0;
-        enabled = false;
-      }
+    if (step % 2 == 0 && enabled && length_enabled && --length_counter <= 0) {
+      length_counter = 0;
+      enabled = false;
     }
   }
 
