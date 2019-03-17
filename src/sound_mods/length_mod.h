@@ -27,7 +27,7 @@ class LengthMod {
 
   void set_length(int length) { length_counter = DefaultLength - length; }
 
-  void set_length_enabled(bool enabled) { length_enabled = enabled; }
+  void set_length_enabled(bool value) { length_enabled = value; }
 
   void clock(int step) {
     if (step % 2 == 0) {
