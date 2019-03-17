@@ -33,8 +33,6 @@ class Memory {
 
   std::unordered_map<u16, MemoryListener> write_callbacks;
 
-  int callback_id = 0;
-
   std::pair<u16, nonstd::span<const u8>> select_storage(u16 addr);
 
  public:
