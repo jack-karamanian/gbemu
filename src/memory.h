@@ -8,6 +8,7 @@
 #include "registers/interrupt_enabled.h"
 #include "registers/interrupt_request.h"
 #include "registers/lcd_stat.h"
+#include "rom_bank.h"
 #include "sprite_attribute.h"
 #include "utils.h"
 
@@ -16,25 +17,6 @@
 #define TWO_MB 0x200000
 
 namespace gb {
-class RomBank {
-  u8 lower = 0x01;
-  u8 upper = 0x00;
-
- public:
-  void set_lower(u8 val) { lower = val & 0x1f; }
-  void set_upper(u8 val) { upper = val & 0x03; }
-
-  u8 get_rom_bank_selected() const {
-    const u8 bank = (upper << 5) | lower;
-    if (bank == 0) {
-      return 1;
-    }
-    if (bank == 0x20 || bank == 0x40 || bank == 0x60) {
-      return bank + 1;
-    }
-    return bank;
-  }
-};
 
 using MemoryListener = std::function<void(u8 val, u8 prev_val)>;
 using AddrMemoryListener = std::function<void(u16 addr, u8 val, u8 prev_val)>;
@@ -69,7 +51,7 @@ class Memory {
       std::array<u8, sizeof(T)> bytes;
       std::generate(
           bytes.begin(), bytes.end(),
-          [this, storage, normalized_addr, offset = sizeof(T) - 1]() mutable {
+          [storage, normalized_addr, offset = sizeof(T) - 1]() mutable {
             return storage.at(normalized_addr + offset--);
           });
       return convert_bytes<T>(bytes);
