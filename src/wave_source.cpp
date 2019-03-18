@@ -6,17 +6,9 @@ void WaveSource::enable() {
   wave_progress = 0;
 }
 
-u8 WaveSource::get_sample() {
-  if (--timer <= 0) {
-    timer = timer_base;
-    wave_progress++;
-  }
-
-  if (wave_progress >= 32) {
-    wave_progress = 0;
-  }
-
-  return wave_buffer.at(wave_progress / 2);
+u8 WaveSource::get_volume(int progress) const {
+  const u8 sample = wave_buffer.at(progress / 2);
+  return (progress % 2 == 0 ? (sample & 0xf0) >> 4 : sample & 0x0f);
 }
 
 u8 WaveSource::update() {
@@ -24,9 +16,13 @@ u8 WaveSource::update() {
     return 0;
   }
 
-  u8 sample = get_sample();
-
-  u8 volume = wave_progress % 2 == 0 ? (sample & 0xf0) >> 4 : sample & 0x0f;
+  if (--timer <= 0) {
+    timer = timer_base;
+    if (++wave_progress >= 32) {
+      wave_progress = 0;
+    }
+    volume = get_volume(wave_progress);
+  }
 
   return volume;
 }
