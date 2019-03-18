@@ -6,7 +6,6 @@ namespace gb {
 class SquareSource {
   static constexpr std::array<u8, 5> DUTY_CYCLES = {0b00000001, 0b10000001,
                                                     0b10000111, 0b01111110, 0};
-  bool enabled = false;
 
   // Timer/frequency
   int staged_timer_base = 0;
@@ -18,13 +17,18 @@ class SquareSource {
 
   int duty_cycle = 4;
 
-  bool sweep_enabled;
-
-  bool sweep_negate = false;
   int sweep_shift = 0;
   int sweep_period = 0;
 
   int sweep_timer = 0;
+
+  u8 output = 0;
+
+  bool sweep_enabled;
+
+  bool sweep_negate = false;
+
+  bool enabled = false;
 
   bool is_overflowed(int freq) const { return freq > 2047; }
 
@@ -38,8 +42,6 @@ class SquareSource {
   int calculate_next_frequency(int freq) const;
 
   void overflow_check(int freq);
-
-  u8 output = 0;
 
  public:
   SquareSource(bool enabled) : sweep_enabled{enabled} {}
