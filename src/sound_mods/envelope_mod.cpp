@@ -20,7 +20,4 @@ void EnvelopeMod::clock(int step) {
   }
 }
 
-u8 EnvelopeMod::update(u8 input_volume) const {
-  return input_volume != 0 ? volume : 0;
-}
 }  // namespace gb
