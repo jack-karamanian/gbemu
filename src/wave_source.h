@@ -5,13 +5,16 @@
 
 namespace gb {
 class WaveSource {
-  bool enabled = false;
+  nonstd::span<const u8> wave_buffer;
   int timer = 0;
   int timer_base = 0;
 
   int wave_progress = 0;
 
-  nonstd::span<const u8> wave_buffer;
+  bool enabled = false;
+  u8 volume = 0;
+
+  u8 get_volume(int progress) const;
 
  public:
   WaveSource(nonstd::span<const u8> buffer) : wave_buffer{std::move(buffer)} {}
@@ -19,8 +22,6 @@ class WaveSource {
   void set_timer_base(int frequency) { timer_base = (2048 - frequency) * 2; }
 
   void enable();
-
-  u8 get_sample();
 
   u8 update();
 };
