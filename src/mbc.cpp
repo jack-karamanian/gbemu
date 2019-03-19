@@ -67,7 +67,7 @@ bool Mbc::in_upper_write_range(u16 addr) const {
 
 u16 Mbc::get_rom_bank_selected() const {
   const int upper_shift = type == Mbc::Type::MBC5 ? 8 : 5;
-  const u16 bank = (upper << upper_shift) | lower;
+  const u16 bank = static_cast<u16>(upper << upper_shift) | lower;
   if (bank == 0) {
     return type == Mbc::Type::MBC5 ? 0 : 1;
   }
@@ -95,7 +95,7 @@ TEST_CASE("Mbc") {
 
     SUBCASE("Mbc::in_upper_write_range") {
       auto check_in_upper_range = [&bank](int begin, int end) {
-        for (int i = 0; i <= 0xffff; i++) {
+        for (u16 i = 0; i <= 0xffff; i++) {
           if (i >= begin && i <= end) {
             CHECK(bank.in_upper_write_range(i));
           } else {
@@ -122,7 +122,7 @@ TEST_CASE("Mbc") {
 
     SUBCASE("Mbc::in_lower_write_range") {
       auto check_in_lower_range = [&bank](int begin, int end) {
-        for (int i = 0; i <= 0xffff; i++) {
+        for (u16 i = 0; i <= 0xffff; i++) {
           if (i >= begin && i <= end) {
             CHECK(bank.in_lower_write_range(i));
           } else {
