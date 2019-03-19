@@ -12,9 +12,9 @@ struct SetLengthCommand {
 
 template <int DefaultLength>
 class LengthMod {
-  bool enabled = true;
   int length_counter = 0;
   bool length_enabled = false;
+  bool enabled = true;
 
  public:
   void enable() {
@@ -43,4 +43,5 @@ class LengthMod {
 
   void dispatch(SetLengthCommand command) { set_length(command.length); }
 };
+
 }  // namespace gb
