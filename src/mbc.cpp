@@ -67,7 +67,7 @@ bool Mbc::in_upper_write_range(u16 addr) const {
 
 u16 Mbc::get_rom_bank_selected() const {
   const int upper_shift = type == Mbc::Type::MBC5 ? 8 : 5;
-  const u8 bank = (upper << upper_shift) | lower;
+  const u16 bank = (upper << upper_shift) | lower;
   if (bank == 0) {
     return type == Mbc::Type::MBC5 ? 0 : 1;
   }
@@ -76,6 +76,17 @@ u16 Mbc::get_rom_bank_selected() const {
     return bank + 1;
   }
   return bank;
+}
+
+TEST_CASE("Mbc::get_rom_bank_selected") {
+  SUBCASE("MBC5 should allow the maximum rom bank to be selected") {
+    Mbc mbc;
+    mbc.set_type(Mbc::Type::MBC5);
+    mbc.set_lower(0xff);
+    mbc.set_upper(0xff);
+
+    CHECK(mbc.get_rom_bank_selected() == 0x01ff);
+  }
 }
 
 TEST_CASE("Mbc") {
