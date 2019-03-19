@@ -36,7 +36,7 @@ static void load_rom(const std::string& rom_name, gb::Memory& memory) {
 
   rom.close();
 
-  memory.load_rom(rom_data);
+  memory.load_rom({rom_data});
 }
 
 void run_with_options(const std::string& rom_name, bool trace) {
