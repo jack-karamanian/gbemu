@@ -45,10 +45,6 @@ constexpr std::array<std::array<int, 14>, 8> gen_timers() {
 class NoiseSource {
   constexpr static std::array<std::array<int, 14>, 8> timers = gen_timers();
 
-  u16 lfsr_counter = 0;
-
-  bool seven_stage = true;
-
   // 0 - 7
   int clock_divisor = 0;
 
@@ -58,6 +54,10 @@ class NoiseSource {
   int timer = 0;
 
   int timer_base = 0;
+
+  u16 lfsr_counter = 0;
+
+  bool seven_stage = true;
 
   u8 output = 0;
 
