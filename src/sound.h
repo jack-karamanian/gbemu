@@ -30,16 +30,15 @@ struct OutputControl {
 };
 
 struct AudioFrame {
-  float square1_sample = 0.0f;
-  float square2_sample = 0.0f;
-  float wave_sample = 0.0f;
-  float noise_sample = 0.0f;
+  u8 square1_sample = 0;
+  u8 square2_sample = 0;
+  u8 wave_sample = 0;
+  u8 noise_sample = 0;
 };
 
 class Sound {
   using SamplesCallback = std::function<void(const std::vector<float>&)>;
-  using SquareChannel =
-      Channel<SquareSource, LengthMod<64>, EnvelopeMod, QuietMod>;
+  using SquareChannel = Channel<SquareSource, LengthMod<64>, EnvelopeMod>;
 
   Memory* memory;
 
@@ -50,9 +49,9 @@ class Sound {
   SquareChannel square1;
   SquareChannel square2;
 
-  Channel<WaveSource, LengthMod<256>, VolumeShiftMod, QuietMod> wave_channel;
+  Channel<WaveSource, LengthMod<256>, VolumeShiftMod> wave_channel;
 
-  Channel<NoiseSource, LengthMod<64>, EnvelopeMod, QuietMod> noise_channel;
+  Channel<NoiseSource, LengthMod<64>, EnvelopeMod> noise_channel;
 
   OutputControl left_output;
   OutputControl right_output;

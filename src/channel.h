@@ -27,9 +27,9 @@ class Channel {
 
   Channel() {}
 
-  float update() {
+  u8 update() {
     if (enabled) {
-      float res = source.update();
+      u8 res = source.update();
       for_static<sizeof...(Mods)>(
           [&res, this](auto i) { res = std::get<i>(mods).update(res); });
       return res;

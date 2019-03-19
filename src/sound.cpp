@@ -17,28 +17,33 @@ float Sound::mix_samples(const AudioFrame& frame,
                          const OutputControl& control) const {
   float mixed_sample = 0.0f;
 
+  const float square1_sample = frame.square1_sample;
+  const float square2_sample = frame.square2_sample;
+  const float wave_sample = frame.wave_sample;
+  const float noise_sample = frame.noise_sample;
+
   int output_volume = ((control.volume * 128) / 16);
   if (control.square1) {
     SDL_MixAudioFormat(reinterpret_cast<Uint8*>(&mixed_sample),
-                       reinterpret_cast<const Uint8*>(&frame.square1_sample),
+                       reinterpret_cast<const Uint8*>(&square1_sample),
                        AUDIO_F32SYS, sizeof(float), output_volume);
   }
   if (control.square2) {
     SDL_MixAudioFormat(reinterpret_cast<Uint8*>(&mixed_sample),
-                       reinterpret_cast<const Uint8*>(&frame.square2_sample),
+                       reinterpret_cast<const Uint8*>(&square2_sample),
                        AUDIO_F32SYS, sizeof(float), output_volume);
   }
   if (control.wave) {
     SDL_MixAudioFormat(reinterpret_cast<Uint8*>(&mixed_sample),
-                       reinterpret_cast<const Uint8*>(&frame.wave_sample),
+                       reinterpret_cast<const Uint8*>(&wave_sample),
                        AUDIO_F32SYS, sizeof(float), output_volume);
   }
   if (control.noise) {
     SDL_MixAudioFormat(reinterpret_cast<Uint8*>(&mixed_sample),
-                       reinterpret_cast<const Uint8*>(&frame.noise_sample),
+                       reinterpret_cast<const Uint8*>(&noise_sample),
                        AUDIO_F32SYS, sizeof(float), output_volume);
   }
-  return mixed_sample;
+  return mixed_sample * 0.002f;
 }
 
 void Sound::handle_memory_write(u16 addr, u8 value) {
@@ -167,12 +172,16 @@ void Sound::handle_memory_write(u16 addr, u8 value) {
 void Sound::update(int ticks) {
   // sample_ticks += ticks;
   // sequencer_ticks += ticks;
+  u8 square1_sample;
+  u8 square2_sample;
+  u8 wave_sample;
+  u8 noise_sample;
 
   for (int i = 0; i < ticks; i++) {
-    float square1_sample = square1.update();
-    float square2_sample = square2.update();
-    float wave_sample = wave_channel.update();
-    float noise_sample = noise_channel.update();
+    square1_sample = square1.update();
+    square2_sample = square2.update();
+    wave_sample = wave_channel.update();
+    noise_sample = noise_channel.update();
 
     if (++sample_ticks > 87) {
       AudioFrame frame{square1_sample, square2_sample, wave_sample,
