@@ -1,4 +1,5 @@
 #pragma once
+#include <doctest/doctest.h>
 #include "types.h"
 namespace gb {
 
@@ -25,6 +26,6 @@ class Mbc {
   bool in_lower_write_range(u16 addr) const;
   bool in_upper_write_range(u16 addr) const;
 
-  u8 get_rom_bank_selected() const;
+  u16 get_rom_bank_selected() const;
 };
 }  // namespace gb

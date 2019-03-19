@@ -1,4 +1,3 @@
-#include <doctest/doctest.h>
 #include <initializer_list>
 #include "mbc.h"
 
@@ -66,7 +65,7 @@ bool Mbc::in_upper_write_range(u16 addr) const {
   }
 }
 
-u8 Mbc::get_rom_bank_selected() const {
+u16 Mbc::get_rom_bank_selected() const {
   const int upper_shift = type == Mbc::Type::MBC5 ? 8 : 5;
   const u8 bank = (upper << upper_shift) | lower;
   if (bank == 0) {
