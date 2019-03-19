@@ -38,13 +38,13 @@ void SquareSource::enable() {
     // enabled = !is_overflowed(next_frequency);
     overflow_check(next_frequency);
   }
+  output = (duty_cycle & 1) != 0 ? 15 : 0;
 }
 
 u8 SquareSource::update() {
   if (--timer <= 0) {
     timer = timer_base;
-    wave_progress++;
-    if (wave_progress > 7) {
+    if (++wave_progress > 7) {
       wave_progress = 0;
     }
     output = enabled && (duty_cycle & (1 << wave_progress)) != 0 ? 15 : 0;
@@ -52,4 +52,5 @@ u8 SquareSource::update() {
 
   return output;
 }
+
 }  // namespace gb
