@@ -17,14 +17,14 @@ std::pair<u16, nonstd::span<const u8>> Memory::select_storage(u16 addr) {
       case 0x5000:
       case 0x6000:
       case 0x7000: {
-        const int start_addr =
-            SIXTEEN_KB * rom_bank_selected.get_rom_bank_selected();
+        const int start_addr = SIXTEEN_KB * mbc.get_rom_bank_selected();
         return {addr - 0x4000, {&rom.at(start_addr), SIXTEEN_KB}};
       }
     }
   }
   return {addr, memory_span};
 }
+
 nonstd::span<const u8> Memory::get_range(std::pair<u16, u16> range) {
   const auto [begin, end] = range;
 
@@ -40,33 +40,30 @@ void Memory::set(u16 addr, u8 val) {
     memory[0xff44] = 0;
     return;
   }
-  switch (addr & 0xf000) {
-    case 0x2000:
-    case 0x3000:
-      // Set lower 5 rom bank bits
-      rom_bank_selected.set_lower(val);
-      break;
-    case 0x4000:
-    case 0x5000:
-      // Set upper two rom bank bits
-      rom_bank_selected.set_upper(val);
-      break;
-  }
-  switch (addr) {
-    case 0xff46:
-      do_dma_transfer(val);
-      break;
-    case 0xff02:
-      if (val == 0x81) {
-        std::cout << memory[0xff01];
-      }
-      break;
 
-    default:
-      if (addr >= 0x8000) {
-        memory[addr] = val;
-      }
-      break;
+  if (mbc.in_lower_write_range(addr)) {
+    // Set lower rom bank bits
+    mbc.set_lower(val);
+  } else if (mbc.in_upper_write_range(addr)) {
+    // Set upper rom bank bits
+    mbc.set_upper(val);
+  } else {
+    switch (addr) {
+      case 0xff46:
+        do_dma_transfer(val);
+        break;
+      case 0xff02:
+        if (val == 0x81) {
+          std::cout << memory[0xff01];
+        }
+        break;
+
+      default:
+        if (addr >= 0x8000) {
+          memory[addr] = val;
+        }
+        break;
+    }
   }
 }
 
@@ -116,6 +113,38 @@ void Memory::add_write_listener_for_range(u16 begin,
 }
 
 void Memory::load_rom(nonstd::span<const u8> data) {
+  // Decode the MBC type from the cart header
+  const Mbc::Type mbc_type = [rom_type = data[0x147]] {
+    printf("rom type: %d\n", rom_type);
+    switch (rom_type) {
+      case 0x00:
+        return Mbc::Type::None;
+        break;
+      case 0x01:
+      case 0x02:
+      case 0x03:
+        return Mbc::Type::MBC1;
+        break;
+      case 0x05:
+      case 0x06:
+        return Mbc::Type::MBC2;
+        break;
+      case 0x0f:
+      case 0x10:
+      case 0x11:
+      case 0x12:
+      case 0x13:
+        return Mbc::Type::MBC3;
+        break;
+      case 0x19:
+        return Mbc::Type::MBC5;
+        break;
+      default:
+        return Mbc::Type::None;
+    }
+  }();
+
+  mbc.set_type(mbc_type);
   rom.resize(data.size());
 
   std::copy(data.begin(), data.end(), &rom[0]);

@@ -4,11 +4,11 @@
 #include <unordered_map>
 #include <utility>
 #include <vector>
+#include "mbc.h"
 #include "nonstd/span.hpp"
 #include "registers/interrupt_enabled.h"
 #include "registers/interrupt_request.h"
 #include "registers/lcd_stat.h"
-#include "rom_bank.h"
 #include "sprite_attribute.h"
 #include "utils.h"
 
@@ -29,7 +29,7 @@ class Memory {
 
   bool external_ram_enabled = false;
 
-  RomBank rom_bank_selected;
+  Mbc mbc;
 
   std::unordered_map<u16, MemoryListener> write_callbacks;
 
