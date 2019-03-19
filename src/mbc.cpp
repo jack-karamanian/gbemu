@@ -87,6 +87,15 @@ TEST_CASE("Mbc::get_rom_bank_selected") {
 
     CHECK(mbc.get_rom_bank_selected() == 0x01ff);
   }
+
+  SUBCASE("MBC5 should allow bank 0 to be selected") {
+    Mbc mbc;
+    mbc.set_type(Mbc::Type::MBC5);
+    mbc.set_lower(0);
+    mbc.set_upper(0);
+
+    CHECK(mbc.get_rom_bank_selected() == 0);
+  }
 }
 
 TEST_CASE("Mbc") {
@@ -95,7 +104,7 @@ TEST_CASE("Mbc") {
 
     SUBCASE("Mbc::in_upper_write_range") {
       auto check_in_upper_range = [&bank](int begin, int end) {
-        for (u16 i = 0; i <= 0xffff; i++) {
+        for (int i = 0; i <= 0xffff; i++) {
           if (i >= begin && i <= end) {
             CHECK(bank.in_upper_write_range(i));
           } else {
@@ -122,7 +131,7 @@ TEST_CASE("Mbc") {
 
     SUBCASE("Mbc::in_lower_write_range") {
       auto check_in_lower_range = [&bank](int begin, int end) {
-        for (u16 i = 0; i <= 0xffff; i++) {
+        for (int i = 0; i <= 0xffff; i++) {
           if (i >= begin && i <= end) {
             CHECK(bank.in_lower_write_range(i));
           } else {
