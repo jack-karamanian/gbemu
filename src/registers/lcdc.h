@@ -16,7 +16,7 @@ class Lcdc {
   bool controller_on() const { return value & 0x80; }
 
   // Bit 6
-  const std::pair<u16, u16> window_area() const {
+  std::pair<u16, u16> window_tile_map_range() const {
     bool high_area = value & 0x40;
 
     if (high_area) {
