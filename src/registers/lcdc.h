@@ -27,7 +27,7 @@ class Lcdc {
   }
 
   // Bit 5
-  bool windowing_on() const { return value & 0x20; }
+  bool window_on() const { return value & 0x20; }
 
   // Bit 4
   std::pair<u16, u16> bg_tile_data_range() const {
