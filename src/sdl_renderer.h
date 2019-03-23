@@ -26,7 +26,7 @@ class SdlRenderer : public IRenderer {
   virtual Texture create_texture(int width, int height, bool blend) override;
   virtual void clear() override;
   virtual void draw_pixels(Texture texture,
-                           const std::vector<Pixel>& pixels) override;
+                           const std::vector<Color>& pixels) override;
   virtual void present() override;
 };
 }  // namespace gb

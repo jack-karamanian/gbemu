@@ -36,7 +36,7 @@ void SdlRenderer::clear() {
 }
 
 void SdlRenderer::draw_pixels(Texture texture,
-                              const std::vector<Pixel>& pixels) {
+                              const std::vector<Color>& pixels) {
   SDL_Texture* sdl_texture = textures.at(texture.handle).get();
 
   Uint32* texture_pixels = nullptr;
@@ -50,7 +50,7 @@ void SdlRenderer::draw_pixels(Texture texture,
 
   SDL_PixelFormat* pixel_format = format.get();
   std::transform(pixels.begin(), pixels.end(), texture_span.begin(),
-                 [pixel_format](Pixel pixel) {
+                 [pixel_format](Color pixel) {
                    return SDL_MapRGBA(pixel_format, pixel.r, pixel.g, pixel.b,
                                       pixel.a);
                  });

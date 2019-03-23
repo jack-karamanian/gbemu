@@ -3,41 +3,78 @@
 #include <array>
 #include <memory>
 #include <vector>
+#include "nonstd/span.hpp"
 #include "pixel.h"
 #include "registers/palette.h"
 #include "renderer.h"
-#include "types.h"
+#include "utils.h"
 
 namespace gb {
 class Memory;
+
+enum class PixelType {
+  None,
+  Sprite,
+  Window,
+  Background,
+};
+
+enum class BackgroundPosition { None, Above, Below };
+
+struct Pixel {
+  BackgroundPosition bg_priority;
+
+  Vec2<int> screen_pos;
+
+  Color color;
+
+  int color_index;
+
+  Pixel() {}
+
+  Pixel(BackgroundPosition bg_priority,
+        Vec2<int> screen_pos,
+        Color color,
+        int color_index)
+      : bg_priority{bg_priority},
+        screen_pos{screen_pos},
+        color{color},
+        color_index{color_index} {}
+};
+
 class Gpu {
   Memory* memory;
   std::shared_ptr<IRenderer> renderer;
 
   Texture background_texture;
-  Texture sprite_texture;
 
-  std::vector<Pixel> background_framebuffer;
-  std::vector<Pixel> sprite_framebuffer;
+  std::vector<Color> background_framebuffer;
 
-  std::array<Pixel, 4> background_colors;
-  std::array<std::array<Pixel, 4>, 2> sprite_colors;
+  std::array<Color, 4> background_colors;
+  std::array<std::array<Color, 4>, 2> sprite_colors;
+
+  std::vector<Pixel> background_pixels;
+  std::array<u8, 160> color_index_cache;
 
   u8 get_scx() const;
   u8 get_scy() const;
 
-  void render_pixel(std::vector<Pixel>& pixels,
-                    const u8 byte1,
-                    const u8 byte2,
-                    const u8 pixel_x,
-                    const int x,
-                    const int y,
-                    const std::array<Pixel, 4>& colors);
-  void render_sprites(int scanline);
-  void render_background(int scanline);
+  std::pair<Color, u8> render_pixel(const u8 byte1,
+                                    const u8 byte2,
+                                    const u8 pixel_x,
+                                    const std::array<Color, 4>& colors) const;
+  auto render_sprites(int scanline) const;
+  auto render_background(int scanline,
+                         nonstd::span<const u8> tile_map_range,
+                         u8 scx,
+                         u8 scy,
+                         int offset_x,
+                         int offset_y);
   void reconcile_framebuffer();
 
-  std::array<Pixel, 4> generate_colors(Palette palette, bool is_sprite = false);
+  void render_tile_map(nonstd::span<const u8> tile_map);
+
+  std::array<Color, 4> generate_colors(Palette palette, bool is_sprite = false);
 
  public:
   Gpu(Memory& memory, std::shared_ptr<IRenderer> renderer);
