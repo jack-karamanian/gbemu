@@ -20,6 +20,8 @@ class Channel {
   std::tuple<Mods...> mods;
   bool enabled = false;
 
+  u8 output = 0;
+
  public:
   Source source;
 
@@ -27,14 +29,16 @@ class Channel {
 
   Channel() {}
 
-  u8 update() {
+  void update() { source.update(); }
+
+  u8 get_volume() const {
+    u8 volume = source.get_volume();
     if (enabled) {
-      u8 res = source.update();
-      for_static<sizeof...(Mods)>(
-          [&res, this](auto i) { res = std::get<i>(mods).update(res); });
-      return res;
+      for_static<sizeof...(Mods)>([this, &volume](auto i) {
+        volume = std::get<i>(mods).update(volume);
+      });
     }
-    return 0;
+    return volume;
   }
 
   void clock(int step) {
@@ -50,7 +54,10 @@ class Channel {
     for_static<sizeof...(Mods)>([this](auto i) { std::get<i>(mods).enable(); });
   }
 
-  void disable() { enabled = false; }
+  void disable() {
+    enabled = false;
+    output = 0;
+  }
 
   template <typename T>
   void dispatch(T command) {

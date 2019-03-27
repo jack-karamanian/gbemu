@@ -41,16 +41,9 @@ void SquareSource::enable() {
   output = (duty_cycle & 1) != 0 ? 15 : 0;
 }
 
-u8 SquareSource::update() {
-  if (--timer <= 0) {
-    timer = timer_base;
-    if (++wave_progress > 7) {
-      wave_progress = 0;
-    }
-    output = enabled && (duty_cycle & (1 << wave_progress)) != 0 ? 15 : 0;
-  }
-
-  return output;
+#if 0
+void SquareSource::update() {
 }
+#endif
 
 }  // namespace gb

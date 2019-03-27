@@ -170,20 +170,17 @@ void Sound::handle_memory_write(u16 addr, u8 value) {
 }
 
 void Sound::update(int ticks) {
-  // sample_ticks += ticks;
-  // sequencer_ticks += ticks;
-  u8 square1_sample;
-  u8 square2_sample;
-  u8 wave_sample;
-  u8 noise_sample;
-
   for (int i = 0; i < ticks; i++) {
-    square1_sample = square1.update();
-    square2_sample = square2.update();
-    wave_sample = wave_channel.update();
-    noise_sample = noise_channel.update();
+    square1.update();
+    square2.update();
+    wave_channel.update();
+    noise_channel.update();
 
     if (++sample_ticks > 87) {
+      const u8 square1_sample = square1.get_volume();
+      const u8 square2_sample = square2.get_volume();
+      const u8 wave_sample = wave_channel.get_volume();
+      const u8 noise_sample = noise_channel.get_volume();
       AudioFrame frame{square1_sample, square2_sample, wave_sample,
                        noise_sample};
 

@@ -12,7 +12,7 @@ class WaveSource {
   int wave_progress = 0;
 
   bool enabled = false;
-  u8 volume = 0;
+  u8 output = 0;
 
   u8 get_volume(int progress) const;
 
@@ -23,6 +23,16 @@ class WaveSource {
 
   void enable();
 
-  u8 update();
+  void update() {
+    if (--timer <= 0) {
+      timer = timer_base;
+      if (++wave_progress >= 32) {
+        wave_progress = 0;
+      }
+      output = get_volume(wave_progress);
+    }
+  }
+
+  u8 get_volume() const { return enabled ? output : 0; }
 };
 }  // namespace gb

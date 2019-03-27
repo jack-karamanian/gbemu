@@ -63,6 +63,16 @@ class SquareSource {
 
   void enable();
 
-  u8 update();
+  void update() {
+    if (--timer <= 0) {
+      timer = timer_base;
+      if (++wave_progress > 7) {
+        wave_progress = 0;
+      }
+      output = enabled && (duty_cycle & (1 << wave_progress)) != 0 ? 15 : 0;
+    }
+  }
+
+  u8 get_volume() const { return output; }
 };
 }  // namespace gb

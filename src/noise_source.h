@@ -14,12 +14,6 @@ constexpr auto pow(T i, T n) {
   }
 }
 
-static_assert(pow(2, 2) == 4);
-static_assert(pow(2, 0) == 1);
-
-constexpr int x = pow(2, 2);
-static_assert(x == 4);
-
 constexpr std::array<int, 8> clock_divisors = {
 #if 1
     FREQUENCY * 2, FREQUENCY,     FREQUENCY / 2, FREQUENCY / 3,
@@ -70,6 +64,27 @@ class NoiseSource {
     }
   }
   void enable();
-  u8 update();
+  void update() {
+    if (++timer >= timer_base) {
+      u8 bit1 = lfsr_counter & 0x01;
+      u8 bit2 = (lfsr_counter >> 1) & 1;
+
+      u8 res = bit1 ^ bit2;
+
+      lfsr_counter >>= 1;
+
+      lfsr_counter |= res << 14;
+      if (seven_stage) {
+        lfsr_counter &= ~0x40;
+        lfsr_counter |= res << 6;
+      } else {
+      }
+
+      timer = 0;
+
+      output = (lfsr_counter & 0x1) != 0 ? 0 : 15;
+    }
+  }
+  u8 get_volume() const { return output; }
 };
 }  // namespace gb
