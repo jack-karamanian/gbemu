@@ -27,7 +27,7 @@ class Channel {
 
   Channel() {}
 
-  void update() { source.update(); }
+  void update(int ticks) { source.update(ticks); }
 
   u8 volume() const {
     u8 volume = source.volume();
@@ -52,9 +52,7 @@ class Channel {
     for_static<sizeof...(Mods)>([this](auto i) { std::get<i>(mods).enable(); });
   }
 
-  void disable() {
-    enabled = false;
-  }
+  void disable() { enabled = false; }
 
   template <typename T>
   void dispatch(T command) {

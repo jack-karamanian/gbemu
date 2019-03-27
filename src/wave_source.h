@@ -23,9 +23,10 @@ class WaveSource {
 
   void enable();
 
-  void update() {
-    if (--timer <= 0) {
-      timer = timer_base;
+  void update(int ticks) {
+    timer -= ticks;
+    if (timer <= 0) {
+      timer += timer_base;
       if (++wave_progress >= 32) {
         wave_progress = 0;
       }

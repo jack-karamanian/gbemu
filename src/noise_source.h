@@ -64,8 +64,9 @@ class NoiseSource {
     }
   }
   void enable();
-  void update() {
-    if (++timer >= timer_base) {
+  void update(int ticks) {
+    timer += ticks;
+    if (timer >= timer_base) {
       u8 bit1 = lfsr_counter & 0x01;
       u8 bit2 = (lfsr_counter >> 1) & 1;
 
@@ -80,9 +81,8 @@ class NoiseSource {
       } else {
       }
 
-      timer = 0;
-
       output = (lfsr_counter & 0x1) != 0 ? 0 : 15;
+      timer -= timer_base;
     }
   }
   u8 volume() const { return output; }
