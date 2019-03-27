@@ -181,7 +181,7 @@ void Sound::update(int ticks) {
       const u8 square2_sample = square2.get_volume();
       const u8 wave_sample = wave_channel.get_volume();
       const u8 noise_sample = noise_channel.get_volume();
-      AudioFrame frame{square1_sample, square2_sample, wave_sample,
+      const AudioFrame frame{square1_sample, square2_sample, wave_sample,
                        noise_sample};
 
       const float left_sample = mix_samples(frame, left_output);
