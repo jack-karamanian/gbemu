@@ -20,8 +20,6 @@ class Channel {
   std::tuple<Mods...> mods;
   bool enabled = false;
 
-  u8 output = 0;
-
  public:
   Source source;
 
@@ -31,7 +29,7 @@ class Channel {
 
   void update() { source.update(); }
 
-  u8 get_volume() const {
+  u8 volume() const {
     u8 volume = source.volume();
     if (enabled) {
       for_static<sizeof...(Mods)>([this, &volume](auto i) {
@@ -56,7 +54,6 @@ class Channel {
 
   void disable() {
     enabled = false;
-    output = 0;
   }
 
   template <typename T>
