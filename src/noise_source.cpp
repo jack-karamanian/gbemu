@@ -8,8 +8,4 @@ void NoiseSource::enable() {
   timer_base = timers.at(clock_divisor).at(prescalar_divider);
 }
 
-#if 0
-void NoiseSource::update() {
-}
-#endif
 }  // namespace gb

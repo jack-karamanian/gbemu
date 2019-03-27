@@ -11,8 +11,4 @@ u8 WaveSource::get_volume(int progress) const {
   return (progress % 2 == 0 ? (sample & 0xf0) >> 4 : sample & 0x0f);
 }
 
-#if 0
-void WaveSource::update() {
-}
-#endif
 }  // namespace gb

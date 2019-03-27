@@ -40,10 +40,4 @@ void SquareSource::enable() {
   }
   output = (duty_cycle & 1) != 0 ? 15 : 0;
 }
-
-#if 0
-void SquareSource::update() {
-}
-#endif
-
 }  // namespace gb
