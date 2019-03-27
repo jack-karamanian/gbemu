@@ -184,8 +184,8 @@ void Sound::update(int ticks) {
       AudioFrame frame{square1_sample, square2_sample, wave_sample,
                        noise_sample};
 
-      float left_sample = mix_samples(frame, left_output);
-      float right_sample = mix_samples(frame, right_output);
+      const float left_sample = mix_samples(frame, left_output);
+      const float right_sample = mix_samples(frame, right_output);
 
       sample_buffer.emplace_back(left_sample);
       sample_buffer.emplace_back(right_sample);
