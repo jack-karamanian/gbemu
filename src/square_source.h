@@ -73,6 +73,6 @@ class SquareSource {
     }
   }
 
-  u8 get_volume() const { return output; }
+  u8 volume() const { return output; }
 };
 }  // namespace gb

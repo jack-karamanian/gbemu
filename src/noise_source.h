@@ -85,6 +85,6 @@ class NoiseSource {
       output = (lfsr_counter & 0x1) != 0 ? 0 : 15;
     }
   }
-  u8 get_volume() const { return output; }
+  u8 volume() const { return output; }
 };
 }  // namespace gb

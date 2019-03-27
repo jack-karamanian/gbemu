@@ -33,6 +33,6 @@ class WaveSource {
     }
   }
 
-  u8 get_volume() const { return enabled ? output : 0; }
+  u8 volume() const { return enabled ? output : 0; }
 };
 }  // namespace gb

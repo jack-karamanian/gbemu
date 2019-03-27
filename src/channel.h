@@ -32,7 +32,7 @@ class Channel {
   void update() { source.update(); }
 
   u8 get_volume() const {
-    u8 volume = source.get_volume();
+    u8 volume = source.volume();
     if (enabled) {
       for_static<sizeof...(Mods)>([this, &volume](auto i) {
         volume = std::get<i>(mods).update(volume);
