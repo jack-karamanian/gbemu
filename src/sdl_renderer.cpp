@@ -6,7 +6,7 @@ SdlRenderer::SdlRenderer(
     std::unique_ptr<SDL_Renderer, std::function<void(SDL_Renderer*)>>
         p_renderer)
     : renderer{std::move(p_renderer)},
-      format{SDL_AllocFormat(SDL_PIXELFORMAT_RGBA8888), sdl::SdlDeleter()} {
+      format{SDL_AllocFormat(SDL_PIXELFORMAT_RGB888), sdl::SdlDeleter()} {
   // SDL_SetRenderDrawBlendMode(renderer.get(), SDL_BLENDMODE_BLEND);
   if (!format.get()) {
     std::cout << "SDL error :" << SDL_GetError() << std::endl;
@@ -15,7 +15,7 @@ SdlRenderer::SdlRenderer(
 
 Texture SdlRenderer::create_texture(int width, int height, bool blend) {
   sdl::sdl_unique_ptr<SDL_Texture> texture{
-      SDL_CreateTexture(renderer.get(), SDL_PIXELFORMAT_RGBA8888,
+      SDL_CreateTexture(renderer.get(), SDL_PIXELFORMAT_RGB888,
                         SDL_TEXTUREACCESS_STREAMING, width, height),
       sdl::SdlDeleter()};
 
@@ -51,8 +51,7 @@ void SdlRenderer::draw_pixels(Texture texture,
   SDL_PixelFormat* pixel_format = format.get();
   std::transform(pixels.begin(), pixels.end(), texture_span.begin(),
                  [pixel_format](Color pixel) {
-                   return SDL_MapRGBA(pixel_format, pixel.r, pixel.g, pixel.b,
-                                      pixel.a);
+                   return SDL_MapRGB(pixel_format, pixel.r, pixel.g, pixel.b);
                  });
 
   SDL_UnlockTexture(sdl_texture);
