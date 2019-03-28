@@ -40,4 +40,10 @@ void for_static(Func&& f) {
   for_static_impl(f, std::make_index_sequence<I>());
 }
 
+template <typename T>
+struct Vec2 {
+  T x;
+  T y;
+};
+
 }  // namespace gb
