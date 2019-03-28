@@ -38,6 +38,7 @@ void SquareSource::enable() {
     // enabled = !is_overflowed(next_frequency);
     overflow_check(next_frequency);
   }
-  output = (duty_cycle & 1) != 0 ? 15 : 0;
+  output = (duty_cycle & (0x80 >> wave_progress)) != 0 ? 15 : 0;
+  // output = (duty_cycle & 1) != 0 ? 15 : 0;
 }
 }  // namespace gb
