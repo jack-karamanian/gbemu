@@ -70,7 +70,7 @@ class SquareSource {
       if (++wave_progress > 7) {
         wave_progress = 0;
       }
-      output = enabled && (duty_cycle & (1 << wave_progress)) != 0 ? 15 : 0;
+      output = (duty_cycle & (0x80 >> wave_progress)) != 0 ? 15 : 0;
     }
   }
 
