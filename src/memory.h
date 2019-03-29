@@ -29,7 +29,7 @@ class Memory {
 
   bool external_ram_enabled = false;
 
-  Mbc mbc;
+  Mbc mbc{Mbc::Type::None};
 
   std::unordered_map<u16, MemoryListener> write_callbacks;
 

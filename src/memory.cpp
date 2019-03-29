@@ -144,7 +144,7 @@ void Memory::load_rom(nonstd::span<const u8> data) {
     }
   }();
 
-  mbc.set_type(mbc_type);
+  mbc = Mbc{mbc_type};
   rom.resize(data.size());
 
   std::copy(data.begin(), data.end(), &rom[0]);

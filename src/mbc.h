@@ -19,7 +19,8 @@ class Mbc {
   u8 upper = 0x00;
 
  public:
-  void set_type(Type mbc_type) { type = mbc_type; }
+  Mbc(Type mbc_type) : type{mbc_type} {}
+  // void set_type(Type mbc_type) { type = mbc_type; }
   void set_lower(u8 val);
   void set_upper(u8 val);
 
