@@ -1,4 +1,5 @@
 #include <initializer_list>
+#include <vector>
 #include "mbc.h"
 
 namespace gb {
@@ -80,31 +81,34 @@ u16 Mbc::get_rom_bank_selected() const {
 
 TEST_CASE("Mbc::get_rom_bank_selected") {
   SUBCASE("MBC5 should allow the maximum rom bank to be selected") {
-    Mbc mbc{Mbc::Type::MBC5};
-    mbc.set_lower(0xff);
-    mbc.set_upper(0xff);
+    std::vector<std::pair<Mbc::Type, u16>> max_bank_for_type{
+        {Mbc::Type::MBC1, 0x007f},
+        {Mbc::Type::MBC2, 0x000f},
+        {Mbc::Type::MBC3, 0x007f},
+        {Mbc::Type::MBC5, 0x01ff},
+    };
 
-    CHECK(mbc.get_rom_bank_selected() == 0x01ff);
+    for (const auto [type, max_bank] : max_bank_for_type) {
+      Mbc mbc{type};
+      mbc.set_lower(0xff);
+      mbc.set_upper(0xff);
+      CAPTURE(type);
+      CAPTURE(max_bank);
+      CHECK(mbc.get_rom_bank_selected() == max_bank);
+    }
   }
 
   SUBCASE("bank 0 should be correct for all types (0 for MBC5, 1 for others)") {
-    // Mbc mbc;
+    for (auto type : {Mbc::Type::None, Mbc::Type::MBC1, Mbc::Type::MBC2,
+                      Mbc::Type::MBC3, Mbc::Type::MBC5}) {
+      Mbc mbc{type};
 
-#if 0
-    constexpr auto p = pairs(Mbc::Type::MBC1, 1, Mbc::Type::MBC2, 1,
-                             Mbc::Type::MBC3, 1, Mbc::Type::MBC5, 1);
-    for_pairs(
-        [&mbc](auto pair) {
-          const auto [type, bank_value] = pair;
-          mbc.set_type(type);
-          mbc.set_lower(0);
-          mbc.set_upper(0);
-
-          CHECK(mbc.get_rom_bank_selected() == bank_value);
-        },
-        Mbc::Type::MBC1, 1, Mbc::Type::MBC2, 1, Mbc::Type::MBC3, 1,
-        Mbc::Type::MBC5, 1);
-#endif
+      if (type == Mbc::Type::MBC5) {
+        CHECK(mbc.get_rom_bank_selected() == 0);
+      } else {
+        CHECK(mbc.get_rom_bank_selected() == 1);
+      }
+    }
   }
 }
 
