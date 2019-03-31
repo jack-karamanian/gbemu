@@ -100,16 +100,16 @@ struct Cpu {
 
   void clear_interrupt(const u8 interrupt) const;
 
-  inline void noop() const {}
+  void noop() const {}
   void invalid() const;
 
-  inline bool get_carry() const { return regs[Register::F] & 0x10; }
+  bool get_carry() const { return regs[Register::F] & 0x10; }
 
-  inline bool get_flag(u8 flag) const { return regs[Register::F] & flag; }
+  bool get_flag(u8 flag) const { return regs[Register::F] & flag; }
 
-  inline void set_flag(u8 flag) { regs[Register::F] |= flag; }
+  void set_flag(u8 flag) { regs[Register::F] |= flag; }
 
-  inline void clear_flag(u8 flag) { regs[Register::F] &= ~flag; }
+  void clear_flag(u8 flag) { regs[Register::F] &= ~flag; }
 
   template <typename T>
   void set_zero(const T& val) {
