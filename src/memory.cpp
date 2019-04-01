@@ -5,6 +5,10 @@
 namespace gb {
 
 std::pair<u16, nonstd::span<const u8>> Memory::select_storage(u16 addr) {
+  if (mbc.in_ram_range(addr)) {
+    return {mbc.relative_ram_address(addr),
+            {&save_ram[mbc.absolute_ram_offset()], 8192}};
+  }
   if (addr < 0x8000) {
     switch (addr & 0xf000) {
       case 0x0000:
@@ -17,7 +21,7 @@ std::pair<u16, nonstd::span<const u8>> Memory::select_storage(u16 addr) {
       case 0x5000:
       case 0x6000:
       case 0x7000: {
-        const int start_addr = SIXTEEN_KB * mbc.get_rom_bank_selected();
+        const int start_addr = SIXTEEN_KB * mbc.rom_bank_selected();
         return {addr - 0x4000, {&rom.at(start_addr), SIXTEEN_KB}};
       }
     }
@@ -47,6 +51,14 @@ void Memory::set(u16 addr, u8 val) {
   } else if (mbc.in_upper_write_range(addr)) {
     // Set upper rom bank bits
     mbc.set_upper(val);
+  } else if (mbc.in_ram_enable_range(addr)) {
+    save_ram_enabled = (val & 0x0a) == 0x0a;
+  } else if (save_ram_enabled && mbc.in_ram_range(addr)) {
+    std::size_t ram_index = mbc.absolute_ram_address(addr);
+    save_ram[ram_index] = val;
+    save_ram_write_listener(ram_index, val);
+  } else if (mbc.in_ram_bank_write_range(addr)) {
+    mbc.set_ram_bank(val);
   } else {
     switch (addr) {
       case 0xff46:
@@ -112,7 +124,7 @@ void Memory::add_write_listener_for_range(u16 begin,
   }
 }
 
-void Memory::load_rom(nonstd::span<const u8> data) {
+RomHeader Memory::load_rom(nonstd::span<const u8> data) {
   // Decode the MBC type from the cart header
   const Mbc::Type mbc_type = [rom_type = data[0x147]] {
     printf("rom type: %d\n", rom_type);
@@ -144,10 +156,36 @@ void Memory::load_rom(nonstd::span<const u8> data) {
     }
   }();
 
+  const int save_ram_size = [ram_size = data[0x149], mbc_type] {
+    if (mbc_type == Mbc::Type::MBC2) {
+      return 256;
+    }
+    switch (ram_size) {
+      case 0:
+        return 0;
+      case 1:
+        return 2 * 1024;
+      case 2:
+        return 8 * 1024;
+      case 3:
+        return 32 * 1024;
+      case 4:
+        return 128 * 1024;
+      case 5:
+        return 64 * 1024;
+      default:
+        throw std::runtime_error("invalid save ram size");
+    }
+  }();
+
+  save_ram.resize(save_ram_size);
+
   mbc = Mbc{mbc_type};
   rom.resize(data.size());
 
   std::copy(data.begin(), data.end(), &rom[0]);
+
+  return {mbc_type, (1024 * 32) << data[0x148], save_ram_size};
 }
 
 void Memory::do_dma_transfer(const u8& data) {

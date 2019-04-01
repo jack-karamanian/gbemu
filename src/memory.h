@@ -18,25 +18,37 @@
 
 namespace gb {
 
-using MemoryListener = std::function<void(u8 val, u8 prev_val)>;
-using AddrMemoryListener = std::function<void(u16 addr, u8 val, u8 prev_val)>;
+struct RomHeader {
+  Mbc::Type mbc_type;
+  int rom_size;
+  int save_ram_size;
+};
 
 class Memory {
+  using MemoryListener = std::function<void(u8 val, u8 prev_val)>;
+  using AddrMemoryListener = std::function<void(u16 addr, u8 val, u8 prev_val)>;
+  using SaveRamWriteListener = std::function<void(std::size_t index, u8 val)>;
+
   std::vector<u8> memory;
   std::vector<u8> rom;
+  std::vector<u8> save_ram;
 
   nonstd::span<const u8> memory_span;
 
-  bool external_ram_enabled = false;
+  bool save_ram_enabled = false;
 
   Mbc mbc{Mbc::Type::None};
 
   std::unordered_map<u16, MemoryListener> write_callbacks;
+  SaveRamWriteListener save_ram_write_listener;
 
   std::pair<u16, nonstd::span<const u8>> select_storage(u16 addr);
 
  public:
-  Memory() : memory(SIXTYFOUR_KB), memory_span{memory} {}
+  Memory(SaveRamWriteListener callback)
+      : memory(SIXTYFOUR_KB),
+        memory_span{memory},
+        save_ram_write_listener{std::move(callback)} {}
 
   template <typename T = u8>
   T at(u16 addr) {
@@ -62,7 +74,9 @@ class Memory {
 
   void reset();
 
-  void load_rom(nonstd::span<const u8> data);
+  RomHeader load_rom(nonstd::span<const u8> data);
+
+  void load_save_ram(std::vector<u8>&& data) { save_ram = std::move(data); }
 
   void add_write_listener(u16 addr, MemoryListener callback) {
     write_callbacks.emplace(addr, std::move(callback));

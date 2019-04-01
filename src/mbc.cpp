@@ -66,7 +66,7 @@ bool Mbc::in_upper_write_range(u16 addr) const {
   }
 }
 
-u16 Mbc::get_rom_bank_selected() const {
+u16 Mbc::rom_bank_selected() const {
   const int upper_shift = type == Mbc::Type::MBC5 ? 8 : 5;
   const u16 bank = static_cast<u16>(upper << upper_shift) | lower;
   if (bank == 0) {
@@ -79,8 +79,53 @@ u16 Mbc::get_rom_bank_selected() const {
   return bank;
 }
 
-TEST_CASE("Mbc::get_rom_bank_selected") {
-  SUBCASE("MBC5 should allow the maximum rom bank to be selected") {
+void Mbc::set_ram_bank(u8 val) {
+  switch (type) {
+    case Mbc::Type::MBC1:
+    case Mbc::Type::MBC3:
+      ram_bank = val & 0x03;
+      break;
+    case Mbc::Type::MBC5:
+      ram_bank = val & 0x0f;
+      break;
+    default:
+      break;
+  }
+}
+
+bool Mbc::in_ram_enable_range(u16 addr) const {
+  return addr >= 0x0000 && addr <= 0x1fff;
+}
+
+bool Mbc::in_ram_bank_write_range(u16 addr) const {
+  switch (type) {
+    case Mbc::Type::MBC3:
+      if (ram_bank > 3) {
+        return false;
+      }
+    case Mbc::Type::MBC1:
+    case Mbc::Type::MBC5:
+      return addr >= 0x4000 && addr <= 0x5fff;
+    default:
+      return false;
+  }
+}
+
+bool Mbc::in_ram_range(u16 addr) const {
+  switch (type) {
+    case Mbc::Type::MBC2:
+      return addr >= 0xa000 && addr <= 0xa1ff;
+    case Mbc::Type::MBC1:
+    case Mbc::Type::MBC3:
+    case Mbc::Type::MBC5:
+      return addr >= 0xa000 && addr <= 0xbfff;
+    default:
+      return false;
+  }
+}
+
+TEST_CASE("Mbc::rom_bank_selected") {
+  SUBCASE("all types should allow the maximum rom bank to be selected") {
     std::vector<std::pair<Mbc::Type, u16>> max_bank_for_type{
         {Mbc::Type::MBC1, 0x007f},
         {Mbc::Type::MBC2, 0x000f},
@@ -94,7 +139,7 @@ TEST_CASE("Mbc::get_rom_bank_selected") {
       mbc.set_upper(0xff);
       CAPTURE(type);
       CAPTURE(max_bank);
-      CHECK(mbc.get_rom_bank_selected() == max_bank);
+      CHECK(mbc.rom_bank_selected() == max_bank);
     }
   }
 
@@ -104,9 +149,9 @@ TEST_CASE("Mbc::get_rom_bank_selected") {
       Mbc mbc{type};
 
       if (type == Mbc::Type::MBC5) {
-        CHECK(mbc.get_rom_bank_selected() == 0);
+        CHECK(mbc.rom_bank_selected() == 0);
       } else {
-        CHECK(mbc.get_rom_bank_selected() == 1);
+        CHECK(mbc.rom_bank_selected() == 1);
       }
     }
   }
