@@ -1,9 +1,24 @@
 #include <boost/program_options.hpp>
+#define DOCTEST_CONFIG_IMPLEMENT
+#include <doctest/doctest.h>
 #include "emulator.h"
 
 namespace po = boost::program_options;
 
 int main(int argc, const char** argv) {
+  doctest::Context context;
+
+  context.setOption("abort-after", 5);
+  context.applyCommandLine(argc, argv);
+
+  context.setOption("no-breaks", true);
+
+  int res = context.run();
+
+  if (context.shouldExit()) {
+    return res;
+  }
+
   po::options_description option_desc{"Options"};
 
   option_desc.add_options()(
