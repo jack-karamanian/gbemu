@@ -176,7 +176,6 @@ std::array<Color, 4> Gpu::generate_colors(Palette palette, bool is_sprite) {
                 [palette, base_colors, i = 0]() mutable {
                   return base_colors.at(palette.get_color(i++));
                 });
-  colors[0].a = 0;
   return colors;
 }
 
