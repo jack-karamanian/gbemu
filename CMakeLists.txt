@@ -77,7 +77,7 @@ set_target_properties(${PROJECT_NAME}_core PROPERTIES CXX_STANDARD 17)
 target_include_directories(${PROJECT_NAME}_core PUBLIC $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include> PRIVATE $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/src>)
 
 target_compile_definitions(${PROJECT_NAME} PRIVATE span_FEATURE_MEMBER_AT=1 BOOST_RESULT_OF_USE_DECLTYPE=1)
-target_compile_definitions(${PROJECT_NAME}_core PRIVATE span_FEATURE_MEMBER_AT=1 BOOST_RESULT_OF_USE_DECLTYPE=1 _GLIBCXX_DEBUG)
+target_compile_definitions(${PROJECT_NAME}_core PRIVATE span_FEATURE_MEMBER_AT=1 BOOST_RESULT_OF_USE_DECLTYPE=1)
 
 find_library(BOOST_PROGRAM_OPTIONS_LIB boost_program_options)
 #target_link_libraries(${PROJECT_NAME} PRIVATE ${PROJECT_NAME}_core doctest::doctest ${BOOST_PROGRAM_OPTIONS_LIB})
