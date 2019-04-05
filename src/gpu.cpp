@@ -8,7 +8,7 @@
 #include "registers/lcdc.h"
 #include "sprite_attribute.h"
 
-#define VRAM_START 0x8000
+static constexpr u16 VRAM_START = 0x8000;
 
 namespace gb {
 static constexpr std::array<Color, 4> COLORS = {{
