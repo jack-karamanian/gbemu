@@ -37,10 +37,12 @@ int Cpu::fetch_and_decode() {
   }
 
   const Instruction& inst = fetch();
+
   if (debug) {
     std::cout << inst.name << std::endl;
     std::cout << "opcode: " << std::hex << +memory->at(pc) << std::endl;
   }
+
   const std::size_t operands_size = (inst.size - 1);
 
   if (operands_size == 1) {

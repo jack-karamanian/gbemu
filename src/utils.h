@@ -15,6 +15,7 @@ constexpr u8 get_bits(Args... args) {
     }
     --shift;
   }
+
   return res;
 }
 
