@@ -124,6 +124,7 @@ auto Gpu::render_sprites(int scanline) const {
 
 auto Gpu::render_background(
     int scanline,
+    u16 tile_map_base,
     nonstd::span<const u8> tile_map_range,
     u8 scx,
     u8 scy,
@@ -133,8 +134,7 @@ auto Gpu::render_background(
 
   const bool is_signed = lcdc.is_tile_map_signed();
 
-  const int scanline_tile_row = (scanline + scy + offset_y) / 8;
-  const u16 tile_scroll_offset = 32 * scanline_tile_row;
+  const u16 y_base = scanline + scy + offset_y;
 
   const int tile_y = ((scanline + scy) % 8);
 
@@ -144,27 +144,59 @@ auto Gpu::render_background(
 
   const int tile_map_range_size = tile_map_range.size();
 
+  const u8 table_selected = tile_map_base == 0x9800 ? 0 : 1;
+
+  // From https://gist.github.com/drhelius/3730564
+  const u16 tile_base = 0x9800 | (table_selected << 10) |
+                        ((y_base & 0xf8) << 2) | ((scx & 0xf8) >> 3);
+
+  // HACK: The real hardware renders 20-22 tiles depending on scx
+  // but let's just always render 21 tiles
   auto addrs =
-      boost::irange(0, 160) | boost::adaptors::transformed([=](u16 x) {
-        const u16 tile_index = tile_scroll_offset + ((x + scx) / 8) % 32;
+      boost::irange(0, 21) | boost::adaptors::transformed([=](u16 tile) {
+        // Add which tile to be displayed to the last 5 bits of tile_base
+        const u16 tile_num_addr =
+            (tile_base & ~0x1f) | (((tile_base & 0x1f) + tile) & 0x1f);
+
+        const u16 tile_index = tile_num_addr - tile_map_base;
+
+        // Convert from [0, 21) to [0, 160]
+        const u16 tile_x = tile * TILE_SIZE;
 
         const u8 tile_num =
             tile_map_range[tile_index > tile_map_range_size - 1
                                ? tile_index - tile_map_range_size
                                : tile_index];
-
         const u16 tile_addr =
             (16 * (is_signed
                        ? static_cast<int16_t>(static_cast<s8>(tile_num)) + 128
                        : tile_num)) +
             2 * tile_y;
-
         const u8 byte1 = tile_data[tile_addr];
         const u8 byte2 = tile_data[tile_addr + 1];
 
-        const u8 color_index = render_pixel(byte1, byte2, (x + scx) % 8);
-        return Pixel{Vec2<u8>{static_cast<u8>(x), static_cast<u8>(screen_y)},
+        const u16 tile_scx = scx % TILE_SIZE;
+
+        return boost::irange(
+                   static_cast<int>(
+                       tile_x - tile_scx < 0
+                           ? tile_scx
+                           : 0),  // Make sure x does not underflow when scx > 0
+                   tile_x >= SCREEN_WIDTH
+                       ? tile_scx
+                       : TILE_SIZE) |  // Make sure x is < 160
+               boost::adaptors::transformed([this, screen_y, tile_x, tile_scx,
+                                             byte1, byte2](u16 pixel_x) {
+                 // Offset the current tile by scx
+                 const u16 x = tile_x + pixel_x - tile_scx;
+
+                 assert(x >= 0 && x < 160);
+
+                 const u8 color_index = render_pixel(byte1, byte2, pixel_x);
+                 return Pixel{
+                     Vec2<u8>{static_cast<u8>(x), static_cast<u8>(screen_y)},
                      color_index, false};
+               });
       });
   return addrs;
 }
@@ -193,17 +225,26 @@ void Gpu::render_scanline(int scanline) {
 
   if (lcdc.window_on() && scanline >= window_y) {
     // const u16 window_x = memory->get_ram(0xff4b) - 7;
-    const auto tile_map_range = memory->get_range(lcdc.window_tile_map_range());
-    auto window =
-        render_background(scanline, tile_map_range, 0, 0, 0, -window_y);
-    std::copy(window.begin(), window.end(), background_pixels.begin());
+    const auto range = lcdc.window_tile_map_range();
+    const auto tile_map_range = memory->get_range(range);
+    auto window = render_background(scanline, range.first, tile_map_range, 0, 0,
+                                    0, -window_y);
+    for (const auto& bg_pixels : window) {
+      for (const Pixel& pixel : bg_pixels) {
+        background_pixels[pixel.screen_pos.x] = pixel;
+      }
+    }
   } else if (lcdc.bg_on()) {
-    const auto tile_map_range = memory->get_range(lcdc.bg_tile_map_range());
+    const auto range = lcdc.bg_tile_map_range();
+    const auto tile_map_range = memory->get_range(range);
 
-    auto background =
-        render_background(scanline, tile_map_range, get_scx(), get_scy(), 0, 0);
-
-    std::copy(background.begin(), background.end(), background_pixels.begin());
+    auto background = render_background(scanline, range.first, tile_map_range,
+                                        get_scx(), get_scy(), 0, 0);
+    for (const auto& bg_pixels : background) {
+      for (const Pixel& pixel : bg_pixels) {
+        background_pixels[pixel.screen_pos.x] = pixel;
+      }
+    }
   }
 
   auto sprites = render_sprites(scanline);

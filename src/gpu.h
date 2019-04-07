@@ -60,6 +60,7 @@ class Gpu {
   u8 render_pixel(const u8 byte1, const u8 byte2, const u8 pixel_x) const;
   auto render_sprites(int scanline) const;
   auto render_background(int scanline,
+                         u16 tile_map_base,
                          nonstd::span<const u8> tile_map_range,
                          u8 scx,
                          u8 scy,
