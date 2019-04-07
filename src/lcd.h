@@ -5,7 +5,7 @@
 #define LCDC_Y_COORD 0xff44
 
 namespace gb {
-struct Cpu;
+class Cpu;
 class Memory;
 class Gpu;
 class Lcd {

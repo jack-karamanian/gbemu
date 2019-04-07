@@ -164,8 +164,6 @@ void run_with_options(const std::string& rom_name, bool trace) {
         }
       });
 
-  cpu.pc = 0x100;
-
   // TODO
 #if 0
   constexpr int step_ms = 1000 / 60;
@@ -225,10 +223,8 @@ void run_with_options(const std::string& rom_name, bool trace) {
 
     while (!draw_frame) {
       int ticks = cpu.fetch_and_decode();
-      if (!cpu.halted) {
-        if (trace) {
-          cpu.debug_write();
-        }
+      if (!cpu.is_halted() && trace) {
+        cpu.debug_write();
       }
 
       ticks += cpu.handle_interrupts();

@@ -16,7 +16,7 @@
 #define FLAG_CARRY 0x10
 
 namespace gb {
-struct Cpu;
+class Cpu;
 struct Instruction {
   std::string name;
   size_t size;
@@ -44,15 +44,7 @@ enum {
   C,
 };
 }
-struct Cpu {
-  enum Register { C = 0, B, E, D, L, H, F, A, BC = 0, DE = 2, HL = 4 };
-  enum Interrupt {
-    VBlank = 0x01,
-    LcdStat = 0x2,
-    Timer = 0x4,
-    Serial = 0x08,
-    Joypad = 0x10,
-  };
+class Cpu {
   enum MemoryRegister {
     InterruptRequest = 0xff0f,
     InterruptEnabled = 0xffff,
@@ -79,6 +71,15 @@ struct Cpu {
   Memory* memory;
   InstructionTable instruction_table;
 
+ public:
+  enum Register { C = 0, B, E, D, L, H, F, A, BC = 0, DE = 2, HL = 4 };
+  enum Interrupt {
+    VBlank = 0x01,
+    LcdStat = 0x2,
+    Timer = 0x4,
+    Serial = 0x08,
+    Joypad = 0x10,
+  };
   Cpu(Memory& memory);
 
   const Instruction& fetch();
@@ -89,6 +90,8 @@ struct Cpu {
 
   void set_debug(bool value) { debug = value; }
   void debug_write();
+
+  bool is_halted() const { return halted; }
 
   u8 get_interrupts_register() const;
 
