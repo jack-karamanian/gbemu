@@ -1,9 +1,11 @@
 #pragma once
 #include <array>
+#include <type_traits>
 #include "types.h"
 namespace gb {
 template <typename... Args>
 constexpr u8 get_bits(Args... args) {
+  static_assert((std::is_same_v<Args, bool> && ...));
   u8 res{0x00};
   int shift = sizeof...(args) - 1;
 
@@ -17,7 +19,7 @@ constexpr u8 get_bits(Args... args) {
 }
 
 template <typename T>
-T convert_bytes(const std::array<u8, sizeof(T)>& bytes) {
+constexpr T convert_bytes(const std::array<u8, sizeof(T)>& bytes) {
   T res{0};
 
   int shift = (sizeof(T) * 8) - 8;
