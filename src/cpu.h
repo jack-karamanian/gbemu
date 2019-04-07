@@ -58,7 +58,7 @@ struct Cpu {
     InterruptEnabled = 0xffff,
     LcdControl = 0xff40,
   };
-  u8 regs[8];
+  std::array<u8, 8> regs;
 
   u16 sp;
   u16 pc;
