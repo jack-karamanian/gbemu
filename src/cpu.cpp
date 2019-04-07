@@ -11,7 +11,6 @@ Cpu::Cpu(Memory& memory)
     : regs{0x13, 0x00, 0xd8, 0x00, 0x4d, 0x01, 0xb0, 0x01},
       sp{0xfffe},
       pc{0x100},
-      m{0},
       ticks{0},
       memory{&memory},
       instruction_table(*this) {}

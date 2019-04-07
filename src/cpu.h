@@ -54,7 +54,7 @@ class Cpu {
 
   u16 sp;
   u16 pc;
-  u8 m;
+
   unsigned int ticks;
 
   u8 current_opcode = 0x00;
