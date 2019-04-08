@@ -14,8 +14,14 @@ std::pair<u16, nonstd::span<const u8>> Memory::select_storage(u16 addr) {
       case 0x0000:
       case 0x1000:
       case 0x2000:
-      case 0x3000:
-        return {addr, {rom.data(), SIXTEEN_KB}};
+      case 0x3000: {
+        const int start_addr = SIXTEEN_KB * mbc.lower_rom_bank_selected();
+        if (start_addr != 0) {
+          std::cout << std::hex << start_addr << '\n';
+        }
+
+        return {addr - start_addr, {&rom.at(start_addr), SIXTEEN_KB}};
+      }
 
       case 0x4000:
       case 0x5000:
@@ -45,36 +51,28 @@ void Memory::set(u16 addr, u8 val) {
     return;
   }
 
-  if (mbc.in_lower_write_range(addr)) {
-    // Set lower rom bank bits
-    mbc.set_lower(val);
-  } else if (mbc.in_upper_write_range(addr)) {
-    // Set upper rom bank bits
-    mbc.set_upper(val);
-  } else if (mbc.in_ram_enable_range(addr)) {
-    save_ram_enabled = (val & 0x0a) == 0x0a;
-  } else if (save_ram_enabled && mbc.in_ram_range(addr)) {
-    std::size_t ram_index = mbc.absolute_ram_address(addr);
-    save_ram[ram_index] = val;
-    save_ram_write_listener(ram_index, val);
-  } else if (mbc.in_ram_bank_write_range(addr)) {
-    mbc.set_ram_bank(val);
-  } else {
-    switch (addr) {
-      case 0xff46:
-        do_dma_transfer(val);
-        break;
-      case 0xff02:
-        if (val == 0x81) {
-          std::cout << memory[0xff01];
-        }
-        break;
+  if (bool mbc_handled = mbc.handle_memory_write(addr, val); !mbc_handled) {
+    if (mbc.save_ram_enabled() && mbc.in_ram_range(addr)) {
+      std::size_t ram_index = mbc.absolute_ram_address(addr);
+      save_ram[ram_index] = val;
+      save_ram_write_listener(ram_index, val);
+    } else {
+      switch (addr) {
+        case 0xff46:
+          do_dma_transfer(val);
+          break;
+        case 0xff02:
+          if (val == 0x81) {
+            std::cout << memory[0xff01];
+          }
+          break;
 
-      default:
-        if (addr >= 0x8000) {
-          memory[addr] = val;
-        }
-        break;
+        default:
+          if (addr >= 0x8000) {
+            memory[addr] = val;
+          }
+          break;
+      }
     }
   }
 }
@@ -179,13 +177,16 @@ RomHeader Memory::load_rom(nonstd::span<const u8> data) {
   }();
 
   save_ram.resize(save_ram_size);
+  std::fill(save_ram.begin(), save_ram.end(), 0xff);
 
-  mbc = Mbc{mbc_type};
-  rom.resize(data.size());
+  const int rom_size = (1024 * 32) << data[0x148];
+  mbc = Mbc{mbc_type, static_cast<u16>(rom_size / SIXTEEN_KB)};
+  printf("%d\n", data[0x148]);
+  rom.resize(rom_size);
 
   std::copy(data.begin(), data.end(), &rom[0]);
 
-  return {mbc_type, (1024 * 32) << data[0x148], save_ram_size};
+  return {mbc_type, rom_size, save_ram_size};
 }
 
 void Memory::do_dma_transfer(const u8& data) {

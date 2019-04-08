@@ -39,7 +39,7 @@ static RomHeader load_rom(const std::string& rom_name, gb::Memory& memory) {
   return memory.load_rom({rom_data});
 }
 
-void run_with_options(const std::string& rom_name, bool trace) {
+void run_with_options(const std::string& rom_name, bool trace, bool save) {
   std::cout << rom_name << std::endl;
   std::filesystem::path save_ram_path =
       std::filesystem::absolute(rom_name + ".sav");
@@ -67,16 +67,18 @@ void run_with_options(const std::string& rom_name, bool trace) {
 
   const RomHeader rom_header = load_rom(rom_name, memory);
 
-  if (save_ram_file.tellg() == 0) {
-    std::fill_n(std::ostreambuf_iterator<char>{save_ram_file},
-                rom_header.save_ram_size, '\0');
-  } else {
-    save_ram_file.seekg(0);
-    std::vector<u8> save_ram(std::istreambuf_iterator<char>{save_ram_file},
-                             std::istreambuf_iterator<char>{});
-    memory.load_save_ram(std::move(save_ram));
+  if (save) {
+    if (save_ram_file.tellg() == 0) {
+      std::fill_n(std::ostreambuf_iterator<char>{save_ram_file},
+                  rom_header.save_ram_size, 0xff);
+    } else {
+      save_ram_file.seekg(0);
+      std::vector<u8> save_ram(std::istreambuf_iterator<char>{save_ram_file},
+                               std::istreambuf_iterator<char>{});
+      memory.load_save_ram(std::move(save_ram));
+    }
+    save_ram_file.flush();
   }
-  save_ram_file.flush();
 
   gb::Timers timers{memory};
   memory.add_write_listener_for_addrs(

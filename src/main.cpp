@@ -24,14 +24,18 @@ int main(int argc, const char** argv) {
   option_desc.add_options()(
       "trace", po::value<bool>()->default_value(false)->implicit_value(true),
       "enables CPU tracing");
+  option_desc.add_options()(
+      "no-save", po::value<bool>()->default_value(false)->implicit_value(true),
+      "disables save RAM files");
 
   po::variables_map vm;
   po::store(po::parse_command_line(argc, argv, option_desc), vm);
 
   po::notify(vm);
   const bool trace = vm["trace"].as<bool>();
+  const bool save = vm["no-save"].as<bool>();
   std::string rom_name = argv[1];
-  gb::run_with_options(rom_name, trace);
+  gb::run_with_options(rom_name, trace, !save);
 
   return 0;
 }
