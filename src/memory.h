@@ -35,9 +35,7 @@ class Memory {
 
   nonstd::span<const u8> memory_span;
 
-  bool save_ram_enabled = false;
-
-  Mbc mbc{Mbc::Type::None};
+  Mbc mbc{Mbc::Type::None, 1};
 
   std::unordered_map<u16, MemoryListener> write_callbacks;
   SaveRamWriteListener save_ram_write_listener;
