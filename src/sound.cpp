@@ -175,10 +175,7 @@ void Sound::update(int ticks) {
   wave_channel.update(ticks);
   noise_channel.update(ticks);
 
-  sample_ticks += ticks;
-  sequencer_ticks += ticks;
-
-  if (sample_ticks > 87) {
+  samples_task.run(ticks, [&]() {
     const u8 square1_sample = square1.volume();
     const u8 square2_sample = square2.volume();
     const u8 wave_sample = wave_channel.volume();
@@ -196,10 +193,9 @@ void Sound::update(int ticks) {
       samples_ready_callback(sample_buffer);
       sample_buffer.clear();
     }
-    sample_ticks -= 87;
-  }
+  });
 
-  if (sequencer_ticks >= 8192) {
+  sequencer_task.run(ticks, [&]() {
     square1.clock(sequencer_step);
     square2.clock(sequencer_step);
     wave_channel.clock(sequencer_step);
@@ -214,7 +210,6 @@ void Sound::update(int ticks) {
     } else {
       sequencer_step++;
     }
-    sequencer_ticks -= 8192;
-  }
-}  // namespace gb
+  });
+}
 }  // namespace gb

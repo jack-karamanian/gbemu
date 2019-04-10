@@ -62,6 +62,7 @@ set(SRCS
   src/sound_mods/volume_shift_mod.cpp
   src/mbc.h
   src/mbc.cpp
+  src/task.h
 )
 
 

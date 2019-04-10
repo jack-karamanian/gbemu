@@ -8,6 +8,7 @@
 #include "sound_mods/quiet_mod.h"
 #include "sound_mods/volume_shift_mod.h"
 #include "square_source.h"
+#include "task.h"
 #include "types.h"
 #include "wave_source.h"
 
@@ -41,6 +42,9 @@ class Sound {
   using SquareChannel = Channel<SquareSource, LengthMod<64>, EnvelopeMod>;
 
   Memory* memory;
+
+  Task samples_task{87};
+  Task sequencer_task{8192};
 
   int sequencer_ticks = 0;
   int sequencer_step = 0;
