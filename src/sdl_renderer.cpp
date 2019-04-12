@@ -42,7 +42,8 @@ void SdlRenderer::draw_pixels(Texture texture,
   Uint32* texture_pixels = nullptr;
   int pitch = -1;
 
-  if (SDL_LockTexture(sdl_texture, nullptr, (void**)&texture_pixels, &pitch)) {
+  if (SDL_LockTexture(sdl_texture, nullptr,
+                      reinterpret_cast<void**>(&texture_pixels), &pitch)) {
     std::cout << "SDL Error: " << SDL_GetError() << std::endl;
   }
 
