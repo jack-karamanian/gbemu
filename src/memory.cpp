@@ -147,6 +147,11 @@ RomHeader Memory::load_rom(nonstd::span<const u8> data) {
         return Mbc::Type::MBC3;
         break;
       case 0x19:
+      case 0x1a:
+      case 0x1b:
+      case 0x1c:
+      case 0x1d:
+      case 0x1e:
         return Mbc::Type::MBC5;
         break;
       default:
