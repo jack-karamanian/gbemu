@@ -69,6 +69,13 @@ class Gpu {
 
   std::array<Color, 4> generate_colors(Palette palette, bool is_sprite = false);
 
+  void render_background_pixels(int scanline,
+                                std::pair<u16, u16> tile_map,
+                                u8 scx,
+                                u8 scy,
+                                int offset_x,
+                                int offset_y);
+
  public:
   Gpu(Memory& memory, std::shared_ptr<IRenderer> renderer);
 

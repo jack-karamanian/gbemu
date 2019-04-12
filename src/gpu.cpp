@@ -211,6 +211,22 @@ std::array<Color, 4> Gpu::generate_colors(Palette palette, bool is_sprite) {
   return colors;
 }
 
+void Gpu::render_background_pixels(int scanline,
+                                   std::pair<u16, u16> tile_map,
+                                   u8 scx,
+                                   u8 scy,
+                                   int offset_x,
+                                   int offset_y) {
+  const auto tile_map_range = memory->get_range(tile_map);
+  auto pixel_groups = render_background(
+      scanline, tile_map.first, tile_map_range, scx, scy, offset_x, offset_y);
+  for (const auto& bg_pixels : pixel_groups) {
+    for (const Pixel& pixel : bg_pixels) {
+      background_pixels[pixel.screen_pos.x] = pixel;
+    }
+  }
+}
+
 void Gpu::compute_background_palette(u8 palette) {
   background_colors = generate_colors({palette});
 }
@@ -224,27 +240,11 @@ void Gpu::render_scanline(int scanline) {
   const u16 window_y = memory->get_ram(0xff4a);
 
   if (lcdc.window_on() && scanline >= window_y) {
-    // const u16 window_x = memory->get_ram(0xff4b) - 7;
     const auto range = lcdc.window_tile_map_range();
-    const auto tile_map_range = memory->get_range(range);
-    auto window = render_background(scanline, range.first, tile_map_range, 0, 0,
-                                    0, -window_y);
-    for (const auto& bg_pixels : window) {
-      for (const Pixel& pixel : bg_pixels) {
-        background_pixels[pixel.screen_pos.x] = pixel;
-      }
-    }
+    render_background_pixels(scanline, range, 0, 0, 0, -window_y);
   } else if (lcdc.bg_on()) {
     const auto range = lcdc.bg_tile_map_range();
-    const auto tile_map_range = memory->get_range(range);
-
-    auto background = render_background(scanline, range.first, tile_map_range,
-                                        get_scx(), get_scy(), 0, 0);
-    for (const auto& bg_pixels : background) {
-      for (const Pixel& pixel : bg_pixels) {
-        background_pixels[pixel.screen_pos.x] = pixel;
-      }
-    }
+    render_background_pixels(scanline, range, get_scx(), get_scy(), 0, 0);
   }
 
   auto sprites = render_sprites(scanline);
