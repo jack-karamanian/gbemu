@@ -27,14 +27,16 @@ class Channel {
 
   Channel() {}
 
-  u8 update() {
+  void update(int ticks) { source.update(ticks); }
+
+  u8 volume() const {
+    u8 volume = source.volume();
     if (enabled) {
-      u8 res = source.update();
-      for_static<sizeof...(Mods)>(
-          [&res, this](auto i) { res = std::get<i>(mods).update(res); });
-      return res;
+      for_static<sizeof...(Mods)>([this, &volume](auto i) {
+        volume = std::get<i>(mods).update(volume);
+      });
     }
-    return 0;
+    return volume;
   }
 
   void clock(int step) {

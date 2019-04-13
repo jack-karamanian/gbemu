@@ -96,7 +96,4 @@ bool Lcd::update(unsigned int ticks) {
   memory->set_lcd_stat(lcd_stat.get_value());
   return draw_frame;
 }
-void Lcd::write_lcd_stat() const {
-  // memory->set(LCD_STAT_REGISTER, mode);
-}
 }  // namespace gb

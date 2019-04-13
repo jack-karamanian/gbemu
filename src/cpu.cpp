@@ -10,8 +10,7 @@ namespace gb {
 Cpu::Cpu(Memory& memory)
     : regs{0x13, 0x00, 0xd8, 0x00, 0x4d, 0x01, 0xb0, 0x01},
       sp{0xfffe},
-      pc{0},
-      m{0},
+      pc{0x100},
       ticks{0},
       memory{&memory},
       instruction_table(*this) {}
@@ -38,11 +37,13 @@ int Cpu::fetch_and_decode() {
   }
 
   const Instruction& inst = fetch();
+
   if (debug) {
     std::cout << inst.name << std::endl;
     std::cout << "opcode: " << std::hex << +memory->at(pc) << std::endl;
   }
-  const int operands_size = (inst.size - 1);
+
+  const std::size_t operands_size = (inst.size - 1);
 
   if (operands_size == 1) {
     if (debug) {

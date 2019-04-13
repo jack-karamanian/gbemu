@@ -1,6 +1,7 @@
 #include <SDL2/SDL.h>
 #include <algorithm>
 #include <cstring>
+#include <filesystem>
 #include <fstream>
 #include <iostream>
 #include <vector>
@@ -19,7 +20,7 @@
 #include "timers.h"
 
 namespace gb {
-static void load_rom(const std::string& rom_name, gb::Memory& memory) {
+static RomHeader load_rom(const std::string& rom_name, gb::Memory& memory) {
   std::ifstream rom(rom_name, std::ios::in | std::ios::binary);
   rom.seekg(0, std::ios::end);
 
@@ -28,24 +29,56 @@ static void load_rom(const std::string& rom_name, gb::Memory& memory) {
   std::cout << "rom size: " << rom_size << std::endl;
 
   rom.seekg(0);
-  std::vector<u8> rom_data(rom_size);
-
-  rom.read(reinterpret_cast<char*>(&rom_data[0]), rom_size);
+  std::vector<u8> rom_data(std::istreambuf_iterator<char>{rom},
+                           std::istreambuf_iterator<char>{});
 
   std::cout << std::endl;
 
   rom.close();
 
-  memory.load_rom({rom_data});
+  return memory.load_rom({rom_data});
 }
 
-void run_with_options(const std::string& rom_name, bool trace) {
-  gb::Memory memory{};
+void run_with_options(const std::string& rom_name, bool trace, bool save) {
+  std::cout << rom_name << std::endl;
+  std::filesystem::path save_ram_path =
+      std::filesystem::absolute(rom_name + ".sav");
+
+  auto file_flags = std::fstream::out | std::fstream::in |
+                    std::fstream::binary | std::fstream::ate;
+
+  if (!std::filesystem::exists(save_ram_path)) {
+    file_flags |= std::fstream::trunc;
+  }
+
+  std::fstream save_ram_file{save_ram_path, file_flags};
+  std::cout << strerror(errno) << std::endl;
+
+  if (!save_ram_file.good()) {
+    throw std::runtime_error("could not open save ram file");
+  }
+
+  gb::Memory memory{[&](std::size_t index, u8 val) {
+    save_ram_file.seekp(index);
+    save_ram_file.put(val);
+  }};
+
   memory.reset();
 
-  std::cout << rom_name << std::endl;
+  const RomHeader rom_header = load_rom(rom_name, memory);
 
-  load_rom(rom_name, memory);
+  if (save) {
+    if (save_ram_file.tellg() == 0) {
+      std::fill_n(std::ostreambuf_iterator<char>{save_ram_file},
+                  rom_header.save_ram_size, 0xff);
+    } else {
+      save_ram_file.seekg(0);
+      std::vector<u8> save_ram(std::istreambuf_iterator<char>{save_ram_file},
+                               std::istreambuf_iterator<char>{});
+      memory.load_save_ram(std::move(save_ram));
+    }
+    save_ram_file.flush();
+  }
 
   gb::Timers timers{memory};
   memory.add_write_listener_for_addrs(
@@ -66,8 +99,8 @@ void run_with_options(const std::string& rom_name, bool trace) {
 
   SDL_SetHint(SDL_HINT_RENDER_VSYNC, "1");
   SDL_Window* window = SDL_CreateWindow(
-      "gbemu", SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED, 160, 144,
-      SDL_WINDOW_SHOWN | SDL_WINDOW_RESIZABLE);
+      "gbemu", SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED, 160 * 2,
+      144 * 2, SDL_WINDOW_SHOWN | SDL_WINDOW_RESIZABLE);
 
   if (!window) {
     std::cout << "SDL Error: " << SDL_GetError() << std::endl;
@@ -76,8 +109,10 @@ void run_with_options(const std::string& rom_name, bool trace) {
   auto delete_renderer = [](SDL_Renderer* r) { SDL_DestroyRenderer(r); };
 
   std::unique_ptr<SDL_Renderer, std::function<void(SDL_Renderer*)>>
-      sdl_renderer{SDL_CreateRenderer(window, -1, SDL_RENDERER_ACCELERATED),
-                   delete_renderer};
+      sdl_renderer{
+          SDL_CreateRenderer(
+              window, -1, SDL_RENDERER_ACCELERATED | SDL_RENDERER_PRESENTVSYNC),
+          delete_renderer};
 
   if (!sdl_renderer) {
     std::cout << "SDL Error: " << SDL_GetError() << std::endl;
@@ -130,8 +165,6 @@ void run_with_options(const std::string& rom_name, bool trace) {
           std::cout << "SDL Error: " << SDL_GetError() << std::endl;
         }
       });
-
-  cpu.pc = 0x100;
 
   // TODO
 #if 0
@@ -192,14 +225,21 @@ void run_with_options(const std::string& rom_name, bool trace) {
 
     while (!draw_frame) {
       int ticks = cpu.fetch_and_decode();
-      if (!cpu.halted) {
-        if (trace) {
-          cpu.debug_write();
-        }
+      if (!cpu.is_halted() && trace) {
+        cpu.debug_write();
       }
 
       ticks += cpu.handle_interrupts();
+
       draw_frame = lcd.update(ticks);
+      /*
+      std::optional<LcdState> lcd_state = lcd.update(ticks);
+      visit_optional(lcd_state, [&](LcdState state) {
+        std::cout << std::hex << +state.interrupts << '\n';
+        cpu.request_interrupt(static_cast<Cpu::Interrupt>(state.interrupts));
+        draw_frame = state.render;
+      });
+      */
 
       bool request_interrupt = input.update();
       if (request_interrupt) {
@@ -241,5 +281,6 @@ void run_with_options(const std::string& rom_name, bool trace) {
     // if (diff < step_ms) {
     // SDL_Delay(step_ms - diff);
   }
+  std::cout << "exit" << std::endl;
 }
 }  // namespace gb

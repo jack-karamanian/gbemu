@@ -170,54 +170,46 @@ void Sound::handle_memory_write(u16 addr, u8 value) {
 }
 
 void Sound::update(int ticks) {
-  // sample_ticks += ticks;
-  // sequencer_ticks += ticks;
-  u8 square1_sample;
-  u8 square2_sample;
-  u8 wave_sample;
-  u8 noise_sample;
+  square1.update(ticks);
+  square2.update(ticks);
+  wave_channel.update(ticks);
+  noise_channel.update(ticks);
 
-  for (int i = 0; i < ticks; i++) {
-    square1_sample = square1.update();
-    square2_sample = square2.update();
-    wave_sample = wave_channel.update();
-    noise_sample = noise_channel.update();
+  samples_task.run(ticks, [&]() {
+    const u8 square1_sample = square1.volume();
+    const u8 square2_sample = square2.volume();
+    const u8 wave_sample = wave_channel.volume();
+    const u8 noise_sample = noise_channel.volume();
+    const AudioFrame frame{square1_sample, square2_sample, wave_sample,
+                           noise_sample};
 
-    if (++sample_ticks > 87) {
-      AudioFrame frame{square1_sample, square2_sample, wave_sample,
-                       noise_sample};
+    const float left_sample = mix_samples(frame, left_output);
+    const float right_sample = mix_samples(frame, right_output);
 
-      float left_sample = mix_samples(frame, left_output);
-      float right_sample = mix_samples(frame, right_output);
+    sample_buffer.emplace_back(left_sample);
+    sample_buffer.emplace_back(right_sample);
 
-      sample_buffer.emplace_back(left_sample);
-      sample_buffer.emplace_back(right_sample);
+    if (sample_buffer.size() >= 4096) {
+      samples_ready_callback(sample_buffer);
+      sample_buffer.clear();
+    }
+  });
 
-      if (sample_buffer.size() >= 4096) {
-        samples_ready_callback(sample_buffer);
-        sample_buffer.clear();
-      }
-      sample_ticks = 0;
+  sequencer_task.run(ticks, [&]() {
+    square1.clock(sequencer_step);
+    square2.clock(sequencer_step);
+    wave_channel.clock(sequencer_step);
+    noise_channel.clock(sequencer_step);
+
+    if (sequencer_step == 2 || sequencer_step == 6) {
+      square1.source.clock_sweep();
     }
 
-    if (++sequencer_ticks >= 8192) {
-      square1.clock(sequencer_step);
-      square2.clock(sequencer_step);
-      wave_channel.clock(sequencer_step);
-      noise_channel.clock(sequencer_step);
-
-      if (sequencer_step == 2 || sequencer_step == 6) {
-        square1.source.clock_sweep();
-      }
-
-      if (sequencer_step == 7) {
-        sequencer_step = 0;
-      } else {
-        sequencer_step++;
-      }
-
-      sequencer_ticks = 0;
+    if (sequencer_step == 7) {
+      sequencer_step = 0;
+    } else {
+      sequencer_step++;
     }
-  }
+  });
 }
 }  // namespace gb

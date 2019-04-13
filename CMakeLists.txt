@@ -1,15 +1,17 @@
-cmake_minimum_required(VERSION 3.4.1)
+cmake_minimum_required(VERSION 3.8)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
-set(CMAKE_CXX_STANDARD 17)
+
+
+
 project(gbemu)
 
 include(CTest)
-include(ExternalProject)
-find_package(Git REQUIRED)
+
+find_package(SDL2 CONFIG REQUIRED)
+find_package(doctest CONFIG REQUIRED)
 
 set(SRCS
-  src/main.cpp
-  src/emulator.h
+  include/emulator.h
   src/emulator.cpp
   include/types.h
   src/cpu.h
@@ -22,7 +24,7 @@ set(SRCS
   src/lcd.cpp
   src/gpu.h
   src/gpu.cpp
-  src/pixel.h
+  src/color.h
   src/renderer.h
   src/sdl_renderer.h
   src/sdl_renderer.cpp
@@ -60,22 +62,45 @@ set(SRCS
   src/sound_mods/volume_shift_mod.cpp
   src/mbc.h
   src/mbc.cpp
+  src/task.h
 )
 
-if(ANDROID)
-add_library(gbemu SHARED ${SRCS})
-else()
-add_executable(gbemu ${SRCS})
-endif()
 
-find_library(SDL2_LIB NAMES SDL2)
-find_library(BOOST_PROGRAM_OPTIONS_LIB NAMES boost_program_options)
+add_executable(gbemu src/main.cpp)
+add_library(gbemu_core ${SRCS})
+add_test(${PROJECT_NAME}_test gbemu --exit)
 
-target_include_directories(gbemu PRIVATE include)
-target_include_directories(gbemu PRIVATE SYSTEM external/doctest)
-target_compile_definitions(gbemu PRIVATE span_FEATURE_MEMBER_AT=1)
+set_target_properties(${PROJECT_NAME} PROPERTIES CXX_STANDARD 17)
+set_target_properties(${PROJECT_NAME}_core PROPERTIES CXX_STANDARD 17)
 
-target_link_libraries(gbemu ${SDL2_LIB} ${BOOST_PROGRAM_OPTIONS_LIB})
-target_compile_options(gbemu PRIVATE -Wall -Wextra -pedantic -O3 -g -march=native)
-target_link_options(gbemu PRIVATE -fuse-ld=gold)
+
+#target_include_directories(${PROJECT_NAME} PRIVATE include)
+target_include_directories(${PROJECT_NAME}_core PUBLIC $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include> PRIVATE $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/src>)
+
+target_compile_definitions(${PROJECT_NAME} PRIVATE span_FEATURE_MEMBER_AT=1 BOOST_RESULT_OF_USE_DECLTYPE=1)
+target_compile_definitions(${PROJECT_NAME}_core PRIVATE span_FEATURE_MEMBER_AT=1 BOOST_RESULT_OF_USE_DECLTYPE=1)
+
+find_library(BOOST_PROGRAM_OPTIONS_LIB boost_program_options)
+#target_link_libraries(${PROJECT_NAME} PRIVATE ${PROJECT_NAME}_core doctest::doctest ${BOOST_PROGRAM_OPTIONS_LIB})
+target_link_libraries(${PROJECT_NAME}_core PRIVATE SDL2::SDL2-static doctest::doctest stdc++fs)
+target_link_libraries(${PROJECT_NAME} PRIVATE ${PROJECT_NAME}_core doctest::doctest ${BOOST_PROGRAM_OPTIONS_LIB})
+
+target_compile_options(${PROJECT_NAME}_core PRIVATE
+ -Wall
+ -Wextra
+ -Wshadow
+ -Wpedantic
+ -Wdouble-promotion
+ -ggdb3
+ )
+target_compile_options(${PROJECT_NAME}_core PRIVATE
+ -Wall
+ -Wextra
+ -Wshadow
+ -Wpedantic
+ -Wdouble-promotion
+ -ggdb3
+ )
+target_link_options(${PROJECT_NAME} PRIVATE -fuse-ld=gold)
+target_link_options(${PROJECT_NAME}_core PRIVATE -fuse-ld=gold)
 

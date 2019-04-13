@@ -5,7 +5,7 @@
 #define LCDC_Y_COORD 0xff44
 
 namespace gb {
-struct Cpu;
+class Cpu;
 class Memory;
 class Gpu;
 class Lcd {
@@ -22,7 +22,6 @@ class Lcd {
   int mode = 2;
   int scanlines = 0;
   unsigned int lcd_ticks = 0;
-  void write_lcd_stat() const;
 
   void check_scanlines(Registers::LcdStat& lcd_stat) const;
 

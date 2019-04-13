@@ -16,7 +16,7 @@
 #define FLAG_CARRY 0x10
 
 namespace gb {
-struct Cpu;
+class Cpu;
 struct Instruction {
   std::string name;
   size_t size;
@@ -44,25 +44,17 @@ enum {
   C,
 };
 }
-struct Cpu {
-  enum Register { C = 0, B, E, D, L, H, F, A, BC = 0, DE = 2, HL = 4 };
-  enum Interrupt {
-    VBlank = 0x01,
-    LcdStat = 0x2,
-    Timer = 0x4,
-    Serial = 0x08,
-    Joypad = 0x10,
-  };
+class Cpu {
   enum MemoryRegister {
     InterruptRequest = 0xff0f,
     InterruptEnabled = 0xffff,
     LcdControl = 0xff40,
   };
-  u8 regs[8];
+  std::array<u8, 8> regs;
 
   u16 sp;
   u16 pc;
-  u8 m;
+
   unsigned int ticks;
 
   u8 current_opcode = 0x00;
@@ -79,6 +71,15 @@ struct Cpu {
   Memory* memory;
   InstructionTable instruction_table;
 
+ public:
+  enum Register { C = 0, B, E, D, L, H, F, A, BC = 0, DE = 2, HL = 4 };
+  enum Interrupt {
+    VBlank = 0x01,
+    LcdStat = 0x2,
+    Timer = 0x4,
+    Serial = 0x08,
+    Joypad = 0x10,
+  };
   Cpu(Memory& memory);
 
   const Instruction& fetch();
@@ -90,6 +91,8 @@ struct Cpu {
   void set_debug(bool value) { debug = value; }
   void debug_write();
 
+  bool is_halted() const { return halted; }
+
   u8 get_interrupts_register() const;
 
   bool interrupt_enabled(u8 interrupt) const;
@@ -100,16 +103,16 @@ struct Cpu {
 
   void clear_interrupt(const u8 interrupt) const;
 
-  inline void noop() const {}
+  void noop() const {}
   void invalid() const;
 
-  inline bool get_carry() const { return regs[Register::F] & 0x10; }
+  bool get_carry() const { return regs[Register::F] & 0x10; }
 
-  inline bool get_flag(u8 flag) const { return regs[Register::F] & flag; }
+  bool get_flag(u8 flag) const { return regs[Register::F] & flag; }
 
-  inline void set_flag(u8 flag) { regs[Register::F] |= flag; }
+  void set_flag(u8 flag) { regs[Register::F] |= flag; }
 
-  inline void clear_flag(u8 flag) { regs[Register::F] &= ~flag; }
+  void clear_flag(u8 flag) { regs[Register::F] &= ~flag; }
 
   template <typename T>
   void set_zero(const T& val) {
