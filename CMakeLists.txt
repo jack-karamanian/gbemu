@@ -63,6 +63,8 @@ set(SRCS
   src/mbc.h
   src/mbc.cpp
   src/task.h
+  src/rom_loader.h
+  src/rom_loader.cpp
 )
 
 

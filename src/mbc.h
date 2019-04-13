@@ -24,6 +24,7 @@ class Mbc {
  private:
   Type type = Type::None;
   u16 max_bank_mask = 1;
+  u16 max_ram_bank_mask;
   u8 lower = 0x01;
   u8 upper = 0x00;
 
@@ -34,8 +35,11 @@ class Mbc {
   bool mbc1_rom_mode = false;
 
  public:
-  Mbc(Type mbc_type, u16 max_rom_banks)
-      : type{mbc_type}, max_bank_mask{max_rom_banks} {}
+  Mbc(Type mbc_type, u16 max_rom_banks, u16 max_ram_banks)
+      : type{mbc_type},
+        max_bank_mask{max_rom_banks},
+        max_ram_bank_mask{
+            static_cast<u16>(max_ram_banks == 0 ? 1 : max_ram_banks)} {}
 
   void set_lower(u8 val);
   void set_upper(u8 val);
@@ -62,7 +66,7 @@ class Mbc {
     if (type == Mbc::Type::MBC1 && !mbc1_rom_mode) {
       return 0;
     }
-    return ram_bank;
+    return ram_bank % max_ram_bank_mask;
   }
 
   std::size_t relative_ram_address(u16 addr) const { return addr - 0xa000; }

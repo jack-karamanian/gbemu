@@ -97,7 +97,7 @@ bool Mbc::in_upper_write_range(u16 addr) const {
 }
 
 u16 Mbc::lower_rom_bank_selected() const {
-  if (type == Type::MBC1 && mbc1_rom_mode && max_bank_mask >= 128) {
+  if (type == Type::MBC1 && mbc1_rom_mode && max_bank_mask >= 64) {
     return (upper << 5) % max_bank_mask;
   }
   return 0;

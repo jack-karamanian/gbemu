@@ -33,9 +33,12 @@ class Memory {
   std::vector<u8> rom;
   std::vector<u8> save_ram;
 
-  nonstd::span<const u8> memory_span;
+  std::vector<u8> vram_bank1;
 
-  Mbc mbc{Mbc::Type::None, 1};
+  nonstd::span<u8> memory_span;
+
+  Mbc mbc;
+
 
   std::unordered_map<u16, MemoryListener> write_callbacks;
   SaveRamWriteListener save_ram_write_listener;
@@ -43,10 +46,11 @@ class Memory {
   std::pair<u16, nonstd::span<const u8>> select_storage(u16 addr);
 
  public:
-  Memory(SaveRamWriteListener callback)
+  Memory(Mbc mbc_)
       : memory(SIXTYFOUR_KB),
+        vram_bank1(0x2000, 0),
         memory_span{memory},
-        save_ram_write_listener{std::move(callback)} {}
+        mbc{mbc_} {}
 
   template <typename T = u8>
   T at(u16 addr) {
@@ -72,9 +76,13 @@ class Memory {
 
   void reset();
 
-  RomHeader load_rom(nonstd::span<const u8> data);
+  void load_rom(std::vector<u8>&& data);
 
   void load_save_ram(std::vector<u8>&& data) { save_ram = std::move(data); }
+
+  void add_save_ram_write_listener(SaveRamWriteListener callback) {
+    save_ram_write_listener = std::move(callback);
+  }
 
   void add_write_listener(u16 addr, MemoryListener callback) {
     write_callbacks.emplace(addr, std::move(callback));

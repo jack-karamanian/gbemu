@@ -15,12 +15,13 @@
 #include "registers/palette.h"
 #include "registers/sound.h"
 #include "renderer.h"
+#include "rom_loader.h"
 #include "sdl_renderer.h"
 #include "sound.h"
 #include "timers.h"
 
 namespace gb {
-static RomHeader load_rom(const std::string& rom_name, gb::Memory& memory) {
+static std::vector<u8> load_rom(const std::string& rom_name) {
   std::ifstream rom(rom_name, std::ios::in | std::ios::binary);
   rom.seekg(0, std::ios::end);
 
@@ -36,7 +37,7 @@ static RomHeader load_rom(const std::string& rom_name, gb::Memory& memory) {
 
   rom.close();
 
-  return memory.load_rom({rom_data});
+  return rom_data;
 }
 
 void run_with_options(const std::string& rom_name, bool trace, bool save) {
@@ -51,33 +52,45 @@ void run_with_options(const std::string& rom_name, bool trace, bool save) {
     file_flags |= std::fstream::trunc;
   }
 
-  std::fstream save_ram_file{save_ram_path, file_flags};
-  std::cout << strerror(errno) << std::endl;
+  std::vector<u8> rom_data = load_rom(rom_name);
+  const RomHeader rom_header = gb::parse_rom(rom_data);
 
-  if (!save_ram_file.good()) {
-    throw std::runtime_error("could not open save ram file");
-  }
-
-  gb::Memory memory{[&](std::size_t index, u8 val) {
-    save_ram_file.seekp(index);
-    save_ram_file.put(val);
-  }};
+  gb::Memory memory{rom_header.mbc};
 
   memory.reset();
 
-  const RomHeader rom_header = load_rom(rom_name, memory);
+  memory.load_rom(std::move(rom_data));
 
   if (save) {
-    if (save_ram_file.tellg() == 0) {
-      std::fill_n(std::ostreambuf_iterator<char>{save_ram_file},
+    // Workaround for std::fstream being move only
+    std::shared_ptr<std::fstream> save_ram_file =
+        std::make_shared<std::fstream>(save_ram_path, file_flags);
+    std::cout << strerror(errno) << std::endl;
+    if (!save_ram_file->good()) {
+      throw std::runtime_error("could not open save ram file");
+    }
+
+    if (save_ram_file->tellg() == 0) {
+      std::fill_n(std::ostreambuf_iterator<char>{*save_ram_file},
                   rom_header.save_ram_size, 0xff);
+      std::vector<u8> save_ram_data(rom_header.save_ram_size, 0xff);
+      memory.load_save_ram(std::move(save_ram_data));
     } else {
-      save_ram_file.seekg(0);
-      std::vector<u8> save_ram(std::istreambuf_iterator<char>{save_ram_file},
+      save_ram_file->seekg(0);
+      std::vector<u8> save_ram(std::istreambuf_iterator<char>{*save_ram_file},
                                std::istreambuf_iterator<char>{});
       memory.load_save_ram(std::move(save_ram));
     }
-    save_ram_file.flush();
+    save_ram_file->flush();
+
+    memory.add_save_ram_write_listener(
+        [file = std::move(save_ram_file)](std::size_t index, u8 val) mutable {
+          file->seekp(index);
+          file->put(val);
+        });
+  } else {
+    std::vector<u8> save_ram_data(rom_header.save_ram_size, 0xff);
+    memory.load_save_ram(std::move(save_ram_data));
   }
 
   gb::Timers timers{memory};
