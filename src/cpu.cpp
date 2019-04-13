@@ -8,7 +8,7 @@
 
 namespace gb {
 Cpu::Cpu(Memory& memory)
-    : regs{0x13, 0x00, 0xd8, 0x00, 0x4d, 0x01, 0xb0, 0x01},
+    : regs{0x13, 0x00, 0xd8, 0x00, 0x4d, 0x01, 0xb0, 0x11}, // TODO: allow choice of CGB or DMG registers
       sp{0xfffe},
       pc{0x100},
       ticks{0},
@@ -39,20 +39,20 @@ int Cpu::fetch_and_decode() {
   const Instruction& inst = fetch();
 
   if (debug) {
-    std::cout << inst.name << std::endl;
-    std::cout << "opcode: " << std::hex << +memory->at(pc) << std::endl;
+    std::cout << inst.name << '\n';
+    std::cout << "opcode: " << std::hex << +memory->at(pc) << '\n';
   }
 
   const std::size_t operands_size = (inst.size - 1);
 
   if (operands_size == 1) {
     if (debug) {
-      std::cout << std::hex << +memory->at(pc + 1) << std::endl;
+      std::cout << std::hex << +memory->at(pc + 1) << '\n';
     }
     current_operand = memory->at(pc + 1);
   } else if (operands_size == 2) {
     if (debug) {
-      std::cout << std::hex << memory->at<u16>(pc + 1) << std::endl;
+      std::cout << std::hex << memory->at<u16>(pc + 1) << '\n';
     }
     current_operand = memory->at<u16>(pc + 1);
   }
@@ -110,19 +110,19 @@ bool Cpu::handle_interrupt(u8 interrupt) {
 
 void Cpu::debug_write() {
   std::cout << "A: " << std::hex << std::showbase << std::setw(4)
-            << +regs[Register::A] << std::endl
-            << "F: " << std::setw(4) << +regs[Register::F] << std::endl
+            << +regs[Register::A] << '\n'
+            << "F: " << std::setw(4) << +regs[Register::F] << '\n'
             << "B: " << std::setw(4) << +regs[Register::B]
             << " C: " << std::setw(4) << +regs[Register::C]
-            << " BC: " << std::setw(6) << get_r16(Register::BC) << std::endl
+            << " BC: " << std::setw(6) << get_r16(Register::BC) << '\n'
             << "D: " << std::setw(4) << +regs[Register::D]
             << " E: " << std::setw(4) << +regs[Register::E]
-            << " DE: " << std::setw(6) << get_r16(Register::DE) << std::endl
+            << " DE: " << std::setw(6) << get_r16(Register::DE) << '\n'
             << "H: " << std::setw(4) << +regs[Register::H]
             << " L: " << std::setw(4) << +regs[Register::L]
-            << " HL: " << std::setw(6) << get_r16(Register::HL) << std::endl
-            << "PC: " << std::setw(6) << pc << std::endl
-            << "SP: " << std::setw(6) << sp << std::endl
+            << " HL: " << std::setw(6) << get_r16(Register::HL) << '\n'
+            << "PC: " << std::setw(6) << pc << '\n'
+            << "SP: " << std::setw(6) << sp << '\n'
             << std::endl
             << std::endl;
 }
@@ -1179,7 +1179,12 @@ void Cpu::srl_hl() {
 
 // STOP
 void Cpu::stop() {
-  stopped = true;
+  const u8 speed_switch = memory->get_ram(0xff4d);
+  if ((speed_switch & 0x1) != 0) {
+    memory->set_ram(0xff4d, ~speed_switch & 0x80);
+  } else {
+    stopped = true;
+  }
 }
 
 void Cpu::subtract(u8& dst, const u8& src) {
