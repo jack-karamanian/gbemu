@@ -49,4 +49,9 @@ struct Vec2 {
   T y;
 };
 
+template <typename T>
+[[nodiscard]] constexpr bool test_bit(T value, unsigned int bit) {
+  return (value & (1 << bit)) != 0;
+}
+
 }  // namespace gb
