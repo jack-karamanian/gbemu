@@ -1,10 +1,11 @@
 #include <algorithm>
 #include <iostream>
 #include "memory.h"
+#include "registers/cgb.h"
 
 namespace gb {
 
-std::pair<u16, nonstd::span<const u8>> Memory::select_storage(u16 addr) {
+std::pair<u16, nonstd::span<u8>> Memory::select_storage(u16 addr) {
   if (mbc.in_ram_range(addr)) {
     return {mbc.relative_ram_address(addr),
             {&save_ram[mbc.absolute_ram_offset()], 8192}};
@@ -32,6 +33,21 @@ std::pair<u16, nonstd::span<const u8>> Memory::select_storage(u16 addr) {
       }
     }
   }
+
+  switch (addr & 0xf000) {
+    case 0x8000:
+    case 0x9000:
+      if (memory[Registers::Cgb::Vbk::Address] != 0) {
+        return {addr - 0x8000, {vram_bank1}};
+      }
+      break;
+    case 0xd000: {
+      const u8 ram_bank = memory[Registers::Cgb::Svbk::Address] & 0x7;
+      const int start_addr = 4096 * (ram_bank == 0 ? 1 : ram_bank) - 1;
+      return {addr - 0xd000, {&extended_ram[start_addr], 4096}};
+    }
+  }
+
   return {addr, memory_span};
 }
 
@@ -70,8 +86,10 @@ void Memory::set(u16 addr, u8 val) {
           break;
 
         default:
-          if (addr >= 0x8000) {
-            memory[addr] = val;
+          if (addr >= 0x8000 && !mbc.in_ram_range(addr)) {
+            // memory[addr] = val;
+            const auto [resolved_addr, storage] = select_storage(addr);
+            storage[resolved_addr] = val;
           }
           break;
       }

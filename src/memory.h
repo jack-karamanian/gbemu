@@ -35,6 +35,8 @@ class Memory {
 
   std::vector<u8> vram_bank1;
 
+  std::vector<u8> extended_ram;
+
   nonstd::span<u8> memory_span;
 
   Mbc mbc;
@@ -43,12 +45,13 @@ class Memory {
   std::unordered_map<u16, MemoryListener> write_callbacks;
   SaveRamWriteListener save_ram_write_listener;
 
-  std::pair<u16, nonstd::span<const u8>> select_storage(u16 addr);
+  std::pair<u16, nonstd::span<u8>> select_storage(u16 addr);
 
  public:
   Memory(Mbc mbc_)
-      : memory(SIXTYFOUR_KB),
+      : memory(SIXTYFOUR_KB, 0),
         vram_bank1(0x2000, 0),
+        extended_ram(0x1000 * 7, 0),
         memory_span{memory},
         mbc{mbc_} {}
 
