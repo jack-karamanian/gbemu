@@ -55,34 +55,45 @@ class NoiseSource {
 
   u8 output = 0;
 
+  void update_timer() {
+    if (prescalar_divider < 14) {
+      timer_base = timers.at(clock_divisor).at(prescalar_divider);
+    }
+  }
+
  public:
   void set_num_stages(bool value) { seven_stage = value; }
-  void set_clock_divisor(int value) { clock_divisor = value; }
+  void set_clock_divisor(int value) {
+    clock_divisor = value;
+
+    update_timer();
+  }
   void set_prescalar_divider(int value) {
-    if (value < 15) {
-      prescalar_divider = value;
-    }
+    prescalar_divider = value;
+    update_timer();
   }
   void enable();
   void update(int ticks) {
-    timer += ticks;
-    if (timer >= timer_base) {
-      u8 bit1 = lfsr_counter & 0x01;
-      u8 bit2 = (lfsr_counter >> 1) & 1;
+    if (prescalar_divider < 14) {
+      timer += ticks;
+      if (timer >= timer_base) {
+        u8 bit1 = lfsr_counter & 0x01;
+        u8 bit2 = (lfsr_counter >> 1) & 1;
 
-      u8 res = bit1 ^ bit2;
+        u8 res = bit1 ^ bit2;
 
-      lfsr_counter >>= 1;
+        lfsr_counter >>= 1;
 
-      lfsr_counter |= res << 14;
-      if (seven_stage) {
-        lfsr_counter &= ~0x40;
-        lfsr_counter |= res << 6;
-      } else {
+        lfsr_counter |= res << 14;
+        if (seven_stage) {
+          lfsr_counter &= ~0x40;
+          lfsr_counter |= res << 6;
+        } else {
+        }
+
+        output = (lfsr_counter & 0x1) != 0 ? 0 : 15;
+        timer -= timer_base;
       }
-
-      output = (lfsr_counter & 0x1) != 0 ? 0 : 15;
-      timer -= timer_base;
     }
   }
   u8 volume() const { return output; }
