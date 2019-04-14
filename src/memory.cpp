@@ -17,10 +17,6 @@ std::pair<u16, nonstd::span<u8>> Memory::select_storage(u16 addr) {
       case 0x2000:
       case 0x3000: {
         const int start_addr = SIXTEEN_KB * mbc.lower_rom_bank_selected();
-        if (start_addr != 0) {
-          std::cout << std::hex << start_addr << '\n';
-        }
-
         return {addr - start_addr, {&rom.at(start_addr), SIXTEEN_KB}};
       }
 
