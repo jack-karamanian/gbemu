@@ -18,10 +18,19 @@
 
 namespace gb {
 
-struct RomHeader {
-  Mbc::Type mbc_type;
-  int rom_size;
-  int save_ram_size;
+struct BgAttribute {
+  u8 value;
+
+  u8 bg_palette() const { return value & 0x07; }
+
+  u8 vram_bank() const { return (value & 0x08) >> 3; }
+
+  bool horizontal_flip() const { return test_bit(value, 5); }
+
+  bool vertical_flip() const { return test_bit(value, 6); }
+
+  bool bg_priority() const { return test_bit(value, 7); }
+};
 };
 
 class Memory {
@@ -136,5 +145,19 @@ class Memory {
   void set_ly(u8 val) { memory[0xff44] = val; }
 
   nonstd::span<const SpriteAttribute> get_sprite_attributes();
+
+  nonstd::span<const BgAttribute> get_background_attributes() const {
+    const u8* begin = &vram_bank1[0x1800];  // 0x9800
+
+    return {reinterpret_cast<const BgAttribute*>(begin), 1024};
+  }
+
+  nonstd::span<const BgAttribute> get_window_attributes() const {
+    const u8* begin = &vram_bank1[0x1c00];  // 0x9c00
+
+    return {reinterpret_cast<const BgAttribute*>(begin), 1024};
+  }
+
+  nonstd::span<const u8> get_vram_bank1() const { return vram_bank1; }
 };
 }  // namespace gb

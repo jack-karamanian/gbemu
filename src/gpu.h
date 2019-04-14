@@ -11,6 +11,7 @@
 
 namespace gb {
 class Memory;
+struct BgAttribute;
 
 enum class PixelType {
   None,
@@ -41,6 +42,19 @@ struct Pixel {
         above_bg{above_bg} {}
 };
 
+class CgbColor {
+ public:
+  CgbColor(int index, u8 color)
+      : value{static_cast<u16>(index % 2 == 0 ? color : color << 8)} {}
+
+  u8 r() const { return value & 0x001f; }
+  u8 g() const { return (value & 0x03e0) >> 5; }
+  u8 b() const { return (value & 0x7c00) >> 10; }
+
+ private:
+  u16 value;
+};
+
 class Gpu {
   Memory* memory;
   std::shared_ptr<IRenderer> renderer;
@@ -49,7 +63,7 @@ class Gpu {
 
   std::vector<Color> background_framebuffer;
 
-  std::array<Color, 4> background_colors;
+  std::array<Color, 32> background_colors;
   std::array<std::array<Color, 4>, 2> sprite_colors;
 
   std::vector<Pixel> background_pixels;
@@ -62,6 +76,7 @@ class Gpu {
   auto render_background(int scanline,
                          u16 tile_map_base,
                          nonstd::span<const u8> tile_map_range,
+                         nonstd::span<const BgAttribute> tile_attribs,
                          u8 scx,
                          u8 scy,
                          int offset_x,
@@ -71,6 +86,7 @@ class Gpu {
 
   void render_background_pixels(int scanline,
                                 std::pair<u16, u16> tile_map,
+                                nonstd::span<const BgAttribute> tile_attribs,
                                 u8 scx,
                                 u8 scy,
                                 int offset_x,
@@ -81,6 +97,8 @@ class Gpu {
 
   void compute_background_palette(u8 palette);
   void compute_sprite_palette(int palette_number, u8 palette);
+
+  void compute_cgb_color(int index, u8 color);
 
   void render();
   void render_scanline(int scanline);

@@ -64,6 +64,8 @@ class Cpu {
   bool stopped = false;
   bool halted = false;
 
+  bool double_speed = false;
+
   bool queue_interrupts_enabled = false;
 
   bool debug = false;

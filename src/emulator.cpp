@@ -150,15 +150,28 @@ void run_with_options(const std::string& rom_name, bool trace, bool save) {
       std::make_shared<gb::SdlRenderer>(std::move(sdl_renderer));
   gb::Gpu gpu{memory, renderer};
 
-  memory.add_write_listener(
-      gb::Registers::Palette::Background::Address,
-      [&gpu](u8 palette, u8) { gpu.compute_background_palette(palette); });
-  memory.add_write_listener(
-      gb::Registers::Palette::Obj0::Address,
-      [&gpu](u8 palette, u8) { gpu.compute_sprite_palette(0, palette); });
-  memory.add_write_listener(
-      gb::Registers::Palette::Obj1::Address,
-      [&gpu](u8 palette, u8) { gpu.compute_sprite_palette(1, palette); });
+  if (!rom_header.is_cgb) {
+    memory.add_write_listener(
+        gb::Registers::Palette::Background::Address,
+        [&gpu](u8 palette, u8) { gpu.compute_background_palette(palette); });
+    memory.add_write_listener(
+        gb::Registers::Palette::Obj0::Address,
+        [&gpu](u8 palette, u8) { gpu.compute_sprite_palette(0, palette); });
+    memory.add_write_listener(
+        gb::Registers::Palette::Obj1::Address,
+        [&gpu](u8 palette, u8) { gpu.compute_sprite_palette(1, palette); });
+  } else {
+    memory.add_write_listener(0xff69, [&gpu, &memory](u8 color, u8) {
+      const u8 index = memory.get_ram(0xff68);
+      gpu.compute_cgb_color(index & 0x3f, color);
+
+      if (gb::test_bit(index, 7)) {
+        memory.set_ram(0xff68, (index & ~0x3f) | (((index & 0x3f) + 1) & 0x3f));
+      }
+    });
+  }
+
+  memory.add_write_listener(0xff55, [](u8, u8) { std::cout << "uses dma\n"; });
 
   gb::Lcd lcd{cpu, memory, gpu};
   gb::Input input{memory};

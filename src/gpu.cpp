@@ -11,6 +11,7 @@
 static constexpr u16 VRAM_START = 0x8000;
 
 namespace gb {
+
 static constexpr std::array<Color, 4> COLORS = {{
     {255, 255, 255},
     {128, 128, 128},
@@ -31,7 +32,7 @@ Gpu::Gpu(Memory& memory, std::shared_ptr<IRenderer> renderer)
       background_texture{
           this->renderer->create_texture(SCREEN_WIDTH, SCREEN_HEIGHT, false)},
       background_framebuffer(DISPLAY_SIZE),
-      background_colors(COLORS),
+      background_colors{COLORS[0], COLORS[1], COLORS[2], COLORS[3]},
       sprite_colors{SPRITE_COLORS, SPRITE_COLORS},
       background_pixels(SCREEN_WIDTH) {}
 
@@ -126,6 +127,7 @@ auto Gpu::render_background(
     int scanline,
     u16 tile_map_base,
     nonstd::span<const u8> tile_map_range,
+    nonstd::span<const BgAttribute> tile_attribs,
     u8 scx,
     u8 scy,
     int offset_x,  // TODO: figure out what to do with this
@@ -140,7 +142,8 @@ auto Gpu::render_background(
 
   const int screen_y = scanline + offset_y;
 
-  const auto tile_data = memory->get_range(lcdc.bg_tile_data_range());
+  const auto tile_data_range = lcdc.bg_tile_data_range();
+  const auto tile_data = memory->get_range(tile_data_range);
 
   const int tile_map_range_size = tile_map_range.size();
 
@@ -162,18 +165,34 @@ auto Gpu::render_background(
 
         // Convert from [0, 21) to [0, 160]
         const u16 tile_x = tile * TILE_SIZE;
+        const u16 adjusted_tile_index = tile_index > tile_map_range_size - 1
+                                            ? tile_index - tile_map_range_size
+                                            : tile_index;
 
-        const u8 tile_num =
-            tile_map_range[tile_index > tile_map_range_size - 1
-                               ? tile_index - tile_map_range_size
-                               : tile_index];
+        assert(adjusted_tile_index < tile_map_range.size());
+        const u8 tile_num = tile_map_range[adjusted_tile_index];
+
+        const auto tile_attrib = tile_attribs[adjusted_tile_index];
+
+        // Calculate the address of the tile pixels, flipping vertically if
+        // specified
         const u16 tile_addr =
             (16 * (is_signed
                        ? static_cast<int16_t>(static_cast<s8>(tile_num)) + 128
                        : tile_num)) +
-            2 * tile_y;
-        const u8 byte1 = tile_data[tile_addr];
-        const u8 byte2 = tile_data[tile_addr + 1];
+            2 * (tile_attrib.vertical_flip() ? TILE_SIZE - tile_y - 1 : tile_y);
+
+        const auto tile_vram =
+            tile_attrib.vram_bank() == 1
+                ? nonstd::span<const u8>{&memory->get_vram_bank1()[0] +
+                                             (tile_data_range.first - 0x8000),
+                                         4096}
+                : tile_data;
+
+        assert(tile_addr < tile_vram.size());
+        assert(tile_addr + 1 < tile_vram.size());
+        const u8 byte1 = tile_vram[tile_addr];
+        const u8 byte2 = tile_vram[tile_addr + 1];
 
         const u16 tile_scx = scx % TILE_SIZE;
 
@@ -185,17 +204,23 @@ auto Gpu::render_background(
                    tile_x >= SCREEN_WIDTH
                        ? tile_scx
                        : TILE_SIZE) |  // Make sure x is < 160
-               boost::adaptors::transformed([this, screen_y, tile_x, tile_scx,
-                                             byte1, byte2](u16 pixel_x) {
+               boost::adaptors::transformed([this, tile_attrib, screen_y,
+                                             tile_x, tile_scx, byte1,
+                                             byte2](u16 pixel_x) {
                  // Offset the current tile by scx
                  const u16 x = tile_x + pixel_x - tile_scx;
 
                  assert(x >= 0 && x < 160);
 
-                 const u8 color_index = render_pixel(byte1, byte2, pixel_x);
+                 const u8 color_index = render_pixel(
+                     byte1, byte2,
+                     tile_attrib.horizontal_flip() ? TILE_SIZE - pixel_x - 1
+                                                   : pixel_x);
                  return Pixel{
                      Vec2<u8>{static_cast<u8>(x), static_cast<u8>(screen_y)},
-                     color_index, false};
+                     static_cast<u8>((4 * tile_attrib.bg_palette()) +
+                                     color_index),
+                     false};
                });
       });
   return addrs;
@@ -213,13 +238,15 @@ std::array<Color, 4> Gpu::generate_colors(Palette palette, bool is_sprite) {
 
 void Gpu::render_background_pixels(int scanline,
                                    std::pair<u16, u16> tile_map,
+                                   nonstd::span<const BgAttribute> tile_attribs,
                                    u8 scx,
                                    u8 scy,
                                    int offset_x,
                                    int offset_y) {
   const auto tile_map_range = memory->get_range(tile_map);
-  auto pixel_groups = render_background(
-      scanline, tile_map.first, tile_map_range, scx, scy, offset_x, offset_y);
+  auto pixel_groups =
+      render_background(scanline, tile_map.first, tile_map_range, tile_attribs,
+                        scx, scy, offset_x, offset_y);
   for (const auto& bg_pixels : pixel_groups) {
     for (const Pixel& pixel : bg_pixels) {
       background_pixels[pixel.screen_pos.x] = pixel;
@@ -228,11 +255,28 @@ void Gpu::render_background_pixels(int scanline,
 }
 
 void Gpu::compute_background_palette(u8 palette) {
-  background_colors = generate_colors({palette});
+  auto&& colors = generate_colors({palette});
+  std::copy(colors.begin(), colors.end(), background_colors.begin());
 }
 
 void Gpu::compute_sprite_palette(int palette_number, u8 palette) {
   sprite_colors.at(palette_number) = generate_colors({palette}, true);
+}
+
+void Gpu::compute_cgb_color(int index, u8 color) {
+  const int color_index = index / 2;
+  Color& background_color = background_colors[color_index];
+  // printf("%d\n", color_index);
+
+  const CgbColor cgb_color{index, color};
+  if (index % 2 == 0) {
+    background_color.r = (cgb_color.r() * 255) / 32;
+    background_color.g = (cgb_color.g() * 255) / 32;
+  } else {
+    const u8 green = (background_color.g * 32) / 255;
+    background_color.g = ((cgb_color.g() | green) * 255) / 32;
+    background_color.b = (cgb_color.b() * 255) / 32;
+  }
 }
 
 void Gpu::render_scanline(int scanline) {
@@ -241,10 +285,13 @@ void Gpu::render_scanline(int scanline) {
 
   if (lcdc.window_on() && scanline >= window_y) {
     const auto range = lcdc.window_tile_map_range();
-    render_background_pixels(scanline, range, 0, 0, 0, -window_y);
+    const auto tile_attribs = memory->get_window_attributes();
+    render_background_pixels(scanline, range, tile_attribs, 0, 0, 0, -window_y);
   } else if (lcdc.bg_on()) {
     const auto range = lcdc.bg_tile_map_range();
-    render_background_pixels(scanline, range, get_scx(), get_scy(), 0, 0);
+    const auto tile_attribs = memory->get_background_attributes();
+    render_background_pixels(scanline, range, tile_attribs, get_scx(),
+                             get_scy(), 0, 0);
   }
 
   auto sprites = render_sprites(scanline);
