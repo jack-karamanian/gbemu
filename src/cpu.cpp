@@ -258,7 +258,7 @@ void Cpu::add_hl_r16(Register reg) {
 
   // set_half_carry(hl, r16);
 
-  if (((hl & 0xff) + (r16 & 0xff)) > 0xff) {
+  if (((hl & 0xfff) + (r16 & 0xfff)) > 0xfff) {
     set_flag(FLAG_HALF_CARRY);
   } else {
     clear_flag(FLAG_HALF_CARRY);
