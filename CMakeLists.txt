@@ -41,6 +41,7 @@ set(SRCS
   src/registers/interrupt_request.h
   src/registers/palette.h
   src/registers/sound.h
+  src/registers/cgb.h
   src/input.h
   src/input.cpp
   src/utils.h
