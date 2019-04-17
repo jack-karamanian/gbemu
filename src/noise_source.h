@@ -88,7 +88,6 @@ class NoiseSource {
         if (seven_stage) {
           lfsr_counter &= ~0x40;
           lfsr_counter |= res << 6;
-        } else {
         }
 
         output = (lfsr_counter & 0x1) != 0 ? 0 : 15;
