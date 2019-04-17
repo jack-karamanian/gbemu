@@ -16,9 +16,8 @@ class SdlRenderer : public IRenderer {
 
   sdl::sdl_unique_ptr<SDL_PixelFormat> format;
 
-  std::unordered_map<int, sdl::sdl_unique_ptr<SDL_Texture>> textures;
-  std::vector<SDL_Texture*> draw_order;
   int draw_order_counter = 0;
+  sdl::sdl_unique_ptr<SDL_Texture> texture;
 
  public:
   SdlRenderer(std::unique_ptr<SDL_Renderer, std::function<void(SDL_Renderer*)>>
