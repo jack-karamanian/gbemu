@@ -1,11 +1,10 @@
-#include <boost/range/adaptor/filtered.hpp>
-#include <boost/range/adaptor/transformed.hpp>
-#include <boost/range/combine.hpp>
 #include <boost/range/irange.hpp>
+#include <iostream>
 #include "constants.h"
 #include "gpu.h"
 #include "memory.h"
 #include "registers/lcdc.h"
+#include "sdl_renderer.h"
 #include "sprite_attribute.h"
 
 static constexpr u16 VRAM_START = 0x8000;
@@ -26,15 +25,14 @@ static constexpr std::array<Color, 4> SPRITE_COLORS = {{
     {0, 0, 0},
 }};
 
-Gpu::Gpu(Memory& memory, std::shared_ptr<IRenderer> renderer)
+Gpu::Gpu(Memory& memory, SdlRenderer& sdl_renderer)
     : memory{&memory},
-      renderer{std::move(renderer)},
+      renderer{&sdl_renderer},
       background_texture{
-          this->renderer->create_texture(SCREEN_WIDTH, SCREEN_HEIGHT, false)},
+          renderer->create_texture(SCREEN_WIDTH, SCREEN_HEIGHT, false)},
       background_framebuffer(DISPLAY_SIZE),
       background_colors{COLORS[0], COLORS[1], COLORS[2], COLORS[3]},
-      sprite_colors{SPRITE_COLORS, SPRITE_COLORS},
-      background_pixels(SCREEN_WIDTH) {}
+      sprite_colors{SPRITE_COLORS, SPRITE_COLORS} {}
 
 u8 Gpu::get_scx() const {
   return memory->get_ram(0xff43);
@@ -55,75 +53,68 @@ u8 Gpu::render_pixel(const u8 byte1, const u8 byte2, const u8 pixel_x) const {
   return color_index;
 }
 
-auto Gpu::render_sprites(int scanline) const {
+void Gpu::render_sprites(int scanline) {
   const Registers::Lcdc lcdc{memory->get_ram(Registers::Lcdc::Address)};
   auto sprite_attribs = memory->get_sprite_attributes();
 
-  int sprite_height;
+  const int sprite_height = [lcdc] {
+    switch (lcdc.sprite_size()) {
+      case Registers::Lcdc::SpriteMode::EightByEight:
+        return 8;
+      case Registers::Lcdc::SpriteMode::EightBySixteen:
+        return 16;
+    }
+  }();
 
-  switch (lcdc.sprite_size()) {
-    case Registers::Lcdc::SpriteMode::EightByEight:
-      sprite_height = 8;
-      break;
-    case Registers::Lcdc::SpriteMode::EightBySixteen:
-      sprite_height = 16;
-      break;
+  for (const auto& sprite_attrib : sprite_attribs) {
+    const int adjusted_y = sprite_attrib.y - 16;
+    if (sprite_attrib.x > 0 && sprite_attrib.x < 168 && sprite_attrib.y > 0 &&
+        sprite_attrib.y < 160 && scanline >= adjusted_y &&
+        scanline < adjusted_y + sprite_height) {
+      const int sprite_palette = sprite_attrib.palette_number();
+
+      // The scanline's Y value relative to the sprite's
+      const int sprite_y = scanline - adjusted_y;
+      const int sprite_offset =
+          sprite_attrib.flip_y() ? sprite_height - sprite_y - 1 : sprite_y;
+
+      // Get the tile at the sprite's index offset by the scanline relative
+      // to the sprite's Y
+      const int tile_addr =
+          VRAM_START + (16 * sprite_attrib.tile_index) + (2 * (sprite_offset));
+
+      const u8 byte1 = memory->get_ram(tile_addr);
+      const u8 byte2 = memory->get_ram(tile_addr + 1);
+
+      const int y = adjusted_y + sprite_y;
+      const int x = sprite_attrib.x - 8;
+      const auto& selected_colors = sprite_colors[sprite_palette];
+
+      for (int pixel_x :
+           boost::irange(x < 0 ? -x : 0,
+                         x + TILE_SIZE >= SCREEN_WIDTH
+                             ? TILE_SIZE - ((x + TILE_SIZE) - SCREEN_WIDTH)
+                             : TILE_SIZE)) {
+        const int flipped_pixel_x =
+            sprite_attrib.flip_x() ? 7 - pixel_x : pixel_x;
+        const int screen_x = x + pixel_x;
+
+        // std::cout << x << ' ' << pixel_x << ' ' << screen_x << '\n';
+        assert(screen_x >= 0 && screen_x < SCREEN_WIDTH);
+
+        const u8 color_index = render_pixel(byte1, byte2, flipped_pixel_x);
+        const u8 bg_color = background_color_indexes[screen_x];
+
+        if (color_index != 0 && (sprite_attrib.above_bg() || bg_color == 0)) {
+          background_framebuffer[SCREEN_WIDTH * scanline + screen_x] =
+              selected_colors[color_index];
+        }
+      }
+    }
   }
-
-  auto sprite_pixels =
-      sprite_attribs | boost::adaptors::filtered([](auto sprite_attrib) {
-        return sprite_attrib.x > 0 && sprite_attrib.x < 168 &&
-               sprite_attrib.y > 0 && sprite_attrib.y < 160;
-      }) |
-      boost::adaptors::filtered([scanline, sprite_height](auto sprite_attrib) {
-        const int adjusted_y = sprite_attrib.y - 16;
-        return scanline >= adjusted_y && scanline < adjusted_y + sprite_height;
-      }) |
-      boost::adaptors::transformed([this, scanline,
-                                    sprite_height](auto sprite_attrib) {
-        const int adjusted_y = sprite_attrib.y - 16;
-
-        const int sprite_palette = sprite_attrib.palette_number();
-
-        // The scanline's Y value relative to the sprite's
-        const int sprite_y = scanline - adjusted_y;
-        const int sprite_offset =
-            sprite_attrib.flip_y() ? sprite_height - sprite_y - 1 : sprite_y;
-
-        // Get the tile at the sprite's index offset by the scanline relative
-        // to the sprite's Y
-        const int tile_addr = VRAM_START + (16 * sprite_attrib.tile_index) +
-                              (2 * (sprite_offset));
-
-        const u8 byte1 = memory->get_ram(tile_addr);
-        const u8 byte2 = memory->get_ram(tile_addr + 1);
-
-        const int y = adjusted_y + sprite_y;
-        const int x = sprite_attrib.x - 8;
-
-        return boost::irange(0, 8) |
-               boost::adaptors::transformed([this, sprite_attrib, x, y, byte1,
-                                             byte2,
-                                             sprite_palette](int pixel_x) {
-                 const int flipped_pixel_x =
-                     sprite_attrib.flip_x() ? 7 - pixel_x : pixel_x;
-                 const int screen_x = x + pixel_x;
-                 const u8 color_index =
-                     render_pixel(byte1, byte2, flipped_pixel_x);
-                 return Pixel{{static_cast<u8>(screen_x), static_cast<u8>(y)},
-                              color_index,
-                              static_cast<s8>(sprite_palette),
-                              sprite_attrib.above_bg()};
-               }) |
-               boost::adaptors::filtered([](auto&& pixel) {
-                 return pixel.screen_pos.x >= 0 && pixel.screen_pos.x < 160;
-               });
-      });
-
-  return sprite_pixels;
 }
 
-auto Gpu::render_background(
+void Gpu::render_background(
     int scanline,
     u16 tile_map_base,
     nonstd::span<const u8> tile_map_range,
@@ -131,7 +122,7 @@ auto Gpu::render_background(
     u8 scx,
     u8 scy,
     int offset_x,  // TODO: figure out what to do with this
-    int offset_y) const {
+    int offset_y) {
   const Registers::Lcdc lcdc{memory->get_ram(Registers::Lcdc::Address)};
 
   const bool is_signed = lcdc.is_tile_map_signed();
@@ -155,75 +146,68 @@ auto Gpu::render_background(
 
   // HACK: The real hardware renders 20-22 tiles depending on scx
   // but let's just always render 21 tiles
-  auto addrs =
-      boost::irange(0, 21) | boost::adaptors::transformed([=](u16 tile) {
-        // Add which tile to be displayed to the last 5 bits of tile_base
-        const u16 tile_num_addr =
-            (tile_base & ~0x1f) | (((tile_base & 0x1f) + tile) & 0x1f);
+  for (int tile : boost::irange(0, 21)) {
+    // Add which tile to be displayed to the last 5 bits of tile_base
+    const u16 tile_num_addr =
+        (tile_base & ~0x1f) | (((tile_base & 0x1f) + tile) & 0x1f);
 
-        const u16 tile_index = tile_num_addr - tile_map_base;
+    const u16 tile_index = tile_num_addr - tile_map_base;
 
-        // Convert from [0, 21) to [0, 160]
-        const u16 tile_x = tile * TILE_SIZE;
-        const u16 adjusted_tile_index = tile_index > tile_map_range_size - 1
-                                            ? tile_index - tile_map_range_size
-                                            : tile_index;
+    // Convert from [0, 21) to [0, 160]
+    const u16 tile_x = tile * TILE_SIZE;
+    const u16 adjusted_tile_index = tile_index > tile_map_range_size - 1
+                                        ? tile_index - tile_map_range_size
+                                        : tile_index;
 
-        assert(adjusted_tile_index < tile_map_range.size());
-        const u8 tile_num = tile_map_range[adjusted_tile_index];
+    assert(adjusted_tile_index < tile_map_range.size());
+    const u8 tile_num = tile_map_range[adjusted_tile_index];
 
-        const auto tile_attrib = tile_attribs[adjusted_tile_index];
+    const auto tile_attrib = tile_attribs[adjusted_tile_index];
 
-        // Calculate the address of the tile pixels, flipping vertically if
-        // specified
-        const u16 tile_addr =
-            (16 * (is_signed
-                       ? static_cast<int16_t>(static_cast<s8>(tile_num)) + 128
-                       : tile_num)) +
-            2 * (tile_attrib.vertical_flip() ? TILE_SIZE - tile_y - 1 : tile_y);
+    // Calculate the address of the tile pixels, flipping vertically if
+    // specified
+    const u16 tile_addr =
+        (16 * (is_signed ? static_cast<int16_t>(static_cast<s8>(tile_num)) + 128
+                         : tile_num)) +
+        2 * (tile_attrib.vertical_flip() ? TILE_SIZE - tile_y - 1 : tile_y);
 
-        const auto tile_vram =
-            tile_attrib.vram_bank() == 1
-                ? nonstd::span<const u8>{&memory->get_vram_bank1()[0] +
-                                             (tile_data_range.first - 0x8000),
-                                         4096}
-                : tile_data;
+    const auto tile_vram =
+        tile_attrib.vram_bank() == 1
+            ? nonstd::span<const u8>{&memory->get_vram_bank1()[0] +
+                                         (tile_data_range.first - 0x8000),
+                                     4096}
+            : tile_data;
 
-        assert(tile_addr < tile_vram.size());
-        assert(tile_addr + 1 < tile_vram.size());
-        const u8 byte1 = tile_vram[tile_addr];
-        const u8 byte2 = tile_vram[tile_addr + 1];
+    assert(tile_addr < tile_vram.size());
+    assert(tile_addr + 1 < tile_vram.size());
+    const u8 byte1 = tile_vram[tile_addr];
+    const u8 byte2 = tile_vram[tile_addr + 1];
 
-        const u16 tile_scx = scx % TILE_SIZE;
+    const u16 tile_scx = scx % TILE_SIZE;
 
-        return boost::irange(
-                   static_cast<int>(
-                       tile_x - tile_scx < 0
-                           ? tile_scx
-                           : 0),  // Make sure x does not underflow when scx > 0
-                   tile_x >= SCREEN_WIDTH
-                       ? tile_scx
-                       : TILE_SIZE) |  // Make sure x is < 160
-               boost::adaptors::transformed([this, tile_attrib, screen_y,
-                                             tile_x, tile_scx, byte1,
-                                             byte2](u16 pixel_x) {
-                 // Offset the current tile by scx
-                 const u16 x = tile_x + pixel_x - tile_scx;
+    const int x_begin = static_cast<int>(
+        tile_x - tile_scx < 0
+            ? tile_scx
+            : 0);  // Make sure x does not underflow when scx > 0
+    const int x_end =
+        tile_x >= SCREEN_WIDTH ? tile_scx : TILE_SIZE;  // Make sure x is < 160
 
-                 assert(x >= 0 && x < 160);
+    for (int pixel_x : boost::irange(x_begin, x_end)) {
+      const u16 x = tile_x + pixel_x - tile_scx;
 
-                 const u8 color_index = render_pixel(
-                     byte1, byte2,
-                     tile_attrib.horizontal_flip() ? TILE_SIZE - pixel_x - 1
-                                                   : pixel_x);
-                 return Pixel{
-                     Vec2<u8>{static_cast<u8>(x), static_cast<u8>(screen_y)},
-                     static_cast<u8>((4 * tile_attrib.bg_palette()) +
-                                     color_index),
-                     false};
-               });
-      });
-  return addrs;
+      assert(x >= 0 && x < 160);
+
+      const u8 color_index = render_pixel(
+          byte1, byte2,
+          tile_attrib.horizontal_flip() ? TILE_SIZE - pixel_x - 1 : pixel_x);
+
+      const u8 palette_color_index =
+          static_cast<u8>((4 * tile_attrib.bg_palette()) + color_index);
+      background_framebuffer[160 * scanline + x] =
+          background_colors[palette_color_index];
+      background_color_indexes[x] = palette_color_index;
+    }
+  }
 }
 
 std::array<Color, 4> Gpu::generate_colors(Palette palette, bool is_sprite) {
@@ -244,14 +228,8 @@ void Gpu::render_background_pixels(int scanline,
                                    int offset_x,
                                    int offset_y) {
   const auto tile_map_range = memory->get_range(tile_map);
-  auto pixel_groups =
-      render_background(scanline, tile_map.first, tile_map_range, tile_attribs,
-                        scx, scy, offset_x, offset_y);
-  for (const auto& bg_pixels : pixel_groups) {
-    for (const Pixel& pixel : bg_pixels) {
-      background_pixels[pixel.screen_pos.x] = pixel;
-    }
-  }
+  render_background(scanline, tile_map.first, tile_map_range, tile_attribs, scx,
+                    scy, offset_x, offset_y);
 }
 
 void Gpu::compute_background_palette(u8 palette) {
@@ -266,7 +244,6 @@ void Gpu::compute_sprite_palette(int palette_number, u8 palette) {
 void Gpu::compute_cgb_color(int index, u8 color) {
   const int color_index = index / 2;
   Color& background_color = background_colors[color_index];
-  // printf("%d\n", color_index);
 
   const CgbColor cgb_color{index, color};
   if (index % 2 == 0) {
@@ -294,26 +271,7 @@ void Gpu::render_scanline(int scanline) {
                              get_scy(), 0, 0);
   }
 
-  auto sprites = render_sprites(scanline);
-  for (const auto& sprite_pixels : sprites) {
-    for (Pixel&& pixel : sprite_pixels) {
-      if (pixel.color_index != 0 &&
-          (pixel.above_bg ||
-           background_pixels[pixel.screen_pos.x].color_index == 0)) {
-        background_pixels.at(pixel.screen_pos.x) = pixel;
-      }
-    }
-  }
-
-  std::transform(
-      background_pixels.begin(), background_pixels.end(),
-      background_framebuffer.begin() + SCREEN_WIDTH * scanline,
-      [this](const Pixel& pixel) {
-        if (pixel.sprite_palette > -1) {
-          return sprite_colors.at(pixel.sprite_palette).at(pixel.color_index);
-        }
-        return background_colors.at(pixel.color_index);
-      });
+  render_sprites(scanline);
 }
 
 void Gpu::render() {

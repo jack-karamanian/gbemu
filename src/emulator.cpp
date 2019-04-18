@@ -146,8 +146,7 @@ void run_with_options(const std::string& rom_name, bool trace, bool save) {
 
   SDL_PauseAudioDevice(audio_device, 0);
 
-  std::shared_ptr<gb::SdlRenderer> renderer =
-      std::make_shared<gb::SdlRenderer>(std::move(sdl_renderer));
+  gb::SdlRenderer renderer{std::move(sdl_renderer)};
   gb::Gpu gpu{memory, renderer};
 
   if (!rom_header.is_cgb) {
@@ -280,8 +279,8 @@ void run_with_options(const std::string& rom_name, bool trace, bool save) {
       sound.update(ticks);
     }
 
-    renderer->clear();
-    renderer->present();
+    renderer.clear();
+    renderer.present();
 
 #if 0
     Uint32 now = SDL_GetTicks();

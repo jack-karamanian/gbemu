@@ -11,7 +11,7 @@
 #include "sdl_utils.h"
 
 namespace gb {
-class SdlRenderer : public IRenderer {
+class SdlRenderer {
   std::unique_ptr<SDL_Renderer, std::function<void(SDL_Renderer*)>> renderer;
 
   sdl::sdl_unique_ptr<SDL_PixelFormat> format;
@@ -22,10 +22,9 @@ class SdlRenderer : public IRenderer {
  public:
   SdlRenderer(std::unique_ptr<SDL_Renderer, std::function<void(SDL_Renderer*)>>
                   renderer);
-  virtual Texture create_texture(int width, int height, bool blend) override;
-  virtual void clear() override;
-  virtual void draw_pixels(Texture texture,
-                           const std::vector<Color>& pixels) override;
-  virtual void present() override;
+  Texture create_texture(int width, int height, bool blend);
+  void clear();
+  void draw_pixels(Texture texture, const std::vector<Color>& pixels);
+  void present();
 };
 }  // namespace gb
