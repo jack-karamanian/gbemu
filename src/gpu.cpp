@@ -103,7 +103,7 @@ void Gpu::render_sprites(int scanline) {
         assert(screen_x >= 0 && screen_x < SCREEN_WIDTH);
 
         const u8 color_index = render_pixel(byte1, byte2, flipped_pixel_x);
-        const u8 bg_color = background_color_indexes[screen_x];
+        const u8 bg_color = background_color_indexes[screen_x] % 4;
 
         if (color_index != 0 && (sprite_attrib.above_bg() || bg_color == 0)) {
           background_framebuffer[SCREEN_WIDTH * scanline + screen_x] =
