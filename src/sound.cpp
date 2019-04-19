@@ -6,12 +6,14 @@
 #include "sound.h"
 
 namespace gb {
-Sound::Sound(Memory& memory)
+Sound::Sound(Memory& memory, SDL_AudioDeviceID device)
     : memory{&memory},
       square1{{true}},
       square2{{false}},
       wave_channel{{memory.get_range({0xff30, 0xff3f})}},
-      sample_buffer(4096) {}
+      audio_device{device} {
+  sample_buffer.reserve(4096);
+}
 
 float Sound::mix_samples(const AudioFrame& frame,
                          const OutputControl& control) const {
@@ -170,12 +172,14 @@ void Sound::handle_memory_write(u16 addr, u8 value) {
 }
 
 void Sound::update(int ticks) {
-  square1.update(ticks);
-  square2.update(ticks);
-  wave_channel.update(ticks);
-  noise_channel.update(ticks);
-
-  samples_task.run(ticks, [&]() {
+  sample_ticks += ticks;
+  samples_task.run(ticks, [&](int total_ticks) {
+    // printf("%d %d\n", total_ticks, sample_ticks);
+    square1.update(sample_ticks);
+    square2.update(sample_ticks);
+    wave_channel.update(sample_ticks);
+    noise_channel.update(sample_ticks);
+    sample_ticks = 0;
     const u8 square1_sample = square1.volume();
     const u8 square2_sample = square2.volume();
     const u8 wave_sample = wave_channel.volume();
@@ -186,11 +190,18 @@ void Sound::update(int ticks) {
     const float left_sample = mix_samples(frame, left_output);
     const float right_sample = mix_samples(frame, right_output);
 
-    sample_buffer.emplace_back(left_sample);
-    sample_buffer.emplace_back(right_sample);
+    sample_buffer.push_back(left_sample);
+    sample_buffer.push_back(right_sample);
 
     if (sample_buffer.size() >= 4096) {
-      samples_ready_callback(sample_buffer);
+      // samples_ready_callback(sample_buffer);
+      while (SDL_GetQueuedAudioSize(audio_device) > 4096 * sizeof(float)) {
+        SDL_Delay(1);
+      }
+      if (SDL_QueueAudio(audio_device, sample_buffer.data(),
+                         sample_buffer.size() * sizeof(float))) {
+        std::cout << "SDL Error: " << SDL_GetError() << std::endl;
+      }
       sample_buffer.clear();
     }
   });

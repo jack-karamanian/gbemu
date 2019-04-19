@@ -1,4 +1,5 @@
 #pragma once
+#include <SDL2/SDL.h>
 #include <functional>
 #include <vector>
 #include "channel.h"
@@ -62,16 +63,13 @@ class Sound {
 
   std::vector<float> sample_buffer;
 
-  SamplesCallback samples_ready_callback;
+  SDL_AudioDeviceID audio_device;
 
   float mix_samples(const AudioFrame& frame,
                     const OutputControl& control) const;
 
  public:
-  Sound(Memory& memory);
-  void set_samples_ready_listener(SamplesCallback callback) {
-    samples_ready_callback = std::move(callback);
-  }
+  Sound(Memory& memory, SDL_AudioDeviceID device);
 
   void handle_memory_write(u16 addr, u8 value);
 

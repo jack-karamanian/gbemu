@@ -174,22 +174,11 @@ void run_with_options(const std::string& rom_name, bool trace, bool save) {
 
   gb::Lcd lcd{cpu, memory, gpu};
   gb::Input input{memory};
-  gb::Sound sound{memory};
+  gb::Sound sound{memory, audio_device};
 
   memory.add_write_listener_for_range(
       0xff10, 0xff26,
       [&sound](u16 addr, u8 val, u8) { sound.handle_memory_write(addr, val); });
-
-  sound.set_samples_ready_listener(
-      [audio_device](const std::vector<float>& square1_samples) {
-        while (SDL_GetQueuedAudioSize(audio_device) > 4096 * sizeof(float)) {
-          SDL_Delay(1);
-        }
-        if (SDL_QueueAudio(audio_device, square1_samples.data(),
-                           square1_samples.size() * sizeof(float))) {
-          std::cout << "SDL Error: " << SDL_GetError() << std::endl;
-        }
-      });
 
   // TODO
 #if 0
