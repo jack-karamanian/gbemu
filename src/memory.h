@@ -1,6 +1,8 @@
 #pragma once
 #include <algorithm>
+#include <cassert>
 #include <functional>
+#include <optional>
 #include <unordered_map>
 #include <utility>
 #include <vector>
@@ -31,12 +33,31 @@ struct BgAttribute {
 
   bool bg_priority() const { return test_bit(value, 7); }
 };
+
+class Cpu;
+class Timers;
+class Sound;
+class Input;
+class Lcd;
+class Gpu;
+class Memory;
+
+struct Hardware {
+  Cpu* cpu = nullptr;
+  Memory* memory = nullptr;
+  Timers* timers = nullptr;
+  Sound* sound = nullptr;
+  Input* input = nullptr;
+  Lcd* lcd = nullptr;
+  Gpu* gpu = nullptr;
 };
 
 class Memory {
-  using MemoryListener = std::function<void(u8 val, u8 prev_val)>;
-  using AddrMemoryListener = std::function<void(u16 addr, u8 val, u8 prev_val)>;
+  using WriteListener = void (*)(u16, u8, const Hardware&);
   using SaveRamWriteListener = std::function<void(std::size_t index, u8 val)>;
+
+  WriteListener write_listener = nullptr;
+  Hardware hardware;
 
   std::vector<u8> memory;
   std::vector<u8> rom;
@@ -51,9 +72,9 @@ class Memory {
   Mbc mbc;
 
 
-  std::unordered_map<u16, MemoryListener> write_callbacks;
   SaveRamWriteListener save_ram_write_listener;
 
+  std::optional<u8> read_hardware(u16 addr);
   std::pair<u16, nonstd::span<u8>> select_storage(u16 addr);
 
  public:
@@ -64,13 +85,21 @@ class Memory {
         memory_span{memory},
         mbc{mbc_} {}
 
+  void set_write_listener(WriteListener callback) { write_listener = callback; }
+
   template <typename T = u8>
   T at(u16 addr) {
+    const auto hardware_value = read_hardware(addr);
+
+    if (hardware_value) {
+      return *hardware_value;
+    }
     const auto x = select_storage(addr);
     const auto& normalized_addr = x.first;
     const auto& storage = x.second;
     if constexpr (sizeof(T) == 1) {
-      return storage.at(normalized_addr);
+      assert(normalized_addr < storage.size());
+      return storage[normalized_addr];
     } else {
       std::array<u8, sizeof(T)> bytes;
       std::generate(
@@ -81,6 +110,8 @@ class Memory {
       return convert_bytes<T>(bytes);
     }
   }
+
+  void set_hardware(const Hardware& new_hardware) { hardware = new_hardware; }
 
   nonstd::span<const u8> get_range(std::pair<u16, u16> range);
 
@@ -96,24 +127,6 @@ class Memory {
     save_ram_write_listener = std::move(callback);
   }
 
-  void add_write_listener(u16 addr, MemoryListener callback) {
-    write_callbacks.emplace(addr, std::move(callback));
-  }
-
-  template <typename... Addrs>
-  void add_write_listener_for_addrs(AddrMemoryListener callback,
-                                    Addrs... args) {
-    for (u16 addr : {args...}) {
-      add_write_listener(addr, [callback, addr](u8 val, u8 prev_val) {
-        callback(addr, val, prev_val);
-      });
-    }
-  }
-
-  void add_write_listener_for_range(u16 begin,
-                                    u16 end,
-                                    const AddrMemoryListener& callback);
-
   void do_dma_transfer(const u8& val);
 
   u8 get_ram(u16 addr) const { return memory[addr]; }
@@ -122,9 +135,6 @@ class Memory {
 
   u8 get_input_register() const { return memory[0xff00]; }
   void set_input_register(u8 val) { memory[0xff00] = val; }
-
-  u8 get_lcd_stat() const { return memory[Registers::LcdStat::Address]; }
-  void set_lcd_stat(u8 val) { memory[Registers::LcdStat::Address] = val; }
 
   u8 get_interrupts_enabled() const {
     return memory[Registers::InterruptEnabled::Address];
@@ -141,8 +151,6 @@ class Memory {
   void set_interrupts_request(u8 val) {
     memory[Registers::InterruptRequest::Address] = val;
   }
-
-  void set_ly(u8 val) { memory[0xff44] = val; }
 
   nonstd::span<const SpriteAttribute> get_sprite_attributes();
 

@@ -1,5 +1,4 @@
 #include <boost/range/irange.hpp>
-#include <iostream>
 #include "constants.h"
 #include "gpu.h"
 #include "memory.h"
@@ -33,14 +32,6 @@ Gpu::Gpu(Memory& memory, SdlRenderer& sdl_renderer)
       background_framebuffer(DISPLAY_SIZE),
       background_colors{COLORS[0], COLORS[1], COLORS[2], COLORS[3]},
       sprite_colors{SPRITE_COLORS, SPRITE_COLORS} {}
-
-u8 Gpu::get_scx() const {
-  return memory->get_ram(0xff43);
-}
-
-u8 Gpu::get_scy() const {
-  return memory->get_ram(0xff42);
-}
 
 u8 Gpu::render_pixel(const u8 byte1, const u8 byte2, const u8 pixel_x) const {
   const u8 shift = 7 - pixel_x;
@@ -119,17 +110,17 @@ void Gpu::render_background(
     u16 tile_map_base,
     nonstd::span<const u8> tile_map_range,
     nonstd::span<const BgAttribute> tile_attribs,
-    u8 scx,
-    u8 scy,
+    u8 scroll_x,
+    u8 scroll_y,
     int offset_x,  // TODO: figure out what to do with this
     int offset_y) {
   const Registers::Lcdc lcdc{memory->get_ram(Registers::Lcdc::Address)};
 
   const bool is_signed = lcdc.is_tile_map_signed();
 
-  const u16 y_base = scanline + scy + offset_y;
+  const u16 y_base = scanline + scroll_y + offset_y;
 
-  const int tile_y = ((scanline + scy) % 8);
+  const int tile_y = ((scanline + scroll_y) % 8);
 
   const int screen_y = scanline + offset_y;
 
@@ -142,9 +133,9 @@ void Gpu::render_background(
 
   // From https://gist.github.com/drhelius/3730564
   const u16 tile_base = 0x9800 | (table_selected << 10) |
-                        ((y_base & 0xf8) << 2) | ((scx & 0xf8) >> 3);
+                        ((y_base & 0xf8) << 2) | ((scroll_x & 0xf8) >> 3);
 
-  // HACK: The real hardware renders 20-22 tiles depending on scx
+  // HACK: The real hardware renders 20-22 tiles depending on scroll_x
   // but let's just always render 21 tiles
   for (int tile : boost::irange(0, 21)) {
     // Add which tile to be displayed to the last 5 bits of tile_base
@@ -183,17 +174,18 @@ void Gpu::render_background(
     const u8 byte1 = tile_vram[tile_addr];
     const u8 byte2 = tile_vram[tile_addr + 1];
 
-    const u16 tile_scx = scx % TILE_SIZE;
+    const u16 tile_scroll_x = scroll_x % TILE_SIZE;
 
     const int x_begin = static_cast<int>(
-        tile_x - tile_scx < 0
-            ? tile_scx
-            : 0);  // Make sure x does not underflow when scx > 0
-    const int x_end =
-        tile_x >= SCREEN_WIDTH ? tile_scx : TILE_SIZE;  // Make sure x is < 160
+        tile_x - tile_scroll_x < 0
+            ? tile_scroll_x
+            : 0);  // Make sure x does not underflow when scroll_x > 0
+    const int x_end = tile_x >= SCREEN_WIDTH
+                          ? tile_scroll_x
+                          : TILE_SIZE;  // Make sure x is < 160
 
     for (int pixel_x : boost::irange(x_begin, x_end)) {
-      const u16 x = tile_x + pixel_x - tile_scx;
+      const u16 x = tile_x + pixel_x - tile_scroll_x;
 
       assert(x >= 0 && x < 160);
 
@@ -223,13 +215,13 @@ std::array<Color, 4> Gpu::generate_colors(Palette palette, bool is_sprite) {
 void Gpu::render_background_pixels(int scanline,
                                    std::pair<u16, u16> tile_map,
                                    nonstd::span<const BgAttribute> tile_attribs,
-                                   u8 scx,
-                                   u8 scy,
+                                   u8 scroll_x,
+                                   u8 scroll_y,
                                    int offset_x,
                                    int offset_y) {
   const auto tile_map_range = memory->get_range(tile_map);
-  render_background(scanline, tile_map.first, tile_map_range, tile_attribs, scx,
-                    scy, offset_x, offset_y);
+  render_background(scanline, tile_map.first, tile_map_range, tile_attribs,
+                    scroll_x, scroll_y, offset_x, offset_y);
 }
 
 void Gpu::compute_background_palette(u8 palette) {
@@ -267,8 +259,7 @@ void Gpu::render_scanline(int scanline) {
   } else if (lcdc.bg_on()) {
     const auto range = lcdc.bg_tile_map_range();
     const auto tile_attribs = memory->get_background_attributes();
-    render_background_pixels(scanline, range, tile_attribs, get_scx(),
-                             get_scy(), 0, 0);
+    render_background_pixels(scanline, range, tile_attribs, scx, scy, 0, 0);
   }
 
   render_sprites(scanline);

@@ -9,7 +9,7 @@ class LcdStat {
  public:
   constexpr static u16 Address = 0xff41;
 
-  LcdStat(u8 value) : value{value} {}
+  explicit LcdStat(u8 value) : value{value} {}
 
   // Bit 6
   bool ly_equals_lyc_enabled() const { return (value & 0x40) != 0; }

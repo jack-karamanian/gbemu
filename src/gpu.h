@@ -49,9 +49,6 @@ class Gpu {
   std::array<Color, 32> background_colors;
   std::array<std::array<Color, 4>, 2> sprite_colors;
 
-  u8 get_scx() const;
-  u8 get_scy() const;
-
   u8 render_pixel(const u8 byte1, const u8 byte2, const u8 pixel_x) const;
   void render_sprites(int scanline);
   void render_background(int scanline,
@@ -65,6 +62,9 @@ class Gpu {
 
   std::array<Color, 4> generate_colors(Palette palette, bool is_sprite = false);
 
+  u8 scx = 0;
+  u8 scy = 0;
+
   void render_background_pixels(int scanline,
                                 std::pair<u16, u16> tile_map,
                                 nonstd::span<const BgAttribute> tile_attribs,
@@ -75,6 +75,12 @@ class Gpu {
 
  public:
   Gpu(Memory& memory, SdlRenderer& renderer);
+
+  u8 get_scx() const { return scx; }
+  u8 get_scy() const { return scy; }
+
+  void set_scx(u8 value) { scx = value; }
+  void set_scy(u8 value) { scy = value; }
 
   void compute_background_palette(u8 palette);
   void compute_sprite_palette(int palette_number, u8 palette);

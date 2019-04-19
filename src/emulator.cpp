@@ -150,36 +150,39 @@ void run_with_options(const std::string& rom_name, bool trace, bool save) {
   gb::Gpu gpu{memory, renderer};
 
   if (!rom_header.is_cgb) {
-    memory.add_write_listener(
-        gb::Registers::Palette::Background::Address,
-        [&gpu](u8 palette, u8) { gpu.compute_background_palette(palette); });
-    memory.add_write_listener(
-        gb::Registers::Palette::Obj0::Address,
-        [&gpu](u8 palette, u8) { gpu.compute_sprite_palette(0, palette); });
-    memory.add_write_listener(
-        gb::Registers::Palette::Obj1::Address,
-        [&gpu](u8 palette, u8) { gpu.compute_sprite_palette(1, palette); });
+    memory.set_write_listener(
+        [](u16 addr, u8 palette, const Hardware& hardware) {
+          switch (addr) {
+            case gb::Registers::Palette::Background::Address:
+              hardware.gpu->compute_background_palette(palette);
+              break;
+            case gb::Registers::Palette::Obj0::Address:
+              hardware.gpu->compute_sprite_palette(0, palette);
+              break;
+            case gb::Registers::Palette::Obj1::Address:
+              hardware.gpu->compute_sprite_palette(1, palette);
+              break;
+          }
+        });
   } else {
-    memory.add_write_listener(0xff69, [&gpu, &memory](u8 color, u8) {
-      const u8 index = memory.get_ram(0xff68);
-      gpu.compute_cgb_color(index & 0x3f, color);
+    memory.set_write_listener([](u16 addr, u8 color, const Hardware& hardware) {
+      if (addr == 0xff69) {
+        const u8 index = hardware.memory->get_ram(0xff68);
+        hardware.gpu->compute_cgb_color(index & 0x3f, color);
 
-      if (gb::test_bit(index, 7)) {
-        memory.set_ram(0xff68, (index & ~0x3f) | (((index & 0x3f) + 1) & 0x3f));
+        if (gb::test_bit(index, 7)) {
+          hardware.memory->set_ram(0xff68, gb::increment_bits(index, 0x3f));
+        }
       }
     });
   }
-
-  memory.add_write_listener(0xff55, [](u8, u8) { std::cout << "uses dma\n"; });
 
   gb::Lcd lcd{cpu, memory, gpu};
   gb::Input input{memory};
   gb::Sound sound{memory, audio_device};
 
-  memory.add_write_listener_for_range(
-      0xff10, 0xff26,
-      [&sound](u16 addr, u8 val, u8) { sound.handle_memory_write(addr, val); });
-
+  gb::Hardware hardware{&cpu, &memory, &timers, &sound, &input, &lcd, &gpu};
+  memory.set_hardware(hardware);
   // TODO
 #if 0
   constexpr int step_ms = 1000 / 60;

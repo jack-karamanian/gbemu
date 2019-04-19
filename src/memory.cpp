@@ -1,15 +1,33 @@
 #include <algorithm>
 #include <iostream>
+#include "gpu.h"
+#include "lcd.h"
 #include "memory.h"
 #include "registers/cgb.h"
+#include "registers/dmg.h"
+#include "sound.h"
+#include "timers.h"
 
 namespace gb {
 
-std::pair<u16, nonstd::span<u8>> Memory::select_storage(u16 addr) {
-  if (mbc.in_ram_range(addr)) {
-    return {mbc.relative_ram_address(addr),
-            {&save_ram[mbc.absolute_ram_offset()], 8192}};
+std::optional<u8> Memory::read_hardware(u16 addr) {
+  switch (addr) {
+    case Registers::Ly::Address:
+      return hardware.lcd->get_ly();
+    case Registers::Lyc::Address:
+      return hardware.lcd->get_lyc();
+    case Registers::LcdStat::Address:
+      return hardware.lcd->get_lcd_stat().get_value();
+    case 0xff43:
+      return hardware.gpu->get_scx();
+    case 0xff42:
+      return hardware.gpu->get_scy();
+    default:
+      return {};
   }
+}
+
+std::pair<u16, nonstd::span<u8>> Memory::select_storage(u16 addr) {
   if (addr < 0x8000) {
     switch (addr & 0xf000) {
       case 0x0000:
@@ -28,6 +46,11 @@ std::pair<u16, nonstd::span<u8>> Memory::select_storage(u16 addr) {
         return {addr - 0x4000, {&rom.at(start_addr), SIXTEEN_KB}};
       }
     }
+  }
+
+  if (mbc.in_ram_range(addr)) {
+    return {mbc.relative_ram_address(addr),
+            {&save_ram[mbc.absolute_ram_offset()], 8192}};
   }
 
   switch (addr & 0xf000) {
@@ -54,14 +77,58 @@ nonstd::span<const u8> Memory::get_range(std::pair<u16, u16> range) {
 }
 
 void Memory::set(u16 addr, u8 val) {
-  auto write_callback_for_addr = write_callbacks.find(addr);
-  if (write_callback_for_addr != write_callbacks.end()) {
-    write_callback_for_addr->second(val, memory[addr]);
+  switch (addr) {
+    case Registers::Ly::Address:
+      hardware.lcd->set_ly(0);
+      return;
+    case Registers::Lyc::Address:
+      hardware.lcd->set_lyc(val);
+      return;
+    case Registers::LcdStat::Address:
+      hardware.lcd->set_lcd_stat(Registers::LcdStat{val});
+      return;
+    case Registers::Lcdc::Address:
+      hardware.lcd->set_enabled(test_bit(val, 7));
+      break;
+    case 0xff43:
+      hardware.gpu->set_scx(val);
+      return;
+    case 0xff42:
+      hardware.gpu->set_scy(val);
+      return;
+    case 0xff10:
+    case 0xff11:
+    case 0xff12:
+    case 0xff13:
+    case 0xff14:
+    case 0xff15:
+    case 0xff16:
+    case 0xff17:
+    case 0xff18:
+    case 0xff19:
+    case 0xff1a:
+    case 0xff1b:
+    case 0xff1c:
+    case 0xff1d:
+    case 0xff1e:
+    case 0xff1f:
+    case 0xff20:
+    case 0xff21:
+    case 0xff22:
+    case 0xff23:
+    case 0xff24:
+    case 0xff25:
+    case 0xff26:
+      hardware.sound->handle_memory_write(addr, val);
+      memory[addr] = val;
+      return;
+
+    case gb::Registers::Div::Address:
+      hardware.timers->handle_memory_write(addr, val);
+      return;
   }
-  if (addr == 0xff44) {
-    memory[0xff44] = 0;
-    return;
-  }
+
+  write_listener(addr, val, hardware);
 
   if (bool mbc_handled = mbc.handle_memory_write(addr, val); !mbc_handled) {
     if (mbc.save_ram_enabled() && mbc.in_ram_range(addr)) {
@@ -128,14 +195,7 @@ void Memory::reset() {
   memory[0xFF00] = 0xFF;
 }
 
-void Memory::add_write_listener_for_range(u16 begin,
-                                          u16 end,
-                                          const AddrMemoryListener& callback) {
-  for (u16 addr = begin; addr <= end; addr++) {
-    add_write_listener(addr, [callback, addr](u8 val, u8 prev_val) {
-      callback(addr, val, prev_val);
-    });
-  }
+  memory[0xff4d] = 0x7e;
 }
 
 void Memory::load_rom(std::vector<u8>&& data) {
@@ -143,7 +203,7 @@ void Memory::load_rom(std::vector<u8>&& data) {
 }
 
 void Memory::do_dma_transfer(const u8& data) {
-  const u16 addr = ((u16)data) << 8;
+  const u16 addr = static_cast<u16>(data) << 8;
   for (u16 i = 0; i < 160; i++) {
     memory[0xfe00 + i] = memory[addr + i];
   }
