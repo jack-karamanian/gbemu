@@ -51,13 +51,11 @@ void SdlRenderer::draw_pixels(Texture texture,
     std::cout << "SDL Error: " << SDL_GetError() << std::endl;
   }
 
-  nonstd::span<Uint32> texture_span(texture_pixels, DISPLAY_SIZE);
-
-  const SDL_PixelFormat pixel_format = *format.get();
-  std::transform(pixels.begin(), pixels.end(), texture_span.begin(),
-                 [&pixel_format](const Color& pixel) {
-                   return MapRGB(pixel_format, pixel.r, pixel.g, pixel.b);
-                 });
+  const SDL_PixelFormat* pixel_format = format.get();
+  for (int i = 0; i < DISPLAY_SIZE; ++i) {
+    const Color& pixel = pixels[i];
+    texture_pixels[i] = MapRGB(*pixel_format, pixel.r, pixel.g, pixel.b);
+  }
 
   SDL_UnlockTexture(sdl_texture);
 
