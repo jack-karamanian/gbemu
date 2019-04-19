@@ -54,4 +54,9 @@ template <typename T>
   return (value & (1 << bit)) != 0;
 }
 
+template <typename T, typename U>
+[[nodiscard]] constexpr T increment_bits(T value, U mask) {
+  return (value & ~mask) | (((value & mask) + 1) & mask);
+}
+
 }  // namespace gb
