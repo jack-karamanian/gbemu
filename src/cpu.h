@@ -36,6 +36,7 @@ struct InstructionTable {
 
   InstructionTable(Cpu& cpu);
 };
+
 namespace JumpCondition {
 enum {
   NZ = 0,
@@ -50,12 +51,14 @@ class Cpu {
     InterruptEnabled = 0xffff,
     LcdControl = 0xff40,
   };
+
+  Memory* memory;
   std::array<u8, 8> regs;
 
   u16 sp;
   u16 pc;
 
-  unsigned int ticks;
+  unsigned int ticks = 0;
 
   u8 current_opcode = 0x00;
   std::variant<u8, u16> current_operand;
@@ -70,9 +73,6 @@ class Cpu {
 
   bool debug = false;
 
-  Memory* memory;
-  InstructionTable instruction_table;
-
  public:
   enum Register { C = 0, B, E, D, L, H, F, A, BC = 0, DE = 2, HL = 4 };
   enum Interrupt {
@@ -84,13 +84,18 @@ class Cpu {
   };
   Cpu(Memory& memory);
 
-  const Instruction& fetch();
-
   int fetch_and_decode();
+
+  void execute_opcode(u8 opcode);
+
+  void execute_cb_opcode(u8 opcode);
+
   int handle_interrupts();
+
   bool handle_interrupt(u8 interrupt);
 
   void set_debug(bool value) { debug = value; }
+
   void debug_write();
 
   bool is_halted() const { return halted; }
@@ -106,6 +111,7 @@ class Cpu {
   void clear_interrupt(const u8 interrupt) const;
 
   void noop() const {}
+
   void invalid() const;
 
   bool get_carry() const { return regs[Register::F] & 0x10; }

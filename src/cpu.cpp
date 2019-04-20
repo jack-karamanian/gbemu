@@ -11,19 +11,7 @@ Cpu::Cpu(Memory& memory)
     : regs{0x13, 0x00, 0xd8, 0x00, 0x4d, 0x01, 0xb0, 0x11}, // TODO: allow choice of CGB or DMG registers
       sp{0xfffe},
       pc{0x100},
-      ticks{0},
-      memory{&memory},
-      instruction_table(*this) {}
-
-const Instruction& Cpu::fetch() {
-  const u8 opcode = memory->at(pc);
-  if (opcode == 0xCB) {
-    pc++;
-    ticks += 4;
-    return instruction_table.cb_instructions.at(memory->at(pc));
-  }
-  return instruction_table.instructions.at(opcode);
-}
+      memory{&memory} {}
 
 int Cpu::fetch_and_decode() {
   ticks = 0;
@@ -36,35 +24,16 @@ int Cpu::fetch_and_decode() {
     queue_interrupts_enabled = false;
   }
 
-  const Instruction& inst = fetch();
-
-  if (debug) {
-    std::cout << inst.name << '\n';
-    std::cout << "opcode: " << std::hex << +memory->at(pc) << '\n';
-  }
-
-  const std::size_t operands_size = (inst.size - 1);
-
-  if (operands_size == 1) {
-    if (debug) {
-      std::cout << std::hex << +memory->at(pc + 1) << '\n';
-    }
-    current_operand = memory->at(pc + 1);
-  } else if (operands_size == 2) {
-    if (debug) {
-      std::cout << std::hex << memory->at<u16>(pc + 1) << '\n';
-    }
-    current_operand = memory->at<u16>(pc + 1);
-  }
-
   current_opcode = memory->at(pc);
 
-  pc += inst.size;
-  ticks += inst.cycles;
+  if (current_opcode == 0xcb) {
+    current_opcode = memory->at(pc + 1);
+    execute_cb_opcode(current_opcode);
+  } else {
+    execute_opcode(current_opcode);
+  }
 
-  inst.impl();
-
-  return ticks;
+  return ticks / (double_speed ? 2 : 1);
 }
 
 int Cpu::handle_interrupts() {
@@ -1280,5 +1249,1566 @@ u16& Cpu::get_r16(Register reg) {
 u8 Cpu::value_at_r16(Register reg) {
   u16& addr = get_r16(reg);
   return memory->at(addr);
+}
+
+#define GB_INSTRUCTION(op, size, cycles, function)            \
+  case op: {                                                  \
+    constexpr int operands_size = size - 1;                   \
+    if constexpr (operands_size == 1) {                       \
+      current_operand = memory->at(pc + 1);                   \
+    } else if constexpr (operands_size == 2) {                \
+      current_operand = memory->at<u16>(pc + 1);              \
+    } else if constexpr (operands_size > 2) {                 \
+      static_assert(operands_size <= 2,                       \
+                    "number of operands must be 0, 1, or 2"); \
+    }                                                         \
+    pc += size;                                               \
+    ticks += cycles;                                          \
+    function;                                                 \
+    break;                                                    \
+  }
+
+void Cpu::execute_opcode(u8 opcode) {
+  switch (opcode) {
+    // NOP
+    GB_INSTRUCTION(0x0, 1, 4, noop())
+
+    // LD BC,d16
+    GB_INSTRUCTION(0x1, 3, 12, ld_r16_d16(Cpu::BC))
+
+    // LD (BC),A
+    GB_INSTRUCTION(0x2, 1, 8, ld_r16_a(Cpu::BC))
+
+    // INC BC
+    GB_INSTRUCTION(0x3, 1, 8, inc_r16(Cpu::BC))
+
+    // INC B
+    GB_INSTRUCTION(0x4, 1, 4, inc_r8(Cpu::B))
+
+    // DEC B
+    GB_INSTRUCTION(0x5, 1, 4, dec_r8(Cpu::B))
+
+    // LD B,d8
+    GB_INSTRUCTION(0x6, 2, 8, ld_r8_d8(Cpu::B))
+
+    // RLCA
+    GB_INSTRUCTION(0x7, 1, 4, rlca())
+
+    // LD (a16),SP
+    GB_INSTRUCTION(0x8, 3, 20, ld_d16_sp())
+
+    // ADD HL,BC
+    GB_INSTRUCTION(0x9, 1, 8, add_hl_r16(Cpu::BC))
+
+    // LD A,(BC)
+    GB_INSTRUCTION(0xa, 1, 8, ld_a_r16(Cpu::BC))
+
+    // DEC BC
+    GB_INSTRUCTION(0xb, 1, 8, dec_r16(Cpu::BC))
+
+    // INC C
+    GB_INSTRUCTION(0xc, 1, 4, inc_r8(Cpu::C))
+
+    // DEC C
+    GB_INSTRUCTION(0xd, 1, 4, dec_r8(Cpu::C))
+
+    // LD C,d8
+    GB_INSTRUCTION(0xe, 2, 8, ld_r8_d8(Cpu::C))
+
+    // RRCA
+    GB_INSTRUCTION(0xf, 1, 4, rrca())
+
+    // STOP 0
+    GB_INSTRUCTION(0x10, 2, 4, stop())
+
+    // LD DE,d16
+    GB_INSTRUCTION(0x11, 3, 12, ld_r16_d16(Cpu::DE))
+
+    // LD (DE),A
+    GB_INSTRUCTION(0x12, 1, 8, ld_r16_a(Cpu::DE))
+
+    // INC DE
+    GB_INSTRUCTION(0x13, 1, 8, inc_r16(Cpu::DE))
+
+    // INC D
+    GB_INSTRUCTION(0x14, 1, 4, inc_r8(Cpu::D))
+
+    // DEC D
+    GB_INSTRUCTION(0x15, 1, 4, dec_r8(Cpu::D))
+
+    // LD D,d8
+    GB_INSTRUCTION(0x16, 2, 8, ld_r8_d8(Cpu::D))
+
+    // RLA
+    GB_INSTRUCTION(0x17, 1, 4, rl_a())
+
+    // JR r8
+    GB_INSTRUCTION(0x18, 2, 12, jr_e8())
+
+    // ADD HL,DE
+    GB_INSTRUCTION(0x19, 1, 8, add_hl_r16(DE))
+
+    // LD A,(DE)
+    GB_INSTRUCTION(0x1a, 1, 8, ld_a_r16(DE))
+
+    // DEC DE
+    GB_INSTRUCTION(0x1b, 1, 8, dec_r16(DE))
+
+    // INC E
+    GB_INSTRUCTION(0x1c, 1, 4, inc_r8(E))
+
+    // DEC E
+    GB_INSTRUCTION(0x1d, 1, 4, dec_r8(E))
+
+    // LD E,d8
+    GB_INSTRUCTION(0x1e, 2, 8, ld_r8_d8(E))
+
+    // RRA
+    GB_INSTRUCTION(0x1f, 1, 4, rra())
+
+    // JR NZ,r8
+    GB_INSTRUCTION(0x20, 2, 12, jr_cc_e8())
+
+    // LD HL,d16
+    GB_INSTRUCTION(0x21, 3, 12, ld_r16_d16(HL))
+
+    // LD (HL+),A
+    GB_INSTRUCTION(0x22, 1, 8, ld_hl_inc_a())
+
+    // INC HL
+    GB_INSTRUCTION(0x23, 1, 8, inc_r16(HL))
+
+    // INC H
+    GB_INSTRUCTION(0x24, 1, 4, inc_r8(H))
+
+    // DEC H
+    GB_INSTRUCTION(0x25, 1, 4, dec_r8(H))
+
+    // LD H,d8
+    GB_INSTRUCTION(0x26, 2, 8, ld_r8_d8(H))
+
+    // DAA
+    GB_INSTRUCTION(0x27, 1, 4, daa())
+
+    // JR Z,r8
+    GB_INSTRUCTION(0x28, 2, 12, jr_cc_e8())
+
+    // ADD HL,HL
+    GB_INSTRUCTION(0x29, 1, 8, add_hl_r16(HL))
+
+    // LD A,(HL+)
+    GB_INSTRUCTION(0x2a, 1, 8, ld_a_hl_inc())
+
+    // DEC HL
+    GB_INSTRUCTION(0x2b, 1, 8, dec_r16(HL))
+
+    // INC L
+    GB_INSTRUCTION(0x2c, 1, 4, inc_r8(L))
+
+    // DEC L
+    GB_INSTRUCTION(0x2d, 1, 4, dec_r8(L))
+
+    // LD L,d8
+    GB_INSTRUCTION(0x2e, 2, 8, ld_r8_d8(L))
+
+    // CPL
+    GB_INSTRUCTION(0x2f, 1, 4, cpl())
+
+    // JR NC,r8
+    GB_INSTRUCTION(0x30, 2, 12, jr_cc_e8())
+
+    // LD SP,d16
+    GB_INSTRUCTION(0x31, 3, 12, ld_sp_d16())
+
+    // LD (HL-),A
+    GB_INSTRUCTION(0x32, 1, 8, ld_hl_dec_a())
+
+    // INC SP
+    GB_INSTRUCTION(0x33, 1, 8, inc_sp())
+
+    // INC (HL)
+    GB_INSTRUCTION(0x34, 1, 12, inc_hl())
+
+    // DEC (HL)
+    GB_INSTRUCTION(0x35, 1, 12, dec_hl())
+
+    // LD (HL),d8
+    GB_INSTRUCTION(0x36, 2, 12, ld_hl_d8())
+
+    // SCF
+    GB_INSTRUCTION(0x37, 1, 4, scf())
+
+    // JR C,r8
+    GB_INSTRUCTION(0x38, 2, 12, jr_cc_e8())
+
+    // ADD HL,SP
+    GB_INSTRUCTION(0x39, 1, 8, add_hl_sp())
+
+    // LD A,(HL-)
+    GB_INSTRUCTION(0x3a, 1, 8, ld_a_hl_dec())
+
+    // DEC SP
+    GB_INSTRUCTION(0x3b, 1, 8, dec_sp())
+
+    // INC A
+    GB_INSTRUCTION(0x3c, 1, 4, inc_r8(A))
+
+    // DEC A
+    GB_INSTRUCTION(0x3d, 1, 4, dec_r8(A))
+
+    // LD A,d8
+    GB_INSTRUCTION(0x3e, 2, 8, ld_r8_d8(A))
+
+    // CCF
+    GB_INSTRUCTION(0x3f, 1, 4, ccf())
+
+    // LD B,B
+    GB_INSTRUCTION(0x40, 1, 4, ld_r8_r8(B, B))
+
+    // LD B,C
+    GB_INSTRUCTION(0x41, 1, 4, ld_r8_r8(B, C))
+
+    // LD B,D
+    GB_INSTRUCTION(0x42, 1, 4, ld_r8_r8(B, D))
+
+    // LD B,E
+    GB_INSTRUCTION(0x43, 1, 4, ld_r8_r8(B, E))
+
+    // LD B,H
+    GB_INSTRUCTION(0x44, 1, 4, ld_r8_r8(B, H))
+
+    // LD B,L
+    GB_INSTRUCTION(0x45, 1, 4, ld_r8_r8(B, L))
+
+    // LD B,(HL)
+    GB_INSTRUCTION(0x46, 1, 8, ld_r8_hl(B))
+
+    // LD B,A
+    GB_INSTRUCTION(0x47, 1, 4, ld_r8_r8(B, A))
+
+    // LD C,B
+    GB_INSTRUCTION(0x48, 1, 4, ld_r8_r8(C, B))
+
+    // LD C,C
+    GB_INSTRUCTION(0x49, 1, 4, ld_r8_r8(C, C))
+
+    // LD C,D
+    GB_INSTRUCTION(0x4a, 1, 4, ld_r8_r8(C, D))
+
+    // LD C,E
+    GB_INSTRUCTION(0x4b, 1, 4, ld_r8_r8(C, E))
+
+    // LD C,H
+    GB_INSTRUCTION(0x4c, 1, 4, ld_r8_r8(C, H))
+
+    // LD C,L
+    GB_INSTRUCTION(0x4d, 1, 4, ld_r8_r8(C, L))
+
+    // LD C,(HL)
+    GB_INSTRUCTION(0x4e, 1, 8, ld_r8_hl(C))
+
+    // LD C,A
+    GB_INSTRUCTION(0x4f, 1, 4, ld_r8_r8(C, A))
+
+    // LD D,B
+    GB_INSTRUCTION(0x50, 1, 4, ld_r8_r8(D, B))
+
+    // LD D,C
+    GB_INSTRUCTION(0x51, 1, 4, ld_r8_r8(D, C))
+
+    // LD D,D
+    GB_INSTRUCTION(0x52, 1, 4, ld_r8_r8(D, D))
+
+    // LD D,E
+    GB_INSTRUCTION(0x53, 1, 4, ld_r8_r8(D, E))
+
+    // LD D,H
+    GB_INSTRUCTION(0x54, 1, 4, ld_r8_r8(D, H))
+
+    // LD D,L
+    GB_INSTRUCTION(0x55, 1, 4, ld_r8_r8(D, L))
+
+    // LD D,(HL)
+    GB_INSTRUCTION(0x56, 1, 8, ld_r8_hl(D))
+
+    // LD D,A
+    GB_INSTRUCTION(0x57, 1, 4, ld_r8_r8(D, A))
+
+    // LD E,B
+    GB_INSTRUCTION(0x58, 1, 4, ld_r8_r8(E, B))
+
+    // LD E,C
+    GB_INSTRUCTION(0x59, 1, 4, ld_r8_r8(E, C))
+
+    // LD E,D
+    GB_INSTRUCTION(0x5a, 1, 4, ld_r8_r8(E, D))
+
+    // LD E,E
+    GB_INSTRUCTION(0x5b, 1, 4, ld_r8_r8(E, E))
+
+    // LD E,H
+    GB_INSTRUCTION(0x5c, 1, 4, ld_r8_r8(E, H))
+
+    // LD E,L
+    GB_INSTRUCTION(0x5d, 1, 4, ld_r8_r8(E, L))
+
+    // LD E,(HL)
+    GB_INSTRUCTION(0x5e, 1, 8, ld_r8_hl(E))
+
+    // LD E,A
+    GB_INSTRUCTION(0x5f, 1, 4, ld_r8_r8(E, A))
+
+    // LD H,B
+    GB_INSTRUCTION(0x60, 1, 4, ld_r8_r8(H, B))
+
+    // LD H,C
+    GB_INSTRUCTION(0x61, 1, 4, ld_r8_r8(H, C))
+
+    // LD H,D
+    GB_INSTRUCTION(0x62, 1, 4, ld_r8_r8(H, D))
+
+    // LD H,E
+    GB_INSTRUCTION(0x63, 1, 4, ld_r8_r8(H, E))
+
+    // LD H,H
+    GB_INSTRUCTION(0x64, 1, 4, ld_r8_r8(H, H))
+
+    // LD H,L
+    GB_INSTRUCTION(0x65, 1, 4, ld_r8_r8(H, L))
+
+    // LD H,(HL)
+    GB_INSTRUCTION(0x66, 1, 8, ld_r8_hl(H))
+
+    // LD H,A
+    GB_INSTRUCTION(0x67, 1, 4, ld_r8_r8(H, A))
+
+    // LD L,B
+    GB_INSTRUCTION(0x68, 1, 4, ld_r8_r8(L, B))
+
+    // LD L,C
+    GB_INSTRUCTION(0x69, 1, 4, ld_r8_r8(L, C))
+
+    // LD L,D
+    GB_INSTRUCTION(0x6a, 1, 4, ld_r8_r8(L, D))
+
+    // LD L,E
+    GB_INSTRUCTION(0x6b, 1, 4, ld_r8_r8(L, E))
+
+    // LD L,H
+    GB_INSTRUCTION(0x6c, 1, 4, ld_r8_r8(L, H))
+
+    // LD L,L
+    GB_INSTRUCTION(0x6d, 1, 4, ld_r8_r8(L, L))
+
+    // LD L,(HL)
+    GB_INSTRUCTION(0x6e, 1, 8, ld_r8_hl(L))
+
+    // LD L,A
+    GB_INSTRUCTION(0x6f, 1, 4, ld_r8_r8(L, A))
+
+    // LD (HL),B
+    GB_INSTRUCTION(0x70, 1, 8, ld_hl_r8(B))
+
+    // LD (HL),C
+    GB_INSTRUCTION(0x71, 1, 8, ld_hl_r8(C))
+
+    // LD (HL),D
+    GB_INSTRUCTION(0x72, 1, 8, ld_hl_r8(D))
+
+    // LD (HL),E
+    GB_INSTRUCTION(0x73, 1, 8, ld_hl_r8(E))
+
+    // LD (HL),H
+    GB_INSTRUCTION(0x74, 1, 8, ld_hl_r8(H))
+
+    // LD (HL),L
+    GB_INSTRUCTION(0x75, 1, 8, ld_hl_r8(L))
+
+    // HALT
+    GB_INSTRUCTION(0x76, 1, 4, halt())
+
+    // LD (HL),A
+    GB_INSTRUCTION(0x77, 1, 8, ld_hl_r8(A))
+
+    // LD A,B
+    GB_INSTRUCTION(0x78, 1, 4, ld_r8_r8(A, B))
+
+    // LD A,C
+    GB_INSTRUCTION(0x79, 1, 4, ld_r8_r8(A, C))
+
+    // LD A,D
+    GB_INSTRUCTION(0x7a, 1, 4, ld_r8_r8(A, D))
+
+    // LD A,E
+    GB_INSTRUCTION(0x7b, 1, 4, ld_r8_r8(A, E))
+
+    // LD A,H
+    GB_INSTRUCTION(0x7c, 1, 4, ld_r8_r8(A, H))
+
+    // LD A,L
+    GB_INSTRUCTION(0x7d, 1, 4, ld_r8_r8(A, L))
+
+    // LD A,(HL)
+    GB_INSTRUCTION(0x7e, 1, 8, load_a_hl())
+
+    // LD A,A
+    GB_INSTRUCTION(0x7f, 1, 4, ld_r8_r8(A, A))
+
+    // ADD A,B
+    GB_INSTRUCTION(0x80, 1, 4, add_a_r8(B))
+
+    // ADD A,C
+    GB_INSTRUCTION(0x81, 1, 4, add_a_r8(C))
+
+    // ADD A,D
+    GB_INSTRUCTION(0x82, 1, 4, add_a_r8(D))
+
+    // ADD A,E
+    GB_INSTRUCTION(0x83, 1, 4, add_a_r8(E))
+
+    // ADD A,H
+    GB_INSTRUCTION(0x84, 1, 4, add_a_r8(H))
+
+    // ADD A,L
+    GB_INSTRUCTION(0x85, 1, 4, add_a_r8(L))
+
+    // ADD A,(HL)
+    GB_INSTRUCTION(0x86, 1, 8, add_a_hl())
+
+    // ADD A,A
+    GB_INSTRUCTION(0x87, 1, 4, add_a_r8(A))
+
+    // ADC A,B
+    GB_INSTRUCTION(0x88, 1, 4, add_carry_a_r8(B))
+
+    // ADC A,C
+    GB_INSTRUCTION(0x89, 1, 4, add_carry_a_r8(C))
+
+    // ADC A,D
+    GB_INSTRUCTION(0x8a, 1, 4, add_carry_a_r8(D))
+
+    // ADC A,E
+    GB_INSTRUCTION(0x8b, 1, 4, add_carry_a_r8(E))
+
+    // ADC A,H
+    GB_INSTRUCTION(0x8c, 1, 4, add_carry_a_r8(H))
+
+    // ADC A,L
+    GB_INSTRUCTION(0x8d, 1, 4, add_carry_a_r8(L))
+
+    // ADC A,(HL)
+    GB_INSTRUCTION(0x8e, 1, 8, add_carry_a_hl())
+
+    // ADC A,A
+    GB_INSTRUCTION(0x8f, 1, 4, add_carry_a_r8(A))
+
+    // SUB B
+    GB_INSTRUCTION(0x90, 1, 4, sub_a_r8(B))
+
+    // SUB C
+    GB_INSTRUCTION(0x91, 1, 4, sub_a_r8(C))
+
+    // SUB D
+    GB_INSTRUCTION(0x92, 1, 4, sub_a_r8(D))
+
+    // SUB E
+    GB_INSTRUCTION(0x93, 1, 4, sub_a_r8(E))
+
+    // SUB H
+    GB_INSTRUCTION(0x94, 1, 4, sub_a_r8(H))
+
+    // SUB L
+    GB_INSTRUCTION(0x95, 1, 4, sub_a_r8(L))
+
+    // SUB (HL)
+    GB_INSTRUCTION(0x96, 1, 8, sub_a_hl())
+
+    // SUB A
+    GB_INSTRUCTION(0x97, 1, 4, sub_a_r8(A))
+
+    // SBC A,B
+    GB_INSTRUCTION(0x98, 1, 4, sbc_a_r8(B))
+
+    // SBC A,C
+    GB_INSTRUCTION(0x99, 1, 4, sbc_a_r8(C))
+
+    // SBC A,D
+    GB_INSTRUCTION(0x9a, 1, 4, sbc_a_r8(D))
+
+    // SBC A,E
+    GB_INSTRUCTION(0x9b, 1, 4, sbc_a_r8(E))
+
+    // SBC A,H
+    GB_INSTRUCTION(0x9c, 1, 4, sbc_a_r8(H))
+
+    // SBC A,L
+    GB_INSTRUCTION(0x9d, 1, 4, sbc_a_r8(L))
+
+    // SBC A,(HL)
+    GB_INSTRUCTION(0x9e, 1, 8, sbc_a_hl())
+
+    // SBC A,A
+    GB_INSTRUCTION(0x9f, 1, 4, sbc_a_r8(A))
+
+    // AND B
+    GB_INSTRUCTION(0xa0, 1, 4, and_a_r8(B))
+
+    // AND C
+    GB_INSTRUCTION(0xa1, 1, 4, and_a_r8(C))
+
+    // AND D
+    GB_INSTRUCTION(0xa2, 1, 4, and_a_r8(D))
+
+    // AND E
+    GB_INSTRUCTION(0xa3, 1, 4, and_a_r8(E))
+
+    // AND H
+    GB_INSTRUCTION(0xa4, 1, 4, and_a_r8(H))
+
+    // AND L
+    GB_INSTRUCTION(0xa5, 1, 4, and_a_r8(L))
+
+    // AND (HL)
+    GB_INSTRUCTION(0xa6, 1, 8, and_a_hl())
+
+    // AND A
+    GB_INSTRUCTION(0xa7, 1, 4, and_a_r8(A))
+
+    // XOR B
+    GB_INSTRUCTION(0xa8, 1, 4, xor_a_r8(B))
+
+    // XOR C
+    GB_INSTRUCTION(0xa9, 1, 4, xor_a_r8(C))
+
+    // XOR D
+    GB_INSTRUCTION(0xaa, 1, 4, xor_a_r8(D))
+
+    // XOR E
+    GB_INSTRUCTION(0xab, 1, 4, xor_a_r8(E))
+
+    // XOR H
+    GB_INSTRUCTION(0xac, 1, 4, xor_a_r8(H))
+
+    // XOR L
+    GB_INSTRUCTION(0xad, 1, 4, xor_a_r8(L))
+
+    // XOR (HL)
+    GB_INSTRUCTION(0xae, 1, 8, xor_a_hl())
+
+    // XOR A
+    GB_INSTRUCTION(0xaf, 1, 4, xor_a_r8(A))
+
+    // OR B
+    GB_INSTRUCTION(0xb0, 1, 4, or_a_r8(B))
+
+    // OR C
+    GB_INSTRUCTION(0xb1, 1, 4, or_a_r8(C))
+
+    // OR D
+    GB_INSTRUCTION(0xb2, 1, 4, or_a_r8(D))
+
+    // OR E
+    GB_INSTRUCTION(0xb3, 1, 4, or_a_r8(E))
+
+    // OR H
+    GB_INSTRUCTION(0xb4, 1, 4, or_a_r8(H))
+
+    // OR L
+    GB_INSTRUCTION(0xb5, 1, 4, or_a_r8(L))
+
+    // OR (HL)
+    GB_INSTRUCTION(0xb6, 1, 8, or_a_hl())
+
+    // OR A
+    GB_INSTRUCTION(0xb7, 1, 4, or_a_r8(A))
+
+    // CP B
+    GB_INSTRUCTION(0xb8, 1, 4, cp_a_r8(B))
+
+    // CP C
+    GB_INSTRUCTION(0xb9, 1, 4, cp_a_r8(C))
+
+    // CP D
+    GB_INSTRUCTION(0xba, 1, 4, cp_a_r8(D))
+
+    // CP E
+    GB_INSTRUCTION(0xbb, 1, 4, cp_a_r8(E))
+
+    // CP H
+    GB_INSTRUCTION(0xbc, 1, 4, cp_a_r8(H))
+
+    // CP L
+    GB_INSTRUCTION(0xbd, 1, 4, cp_a_r8(L))
+
+    // CP (HL)
+    GB_INSTRUCTION(0xbe, 1, 8, cp_a_hl())
+
+    // CP A
+    GB_INSTRUCTION(0xbf, 1, 4, cp_a_r8(A))
+
+    // RET NZ
+    GB_INSTRUCTION(0xc0, 1, 20, ret_conditional())
+
+    // POP BC
+    GB_INSTRUCTION(0xc1, 1, 12, pop_r16(BC))
+
+    // JP NZ,a16
+    GB_INSTRUCTION(0xc2, 3, 16, jp_cc_n16())
+
+    // JP a16
+    GB_INSTRUCTION(0xc3, 3, 16, jp_d16())
+
+    // CALL NZ,a16
+    GB_INSTRUCTION(0xc4, 3, 24, call_nz())
+
+    // PUSH BC
+    GB_INSTRUCTION(0xc5, 1, 16, push_r16(BC))
+
+    // ADD A,d8
+    GB_INSTRUCTION(0xc6, 2, 8, add_a_d8())
+
+    // RST 00H
+    GB_INSTRUCTION(0xc7, 1, 16, rst())
+
+    // RET Z
+    GB_INSTRUCTION(0xc8, 1, 20, ret_conditional())
+
+    // RET
+    GB_INSTRUCTION(0xc9, 1, 16, ret())
+
+    // JP Z,a16
+    GB_INSTRUCTION(0xca, 3, 16, jp_cc_n16())
+
+    // PREFIX CB
+    GB_INSTRUCTION(0xcb, 1, 4, noop())
+
+    // CALL Z,a16
+    GB_INSTRUCTION(0xcc, 3, 24, call_z())
+
+    // CALL a16
+    GB_INSTRUCTION(0xcd, 3, 24, call())
+
+    // ADC A,d8
+    GB_INSTRUCTION(0xce, 2, 8, add_carry_a_d8())
+
+    // RST 08H
+    GB_INSTRUCTION(0xcf, 1, 16, rst())
+
+    // RET NC
+    GB_INSTRUCTION(0xd0, 1, 20, ret_conditional())
+
+    // POP DE
+    GB_INSTRUCTION(0xd1, 1, 12, pop_r16(DE))
+
+    // JP NC,a16
+    GB_INSTRUCTION(0xd2, 3, 16, jp_cc_n16())
+
+    // INVALID
+    GB_INSTRUCTION(0xd3, 1, 16, invalid())
+
+    // CALL NC,a16
+    GB_INSTRUCTION(0xd4, 3, 24, call_nc())
+
+    // PUSH DE
+    GB_INSTRUCTION(0xd5, 1, 16, push_r16(DE))
+
+    // SUB d8
+    GB_INSTRUCTION(0xd6, 2, 8, sub_a_d8())
+
+    // RST 10H
+    GB_INSTRUCTION(0xd7, 1, 16, rst())
+
+    // RET C
+    GB_INSTRUCTION(0xd8, 1, 20, ret_conditional())
+
+    // RETI
+    GB_INSTRUCTION(0xd9, 1, 16, reti())
+
+    // JP C,a16
+    GB_INSTRUCTION(0xda, 3, 16, jp_cc_n16())
+
+    // INVALID
+    GB_INSTRUCTION(0xdb, 1, 16, invalid())
+
+    // CALL C,a16
+    GB_INSTRUCTION(0xdc, 3, 24, call_c())
+
+    // INVALID
+    GB_INSTRUCTION(0xdd, 1, 24, invalid())
+
+    // SBC A,d8
+    GB_INSTRUCTION(0xde, 2, 8, sbc_a_d8())
+
+    // RST 18H
+    GB_INSTRUCTION(0xdf, 1, 16, rst())
+
+    // LDH (a8),A
+    GB_INSTRUCTION(0xe0, 2, 12, ld_offset_a())
+
+    // POP HL
+    GB_INSTRUCTION(0xe1, 1, 12, pop_r16(HL))
+
+    // LD (C),A
+    GB_INSTRUCTION(0xe2, 1, 8, ld_offset_c_a())
+
+    // INVALID
+    GB_INSTRUCTION(0xe3, 1, 8, invalid())
+
+    // INVALID
+    GB_INSTRUCTION(0xe4, 1, 8, invalid())
+
+    // PUSH HL
+    GB_INSTRUCTION(0xe5, 1, 16, push_r16(HL))
+
+    // AND d8
+    GB_INSTRUCTION(0xe6, 2, 8, and_a_d8())
+
+    // RST 20H
+    GB_INSTRUCTION(0xe7, 1, 16, rst())
+
+    // ADD SP,r8
+    GB_INSTRUCTION(0xe8, 2, 16, add_sp_s8())
+
+    // JP (HL)
+    GB_INSTRUCTION(0xe9, 1, 4, jp_hl())
+
+    // LD (a16),A
+    GB_INSTRUCTION(0xea, 3, 16, ld_d16_a())
+
+    // INVALID
+    GB_INSTRUCTION(0xeb, 1, 16, invalid())
+
+    // INVALID
+    GB_INSTRUCTION(0xec, 1, 16, invalid())
+
+    // INVALID
+    GB_INSTRUCTION(0xed, 1, 16, invalid())
+
+    // XOR d8
+    GB_INSTRUCTION(0xee, 2, 8, xor_a_d8())
+
+    // RST 28H
+    GB_INSTRUCTION(0xef, 1, 16, rst())
+
+    // LDH A,(a8)
+    GB_INSTRUCTION(0xf0, 2, 12, ld_read_offset_d8())
+
+    // POP AF
+    GB_INSTRUCTION(0xf1, 1, 12, pop_af())
+
+    // LD A,(C)
+    GB_INSTRUCTION(0xf2, 1, 8, ld_read_offset_c())
+
+    // DI
+    GB_INSTRUCTION(0xf3, 1, 4, disable_interrupts())
+
+    // INVALID
+    GB_INSTRUCTION(0xf4, 1, 4, invalid())
+
+    // PUSH AF
+    GB_INSTRUCTION(0xf5, 1, 16, push_af())
+
+    // OR d8
+    GB_INSTRUCTION(0xf6, 2, 8, or_a_d8())
+
+    // RST 30H
+    GB_INSTRUCTION(0xf7, 1, 16, rst())
+
+    // LD HL,SP+r8
+    GB_INSTRUCTION(0xf8, 2, 12, ld_hl_sp_s8())
+
+    // LD SP,HL
+    GB_INSTRUCTION(0xf9, 1, 8, ld_sp_hl())
+
+    // LD A,(a16)
+    GB_INSTRUCTION(0xfa, 3, 16, ld_a_d16())
+
+    // EI
+    GB_INSTRUCTION(0xfb, 1, 4, enable_interrupts())
+
+    // INVALID
+    GB_INSTRUCTION(0xfc, 1, 4, invalid())
+
+    // INVALID
+    GB_INSTRUCTION(0xfd, 1, 4, invalid())
+
+    // CP d8
+    GB_INSTRUCTION(0xfe, 2, 8, cp_a_d8())
+
+    // RST 38H
+    GB_INSTRUCTION(0xff, 1, 16, rst())
+  }
+}
+
+void Cpu::execute_cb_opcode(u8 opcode) {
+  switch (opcode) {
+    // RLC B
+    GB_INSTRUCTION(0x0, 2, 8, rlc_r8(B))
+
+    // RLC C
+    GB_INSTRUCTION(0x1, 2, 8, rlc_r8(C))
+
+    // RLC D
+    GB_INSTRUCTION(0x2, 2, 8, rlc_r8(D))
+
+    // RLC E
+    GB_INSTRUCTION(0x3, 2, 8, rlc_r8(E))
+
+    // RLC H
+    GB_INSTRUCTION(0x4, 2, 8, rlc_r8(H))
+
+    // RLC L
+    GB_INSTRUCTION(0x5, 2, 8, rlc_r8(L))
+
+    // RLC (HL)
+    GB_INSTRUCTION(0x6, 2, 16, rlc_hl())
+
+    // RLC A
+    GB_INSTRUCTION(0x7, 2, 8, rlc_r8(A))
+
+    // RRC B
+    GB_INSTRUCTION(0x8, 2, 8, rrc_r8(B))
+
+    // RRC C
+    GB_INSTRUCTION(0x9, 2, 8, rrc_r8(C))
+
+    // RRC D
+    GB_INSTRUCTION(0xa, 2, 8, rrc_r8(D))
+
+    // RRC E
+    GB_INSTRUCTION(0xb, 2, 8, rrc_r8(E))
+
+    // RRC H
+    GB_INSTRUCTION(0xc, 2, 8, rrc_r8(H))
+
+    // RRC L
+    GB_INSTRUCTION(0xd, 2, 8, rrc_r8(L))
+
+    // RRC (HL)
+    GB_INSTRUCTION(0xe, 2, 16, rrc_hl())
+
+    // RRC A
+    GB_INSTRUCTION(0xf, 2, 8, rrc_r8(A))
+
+    // RL B
+    GB_INSTRUCTION(0x10, 2, 8, rl_r8(B))
+
+    // RL C
+    GB_INSTRUCTION(0x11, 2, 8, rl_r8(C))
+
+    // RL D
+    GB_INSTRUCTION(0x12, 2, 8, rl_r8(D))
+
+    // RL E
+    GB_INSTRUCTION(0x13, 2, 8, rl_r8(E))
+
+    // RL H
+    GB_INSTRUCTION(0x14, 2, 8, rl_r8(H))
+
+    // RL L
+    GB_INSTRUCTION(0x15, 2, 8, rl_r8(L))
+
+    // RL (HL)
+    GB_INSTRUCTION(0x16, 2, 16, rl_hl())
+
+    // RL A
+    GB_INSTRUCTION(0x17, 2, 8, rl_r8(A))
+
+    // RR B
+    GB_INSTRUCTION(0x18, 2, 8, rr_r8(B))
+
+    // RR C
+    GB_INSTRUCTION(0x19, 2, 8, rr_r8(C))
+
+    // RR D
+    GB_INSTRUCTION(0x1a, 2, 8, rr_r8(D))
+
+    // RR E
+    GB_INSTRUCTION(0x1b, 2, 8, rr_r8(E))
+
+    // RR H
+    GB_INSTRUCTION(0x1c, 2, 8, rr_r8(H))
+
+    // RR L
+    GB_INSTRUCTION(0x1d, 2, 8, rr_r8(L))
+
+    // RR (HL)
+    GB_INSTRUCTION(0x1e, 2, 16, rr_hl())
+
+    // RR A
+    GB_INSTRUCTION(0x1f, 2, 8, rr_r8(A))
+
+    // SLA B
+    GB_INSTRUCTION(0x20, 2, 8, sla_r8(B))
+
+    // SLA C
+    GB_INSTRUCTION(0x21, 2, 8, sla_r8(C))
+
+    // SLA D
+    GB_INSTRUCTION(0x22, 2, 8, sla_r8(D))
+
+    // SLA E
+    GB_INSTRUCTION(0x23, 2, 8, sla_r8(E))
+
+    // SLA H
+    GB_INSTRUCTION(0x24, 2, 8, sla_r8(H))
+
+    // SLA L
+    GB_INSTRUCTION(0x25, 2, 8, sla_r8(L))
+
+    // SLA (HL)
+    GB_INSTRUCTION(0x26, 2, 16, sla_hl())
+
+    // SLA A
+    GB_INSTRUCTION(0x27, 2, 8, sla_r8(A))
+
+    // SRA B
+    GB_INSTRUCTION(0x28, 2, 8, sra_r8(B))
+
+    // SRA C
+    GB_INSTRUCTION(0x29, 2, 8, sra_r8(C))
+
+    // SRA D
+    GB_INSTRUCTION(0x2a, 2, 8, sra_r8(D))
+
+    // SRA E
+    GB_INSTRUCTION(0x2b, 2, 8, sra_r8(E))
+
+    // SRA H
+    GB_INSTRUCTION(0x2c, 2, 8, sra_r8(H))
+
+    // SRA L
+    GB_INSTRUCTION(0x2d, 2, 8, sra_r8(L))
+
+    // SRA (HL)
+    GB_INSTRUCTION(0x2e, 2, 16, sra_hl())
+
+    // SRA A
+    GB_INSTRUCTION(0x2f, 2, 8, sra_r8(A))
+
+    // SWAP B
+    GB_INSTRUCTION(0x30, 2, 8, swap_r8(B))
+
+    // SWAP C
+    GB_INSTRUCTION(0x31, 2, 8, swap_r8(C))
+
+    // SWAP D
+    GB_INSTRUCTION(0x32, 2, 8, swap_r8(D))
+
+    // SWAP E
+    GB_INSTRUCTION(0x33, 2, 8, swap_r8(E))
+
+    // SWAP H
+    GB_INSTRUCTION(0x34, 2, 8, swap_r8(H))
+
+    // SWAP L
+    GB_INSTRUCTION(0x35, 2, 8, swap_r8(L))
+
+    // SWAP (HL)
+    GB_INSTRUCTION(0x36, 2, 16, swap_hl())
+
+    // SWAP A
+    GB_INSTRUCTION(0x37, 2, 8, swap_r8(A))
+
+    // SRL B
+    GB_INSTRUCTION(0x38, 2, 8, srl_r8(B))
+
+    // SRL C
+    GB_INSTRUCTION(0x39, 2, 8, srl_r8(C))
+
+    // SRL D
+    GB_INSTRUCTION(0x3a, 2, 8, srl_r8(D))
+
+    // SRL E
+    GB_INSTRUCTION(0x3b, 2, 8, srl_r8(E))
+
+    // SRL H
+    GB_INSTRUCTION(0x3c, 2, 8, srl_r8(H))
+
+    // SRL L
+    GB_INSTRUCTION(0x3d, 2, 8, srl_r8(L))
+
+    // SRL (HL)
+    GB_INSTRUCTION(0x3e, 2, 16, srl_hl())
+
+    // SRL A
+    GB_INSTRUCTION(0x3f, 2, 8, srl_r8(A))
+
+    // BIT 0,B
+    GB_INSTRUCTION(0x40, 2, 8, bit_r8(0, B))
+
+    // BIT 0,C
+    GB_INSTRUCTION(0x41, 2, 8, bit_r8(0, C))
+
+    // BIT 0,D
+    GB_INSTRUCTION(0x42, 2, 8, bit_r8(0, D))
+
+    // BIT 0,E
+    GB_INSTRUCTION(0x43, 2, 8, bit_r8(0, E))
+
+    // BIT 0,H
+    GB_INSTRUCTION(0x44, 2, 8, bit_r8(0, H))
+
+    // BIT 0,L
+    GB_INSTRUCTION(0x45, 2, 8, bit_r8(0, L))
+
+    // BIT 0,(HL)
+    GB_INSTRUCTION(0x46, 2, 12, bit_hl(0))
+
+    // BIT 0,A
+    GB_INSTRUCTION(0x47, 2, 8, bit_r8(0, A))
+
+    // BIT 1,B
+    GB_INSTRUCTION(0x48, 2, 8, bit_r8(1, B))
+
+    // BIT 1,C
+    GB_INSTRUCTION(0x49, 2, 8, bit_r8(1, C))
+
+    // BIT 1,D
+    GB_INSTRUCTION(0x4a, 2, 8, bit_r8(1, D))
+
+    // BIT 1,E
+    GB_INSTRUCTION(0x4b, 2, 8, bit_r8(1, E))
+
+    // BIT 1,H
+    GB_INSTRUCTION(0x4c, 2, 8, bit_r8(1, H))
+
+    // BIT 1,L
+    GB_INSTRUCTION(0x4d, 2, 8, bit_r8(1, L))
+
+    // BIT 1,(HL)
+    GB_INSTRUCTION(0x4e, 2, 12, bit_hl(1))
+
+    // BIT 1,A
+    GB_INSTRUCTION(0x4f, 2, 8, bit_r8(1, A))
+
+    // BIT 2,B
+    GB_INSTRUCTION(0x50, 2, 8, bit_r8(2, B))
+
+    // BIT 2,C
+    GB_INSTRUCTION(0x51, 2, 8, bit_r8(2, C))
+
+    // BIT 2,D
+    GB_INSTRUCTION(0x52, 2, 8, bit_r8(2, D))
+
+    // BIT 2,E
+    GB_INSTRUCTION(0x53, 2, 8, bit_r8(2, E))
+
+    // BIT 2,H
+    GB_INSTRUCTION(0x54, 2, 8, bit_r8(2, H))
+
+    // BIT 2,L
+    GB_INSTRUCTION(0x55, 2, 8, bit_r8(2, L))
+
+    // BIT 2,(HL)
+    GB_INSTRUCTION(0x56, 2, 12, bit_hl(2))
+
+    // BIT 2,A
+    GB_INSTRUCTION(0x57, 2, 8, bit_r8(2, A))
+
+    // BIT 3,B
+    GB_INSTRUCTION(0x58, 2, 8, bit_r8(3, B))
+
+    // BIT 3,C
+    GB_INSTRUCTION(0x59, 2, 8, bit_r8(3, C))
+
+    // BIT 3,D
+    GB_INSTRUCTION(0x5a, 2, 8, bit_r8(3, D))
+
+    // BIT 3,E
+    GB_INSTRUCTION(0x5b, 2, 8, bit_r8(3, E))
+
+    // BIT 3,H
+    GB_INSTRUCTION(0x5c, 2, 8, bit_r8(3, H))
+
+    // BIT 3,L
+    GB_INSTRUCTION(0x5d, 2, 8, bit_r8(3, L))
+
+    // BIT 3,(HL)
+    GB_INSTRUCTION(0x5e, 2, 12, bit_hl(3))
+
+    // BIT 3,A
+    GB_INSTRUCTION(0x5f, 2, 8, bit_r8(3, A))
+
+    // BIT 4,B
+    GB_INSTRUCTION(0x60, 2, 8, bit_r8(4, B))
+
+    // BIT 4,C
+    GB_INSTRUCTION(0x61, 2, 8, bit_r8(4, C))
+
+    // BIT 4,D
+    GB_INSTRUCTION(0x62, 2, 8, bit_r8(4, D))
+
+    // BIT 4,E
+    GB_INSTRUCTION(0x63, 2, 8, bit_r8(4, E))
+
+    // BIT 4,H
+    GB_INSTRUCTION(0x64, 2, 8, bit_r8(4, H))
+
+    // BIT 4,L
+    GB_INSTRUCTION(0x65, 2, 8, bit_r8(4, L))
+
+    // BIT 4,(HL)
+    GB_INSTRUCTION(0x66, 2, 12, bit_hl(4))
+
+    // BIT 4,A
+    GB_INSTRUCTION(0x67, 2, 8, bit_r8(4, A))
+
+    // BIT 5,B
+    GB_INSTRUCTION(0x68, 2, 8, bit_r8(5, B))
+
+    // BIT 5,C
+    GB_INSTRUCTION(0x69, 2, 8, bit_r8(5, C))
+
+    // BIT 5,D
+    GB_INSTRUCTION(0x6a, 2, 8, bit_r8(5, D))
+
+    // BIT 5,E
+    GB_INSTRUCTION(0x6b, 2, 8, bit_r8(5, E))
+
+    // BIT 5,H
+    GB_INSTRUCTION(0x6c, 2, 8, bit_r8(5, H))
+
+    // BIT 5,L
+    GB_INSTRUCTION(0x6d, 2, 8, bit_r8(5, L))
+
+    // BIT 5,(HL)
+    GB_INSTRUCTION(0x6e, 2, 12, bit_hl(5))
+
+    // BIT 5,A
+    GB_INSTRUCTION(0x6f, 2, 8, bit_r8(5, A))
+
+    // BIT 6,B
+    GB_INSTRUCTION(0x70, 2, 8, bit_r8(6, B))
+
+    // BIT 6,C
+    GB_INSTRUCTION(0x71, 2, 8, bit_r8(6, C))
+
+    // BIT 6,D
+    GB_INSTRUCTION(0x72, 2, 8, bit_r8(6, D))
+
+    // BIT 6,E
+    GB_INSTRUCTION(0x73, 2, 8, bit_r8(6, E))
+
+    // BIT 6,H
+    GB_INSTRUCTION(0x74, 2, 8, bit_r8(6, H))
+
+    // BIT 6,L
+    GB_INSTRUCTION(0x75, 2, 8, bit_r8(6, L))
+
+    // BIT 6,(HL)
+    GB_INSTRUCTION(0x76, 2, 12, bit_hl(6))
+
+    // BIT 6,A
+    GB_INSTRUCTION(0x77, 2, 8, bit_r8(6, A))
+
+    // BIT 7,B
+    GB_INSTRUCTION(0x78, 2, 8, bit_r8(7, B))
+
+    // BIT 7,C
+    GB_INSTRUCTION(0x79, 2, 8, bit_r8(7, C))
+
+    // BIT 7,D
+    GB_INSTRUCTION(0x7a, 2, 8, bit_r8(7, D))
+
+    // BIT 7,E
+    GB_INSTRUCTION(0x7b, 2, 8, bit_r8(7, E))
+
+    // BIT 7,H
+    GB_INSTRUCTION(0x7c, 2, 8, bit_r8(7, H))
+
+    // BIT 7,L
+    GB_INSTRUCTION(0x7d, 2, 8, bit_r8(7, L))
+
+    // BIT 7,(HL)
+    GB_INSTRUCTION(0x7e, 2, 12, bit_hl(7))
+
+    // BIT 7,A
+    GB_INSTRUCTION(0x7f, 2, 8, bit_r8(7, A))
+
+    // RES 0,B
+    GB_INSTRUCTION(0x80, 2, 8, res_u3_r8(0, B))
+
+    // RES 0,C
+    GB_INSTRUCTION(0x81, 2, 8, res_u3_r8(0, C))
+
+    // RES 0,D
+    GB_INSTRUCTION(0x82, 2, 8, res_u3_r8(0, D))
+
+    // RES 0,E
+    GB_INSTRUCTION(0x83, 2, 8, res_u3_r8(0, E))
+
+    // RES 0,H
+    GB_INSTRUCTION(0x84, 2, 8, res_u3_r8(0, H))
+
+    // RES 0,L
+    GB_INSTRUCTION(0x85, 2, 8, res_u3_r8(0, L))
+
+    // RES 0,(HL)
+    GB_INSTRUCTION(0x86, 2, 16, res_u3_hl(0))
+
+    // RES 0,A
+    GB_INSTRUCTION(0x87, 2, 8, res_u3_r8(0, A))
+
+    // RES 1,B
+    GB_INSTRUCTION(0x88, 2, 8, res_u3_r8(1, B))
+
+    // RES 1,C
+    GB_INSTRUCTION(0x89, 2, 8, res_u3_r8(1, C))
+
+    // RES 1,D
+    GB_INSTRUCTION(0x8a, 2, 8, res_u3_r8(1, D))
+
+    // RES 1,E
+    GB_INSTRUCTION(0x8b, 2, 8, res_u3_r8(1, E))
+
+    // RES 1,H
+    GB_INSTRUCTION(0x8c, 2, 8, res_u3_r8(1, H))
+
+    // RES 1,L
+    GB_INSTRUCTION(0x8d, 2, 8, res_u3_r8(1, L))
+
+    // RES 1,(HL)
+    GB_INSTRUCTION(0x8e, 2, 16, res_u3_hl(1))
+
+    // RES 1,A
+    GB_INSTRUCTION(0x8f, 2, 8, res_u3_r8(1, A))
+
+    // RES 2,B
+    GB_INSTRUCTION(0x90, 2, 8, res_u3_r8(2, B))
+
+    // RES 2,C
+    GB_INSTRUCTION(0x91, 2, 8, res_u3_r8(2, C))
+
+    // RES 2,D
+    GB_INSTRUCTION(0x92, 2, 8, res_u3_r8(2, D))
+
+    // RES 2,E
+    GB_INSTRUCTION(0x93, 2, 8, res_u3_r8(2, E))
+
+    // RES 2,H
+    GB_INSTRUCTION(0x94, 2, 8, res_u3_r8(2, H))
+
+    // RES 2,L
+    GB_INSTRUCTION(0x95, 2, 8, res_u3_r8(2, L))
+
+    // RES 2,(HL)
+    GB_INSTRUCTION(0x96, 2, 16, res_u3_hl(2))
+
+    // RES 2,A
+    GB_INSTRUCTION(0x97, 2, 8, res_u3_r8(2, A))
+
+    // RES 3,B
+    GB_INSTRUCTION(0x98, 2, 8, res_u3_r8(3, B))
+
+    // RES 3,C
+    GB_INSTRUCTION(0x99, 2, 8, res_u3_r8(3, C))
+
+    // RES 3,D
+    GB_INSTRUCTION(0x9a, 2, 8, res_u3_r8(3, D))
+
+    // RES 3,E
+    GB_INSTRUCTION(0x9b, 2, 8, res_u3_r8(3, E))
+
+    // RES 3,H
+    GB_INSTRUCTION(0x9c, 2, 8, res_u3_r8(3, H))
+
+    // RES 3,L
+    GB_INSTRUCTION(0x9d, 2, 8, res_u3_r8(3, L))
+
+    // RES 3,(HL)
+    GB_INSTRUCTION(0x9e, 2, 16, res_u3_hl(3))
+
+    // RES 3,A
+    GB_INSTRUCTION(0x9f, 2, 8, res_u3_r8(3, A))
+
+    // RES 4,B
+    GB_INSTRUCTION(0xa0, 2, 8, res_u3_r8(4, B))
+
+    // RES 4,C
+    GB_INSTRUCTION(0xa1, 2, 8, res_u3_r8(4, C))
+
+    // RES 4,D
+    GB_INSTRUCTION(0xa2, 2, 8, res_u3_r8(4, D))
+
+    // RES 4,E
+    GB_INSTRUCTION(0xa3, 2, 8, res_u3_r8(4, E))
+
+    // RES 4,H
+    GB_INSTRUCTION(0xa4, 2, 8, res_u3_r8(4, H))
+
+    // RES 4,L
+    GB_INSTRUCTION(0xa5, 2, 8, res_u3_r8(4, L))
+
+    // RES 4,(HL)
+    GB_INSTRUCTION(0xa6, 2, 16, res_u3_hl(4))
+
+    // RES 4,A
+    GB_INSTRUCTION(0xa7, 2, 8, res_u3_r8(4, A))
+
+    // RES 5,B
+    GB_INSTRUCTION(0xa8, 2, 8, res_u3_r8(5, B))
+
+    // RES 5,C
+    GB_INSTRUCTION(0xa9, 2, 8, res_u3_r8(5, C))
+
+    // RES 5,D
+    GB_INSTRUCTION(0xaa, 2, 8, res_u3_r8(5, D))
+
+    // RES 5,E
+    GB_INSTRUCTION(0xab, 2, 8, res_u3_r8(5, E))
+
+    // RES 5,H
+    GB_INSTRUCTION(0xac, 2, 8, res_u3_r8(5, H))
+
+    // RES 5,L
+    GB_INSTRUCTION(0xad, 2, 8, res_u3_r8(5, L))
+
+    // RES 5,(HL)
+    GB_INSTRUCTION(0xae, 2, 16, res_u3_hl(5))
+
+    // RES 5,A
+    GB_INSTRUCTION(0xaf, 2, 8, res_u3_r8(5, A))
+
+    // RES 6,B
+    GB_INSTRUCTION(0xb0, 2, 8, res_u3_r8(6, B))
+
+    // RES 6,C
+    GB_INSTRUCTION(0xb1, 2, 8, res_u3_r8(6, C))
+
+    // RES 6,D
+    GB_INSTRUCTION(0xb2, 2, 8, res_u3_r8(6, D))
+
+    // RES 6,E
+    GB_INSTRUCTION(0xb3, 2, 8, res_u3_r8(6, E))
+
+    // RES 6,H
+    GB_INSTRUCTION(0xb4, 2, 8, res_u3_r8(6, H))
+
+    // RES 6,L
+    GB_INSTRUCTION(0xb5, 2, 8, res_u3_r8(6, L))
+
+    // RES 6,(HL)
+    GB_INSTRUCTION(0xb6, 2, 16, res_u3_hl(6))
+
+    // RES 6,A
+    GB_INSTRUCTION(0xb7, 2, 8, res_u3_r8(6, A))
+
+    // RES 7,B
+    GB_INSTRUCTION(0xb8, 2, 8, res_u3_r8(7, B))
+
+    // RES 7,C
+    GB_INSTRUCTION(0xb9, 2, 8, res_u3_r8(7, C))
+
+    // RES 7,D
+    GB_INSTRUCTION(0xba, 2, 8, res_u3_r8(7, D))
+
+    // RES 7,E
+    GB_INSTRUCTION(0xbb, 2, 8, res_u3_r8(7, E))
+
+    // RES 7,H
+    GB_INSTRUCTION(0xbc, 2, 8, res_u3_r8(7, H))
+
+    // RES 7,L
+    GB_INSTRUCTION(0xbd, 2, 8, res_u3_r8(7, L))
+
+    // RES 7,(HL)
+    GB_INSTRUCTION(0xbe, 2, 16, res_u3_hl(7))
+
+    // RES 7,A
+    GB_INSTRUCTION(0xbf, 2, 8, res_u3_r8(7, A))
+
+    // SET 0,B
+    GB_INSTRUCTION(0xc0, 2, 8, set_u3_r8(0, B))
+
+    // SET 0,C
+    GB_INSTRUCTION(0xc1, 2, 8, set_u3_r8(0, C))
+
+    // SET 0,D
+    GB_INSTRUCTION(0xc2, 2, 8, set_u3_r8(0, D))
+
+    // SET 0,E
+    GB_INSTRUCTION(0xc3, 2, 8, set_u3_r8(0, E))
+
+    // SET 0,H
+    GB_INSTRUCTION(0xc4, 2, 8, set_u3_r8(0, H))
+
+    // SET 0,L
+    GB_INSTRUCTION(0xc5, 2, 8, set_u3_r8(0, L))
+
+    // SET 0,(HL)
+    GB_INSTRUCTION(0xc6, 2, 16, set_u3_hl(0))
+
+    // SET 0,A
+    GB_INSTRUCTION(0xc7, 2, 8, set_u3_r8(0, A))
+
+    // SET 1,B
+    GB_INSTRUCTION(0xc8, 2, 8, set_u3_r8(1, B))
+
+    // SET 1,C
+    GB_INSTRUCTION(0xc9, 2, 8, set_u3_r8(1, C))
+
+    // SET 1,D
+    GB_INSTRUCTION(0xca, 2, 8, set_u3_r8(1, D))
+
+    // SET 1,E
+    GB_INSTRUCTION(0xcb, 2, 8, set_u3_r8(1, E))
+
+    // SET 1,H
+    GB_INSTRUCTION(0xcc, 2, 8, set_u3_r8(1, H))
+
+    // SET 1,L
+    GB_INSTRUCTION(0xcd, 2, 8, set_u3_r8(1, L))
+
+    // SET 1,(HL)
+    GB_INSTRUCTION(0xce, 2, 16, set_u3_hl(1))
+
+    // SET 1,A
+    GB_INSTRUCTION(0xcf, 2, 8, set_u3_r8(1, A))
+
+    // SET 2,B
+    GB_INSTRUCTION(0xd0, 2, 8, set_u3_r8(2, B))
+
+    // SET 2,C
+    GB_INSTRUCTION(0xd1, 2, 8, set_u3_r8(2, C))
+
+    // SET 2,D
+    GB_INSTRUCTION(0xd2, 2, 8, set_u3_r8(2, D))
+
+    // SET 2,E
+    GB_INSTRUCTION(0xd3, 2, 8, set_u3_r8(2, E))
+
+    // SET 2,H
+    GB_INSTRUCTION(0xd4, 2, 8, set_u3_r8(2, H))
+
+    // SET 2,L
+    GB_INSTRUCTION(0xd5, 2, 8, set_u3_r8(2, L))
+
+    // SET 2,(HL)
+    GB_INSTRUCTION(0xd6, 2, 16, set_u3_hl(2))
+
+    // SET 2,A
+    GB_INSTRUCTION(0xd7, 2, 8, set_u3_r8(2, A))
+
+    // SET 3,B
+    GB_INSTRUCTION(0xd8, 2, 8, set_u3_r8(3, B))
+
+    // SET 3,C
+    GB_INSTRUCTION(0xd9, 2, 8, set_u3_r8(3, C))
+
+    // SET 3,D
+    GB_INSTRUCTION(0xda, 2, 8, set_u3_r8(3, D))
+
+    // SET 3,E
+    GB_INSTRUCTION(0xdb, 2, 8, set_u3_r8(3, E))
+
+    // SET 3,H
+    GB_INSTRUCTION(0xdc, 2, 8, set_u3_r8(3, H))
+
+    // SET 3,L
+    GB_INSTRUCTION(0xdd, 2, 8, set_u3_r8(3, L))
+
+    // SET 3,(HL)
+    GB_INSTRUCTION(0xde, 2, 16, set_u3_hl(3))
+
+    // SET 3,A
+    GB_INSTRUCTION(0xdf, 2, 8, set_u3_r8(3, A))
+
+    // SET 4,B
+    GB_INSTRUCTION(0xe0, 2, 8, set_u3_r8(4, B))
+
+    // SET 4,C
+    GB_INSTRUCTION(0xe1, 2, 8, set_u3_r8(4, C))
+
+    // SET 4,D
+    GB_INSTRUCTION(0xe2, 2, 8, set_u3_r8(4, D))
+
+    // SET 4,E
+    GB_INSTRUCTION(0xe3, 2, 8, set_u3_r8(4, E))
+
+    // SET 4,H
+    GB_INSTRUCTION(0xe4, 2, 8, set_u3_r8(4, H))
+
+    // SET 4,L
+    GB_INSTRUCTION(0xe5, 2, 8, set_u3_r8(4, L))
+
+    // SET 4,(HL)
+    GB_INSTRUCTION(0xe6, 2, 16, set_u3_hl(4))
+
+    // SET 4,A
+    GB_INSTRUCTION(0xe7, 2, 8, set_u3_r8(4, A))
+
+    // SET 5,B
+    GB_INSTRUCTION(0xe8, 2, 8, set_u3_r8(5, B))
+
+    // SET 5,C
+    GB_INSTRUCTION(0xe9, 2, 8, set_u3_r8(5, C))
+
+    // SET 5,D
+    GB_INSTRUCTION(0xea, 2, 8, set_u3_r8(5, D))
+
+    // SET 5,E
+    GB_INSTRUCTION(0xeb, 2, 8, set_u3_r8(5, E))
+
+    // SET 5,H
+    GB_INSTRUCTION(0xec, 2, 8, set_u3_r8(5, H))
+
+    // SET 5,L
+    GB_INSTRUCTION(0xed, 2, 8, set_u3_r8(5, L))
+
+    // SET 5,(HL)
+    GB_INSTRUCTION(0xee, 2, 16, set_u3_hl(5))
+
+    // SET 5,A
+    GB_INSTRUCTION(0xef, 2, 8, set_u3_r8(5, A))
+
+    // SET 6,B
+    GB_INSTRUCTION(0xf0, 2, 8, set_u3_r8(6, B))
+
+    // SET 6,C
+    GB_INSTRUCTION(0xf1, 2, 8, set_u3_r8(6, C))
+
+    // SET 6,D
+    GB_INSTRUCTION(0xf2, 2, 8, set_u3_r8(6, D))
+
+    // SET 6,E
+    GB_INSTRUCTION(0xf3, 2, 8, set_u3_r8(6, E))
+
+    // SET 6,H
+    GB_INSTRUCTION(0xf4, 2, 8, set_u3_r8(6, H))
+
+    // SET 6,L
+    GB_INSTRUCTION(0xf5, 2, 8, set_u3_r8(6, L))
+
+    // SET 6,(HL)
+    GB_INSTRUCTION(0xf6, 2, 16, set_u3_hl(6))
+
+    // SET 6,A
+    GB_INSTRUCTION(0xf7, 2, 8, set_u3_r8(6, A))
+
+    // SET 7,B
+    GB_INSTRUCTION(0xf8, 2, 8, set_u3_r8(7, B))
+
+    // SET 7,C
+    GB_INSTRUCTION(0xf9, 2, 8, set_u3_r8(7, C))
+
+    // SET 7,D
+    GB_INSTRUCTION(0xfa, 2, 8, set_u3_r8(7, D))
+
+    // SET 7,E
+    GB_INSTRUCTION(0xfb, 2, 8, set_u3_r8(7, E))
+
+    // SET 7,H
+    GB_INSTRUCTION(0xfc, 2, 8, set_u3_r8(7, H))
+
+    // SET 7,L
+    GB_INSTRUCTION(0xfd, 2, 8, set_u3_r8(7, L))
+
+    // SET 7,(HL)
+    GB_INSTRUCTION(0xfe, 2, 16, set_u3_hl(7))
+
+    // SET 7,A
+    GB_INSTRUCTION(0xff, 2, 8, set_u3_r8(7, A))
+  }
 }
 }  // namespace gb
