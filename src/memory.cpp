@@ -10,23 +10,6 @@
 
 namespace gb {
 
-std::optional<u8> Memory::read_hardware(u16 addr) {
-  switch (addr) {
-    case Registers::Ly::Address:
-      return hardware.lcd->get_ly();
-    case Registers::Lyc::Address:
-      return hardware.lcd->get_lyc();
-    case Registers::LcdStat::Address:
-      return hardware.lcd->get_lcd_stat().get_value();
-    case 0xff43:
-      return hardware.gpu->get_scx();
-    case 0xff42:
-      return hardware.gpu->get_scy();
-    default:
-      return {};
-  }
-}
-
 std::pair<u16, nonstd::span<u8>> Memory::select_storage(u16 addr) {
   if (addr < 0x8000) {
     switch (addr & 0xf000) {
@@ -76,6 +59,33 @@ nonstd::span<const u8> Memory::get_range(std::pair<u16, u16> range) {
   return {&memory.at(begin), &memory.at(end + 1)};
 }
 
+std::optional<u8> Memory::read_hardware(u16 addr) {
+  switch (addr) {
+    // Timers
+    case Registers::Tac::Address:
+      return hardware.timers->get_tac().get_value();
+    case Registers::Tima::Address:
+      return hardware.timers->get_tima();
+    case Registers::Tma::Address:
+      return hardware.timers->get_tma();
+    case Registers::Div::Address:
+      return hardware.timers->get_div();
+    // Graphics
+    case Registers::Ly::Address:
+      return hardware.lcd->get_ly();
+    case Registers::Lyc::Address:
+      return hardware.lcd->get_lyc();
+    case Registers::LcdStat::Address:
+      return hardware.lcd->get_lcd_stat().get_value();
+    case 0xff43:
+      return hardware.gpu->get_scx();
+    case 0xff42:
+      return hardware.gpu->get_scy();
+    default:
+      return {};
+  }
+}
+
 void Memory::set(u16 addr, u8 val) {
   switch (addr) {
     case Registers::Ly::Address:
@@ -123,7 +133,10 @@ void Memory::set(u16 addr, u8 val) {
       memory[addr] = val;
       return;
 
-    case gb::Registers::Div::Address:
+    case Registers::Div::Address:
+    case Registers::Tac::Address:
+    case Registers::Tma::Address:
+    case Registers::Tima::Address:
       hardware.timers->handle_memory_write(addr, val);
       return;
   }
