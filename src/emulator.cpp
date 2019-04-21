@@ -93,7 +93,7 @@ void run_with_options(const std::string& rom_name, bool trace, bool save) {
     memory.load_save_ram(std::move(save_ram_data));
   }
 
-  gb::Timers timers{memory};
+  gb::Timers timers;
 
   gb::Cpu cpu{memory};
 
