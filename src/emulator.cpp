@@ -84,7 +84,7 @@ void run_with_options(const std::string& rom_name, bool trace, bool save) {
     save_ram_file->flush();
 
     memory.add_save_ram_write_listener(
-        [file = std::move(save_ram_file)](std::size_t index, u8 val) mutable {
+        [file = std::move(save_ram_file)](std::size_t index, u8 val) {
           file->seekp(index);
           file->put(val);
         });
