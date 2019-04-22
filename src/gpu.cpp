@@ -225,7 +225,7 @@ void Gpu::render_background_pixels(int scanline,
 }
 
 void Gpu::compute_background_palette(u8 palette) {
-  auto&& colors = generate_colors({palette});
+  auto colors = generate_colors({palette});
   std::copy(colors.begin(), colors.end(), background_colors.begin());
 }
 
