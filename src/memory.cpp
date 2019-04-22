@@ -39,7 +39,7 @@ std::pair<u16, nonstd::span<u8>> Memory::select_storage(u16 addr) {
   switch (addr & 0xf000) {
     case 0x8000:
     case 0x9000:
-      if (memory[Registers::Cgb::Vbk::Address] != 0) {
+      if ((memory[Registers::Cgb::Vbk::Address] & 1) != 0) {
         return {addr - 0x8000, {vram_bank1}};
       }
       break;
