@@ -161,12 +161,16 @@ void run_with_options(const std::string& rom_name, bool trace, bool save) {
         });
   } else {
     memory.set_write_listener([](u16 addr, u8 color, const Hardware& hardware) {
-      if (addr == 0xff69) {
+      if (addr == 0xff68) {
+        hardware.gpu->set_color_palette_index(color & 0x3f);
+      } else if (addr == 0xff69) {
         const u8 index = hardware.memory->get_ram(0xff68);
         hardware.gpu->compute_cgb_color(index & 0x3f, color);
 
         if (gb::test_bit(index, 7)) {
-          hardware.memory->set_ram(0xff68, gb::increment_bits(index, 0x3f));
+          const u8 next_index = gb::increment_bits(index, 0x3f);
+          hardware.memory->set_ram(0xff68, next_index);
+          hardware.gpu->set_color_palette_index(next_index);
         }
       }
     });

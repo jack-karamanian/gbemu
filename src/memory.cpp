@@ -61,6 +61,10 @@ nonstd::span<const u8> Memory::get_range(std::pair<u16, u16> range) {
 
 std::optional<u8> Memory::read_hardware(u16 addr) {
   switch (addr) {
+    case 0xff69: {
+      const u8 color = hardware.gpu->read_color_at_index();
+      return color;
+    }
     // Timers
     case Registers::Tac::Address:
       return hardware.timers->get_tac().get_value();

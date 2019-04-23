@@ -46,7 +46,9 @@ class Gpu {
   std::array<u8, SCREEN_WIDTH> background_color_indexes;
   std::vector<Color> background_framebuffer;
 
+  std::array<u8, 64> cached_color_bytes;
   std::array<Color, 32> background_colors;
+
   std::array<std::array<Color, 4>, 2> sprite_colors;
 
   u8 render_pixel(const u8 byte1, const u8 byte2, const u8 pixel_x) const;
@@ -72,9 +74,12 @@ class Gpu {
                                 u8 scy,
                                 int offset_x,
                                 int offset_y);
+  int color_palette_index = 0;
 
  public:
   Gpu(Memory& memory, SdlRenderer& renderer);
+
+  void set_color_palette_index(int value) { color_palette_index = value; }
 
   u8 get_scx() const { return scx; }
   u8 get_scy() const { return scy; }
@@ -85,6 +90,7 @@ class Gpu {
   void compute_background_palette(u8 palette);
   void compute_sprite_palette(int palette_number, u8 palette);
 
+  u8 read_color_at_index() const;
   void compute_cgb_color(int index, u8 color);
 
   void render();

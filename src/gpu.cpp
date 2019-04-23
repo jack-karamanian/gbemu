@@ -233,7 +233,13 @@ void Gpu::compute_sprite_palette(int palette_number, u8 palette) {
   sprite_colors.at(palette_number) = generate_colors({palette}, true);
 }
 
+u8 Gpu::read_color_at_index() const {
+  return cached_color_bytes[color_palette_index];
+}
+
 void Gpu::compute_cgb_color(int index, u8 color) {
+  cached_color_bytes[index] = color;
+
   const int color_index = index / 2;
   Color& background_color = background_colors[color_index];
 
