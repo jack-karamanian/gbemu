@@ -18,6 +18,9 @@ void Mbc::set_lower(u8 val) {
       break;
     case Mbc::Type::MBC3:
       lower = val & 0x7f;
+      if (lower == 0) {
+        ++lower;
+      }
       break;
     case Mbc::Type::MBC5:
       lower = val;
@@ -108,10 +111,6 @@ u16 Mbc::rom_bank_selected() const {
   const u16 bank =
       (static_cast<u16>(upper << upper_shift) | lower) % max_bank_mask;
 
-  if (type != Mbc::Type::MBC3 &&
-      (bank == 0x20 || bank == 0x40 || bank == 0x60)) {
-    return bank + 1;
-  }
   return bank;
 }
 
