@@ -33,7 +33,7 @@ class EnvelopeMod {
 
   void clock(int step);
 
-  u8 update(u8 input_volume) const { return input_volume != 0 ? volume : 0; }
+  u8 update(u8 input_volume) const { return input_volume & volume; }
 
   void dispatch(SetStartingVolumeCommand command) {
     set_starting_volume(command.starting_volume);
