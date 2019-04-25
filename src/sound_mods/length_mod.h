@@ -30,11 +30,13 @@ class LengthMod {
 
   void set_length_enabled(bool value) { length_enabled = value; }
 
-  void clock(int step) {
+  bool clock(int step) {
     if (step % 2 == 0 && enabled && length_enabled && --length_counter <= 0) {
       length_counter = 0;
       enabled = false;
+      return false;
     }
+    return true;
   }
 
   void dispatch(SetLengthEnabledCommand command) {
