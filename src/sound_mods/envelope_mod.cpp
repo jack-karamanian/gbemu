@@ -9,7 +9,7 @@ void EnvelopeMod::clock(int step) {
   if (step == 7 && --timer <= 0) {
     timer = period;
     if (period != 0) {
-      if (increase_volume && volume < 16) {
+      if (increase_volume && volume < 15) {
         volume++;
       }
 
