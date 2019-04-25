@@ -28,7 +28,7 @@ class LcdStat {
 
   void set_ly_equals_lyc(bool equal) {
     const u8 val = equal ? 1 : 0;
-    value |= (value & ~0x04) | val << 2;
+    value |= (value & ~0x04) | (val << 2);
   }
 
   // Bits 1-0
