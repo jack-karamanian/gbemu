@@ -30,19 +30,26 @@ class Channel {
   void update(int ticks) { source.update(ticks); }
 
   u8 volume() const {
-    u8 volume = source.volume();
     if (enabled) {
+      u8 volume = source.volume();
       for_static<sizeof...(Mods)>([this, &volume](auto i) {
         volume = std::get<i>(mods).update(volume);
       });
+      return volume;
     }
-    return volume;
+    return 0;
   }
 
   void clock(int step) {
     if (enabled) {
-      for_static<sizeof...(Mods)>(
-          [this, step](auto i) { std::get<i>(mods).clock(step); });
+      for_static<sizeof...(Mods)>([this, step](auto i) {
+        auto& mod = std::get<i>(mods);
+        if constexpr (std::is_same_v<decltype(mod.clock(step)), bool>) {
+          enabled = mod.clock(step);
+        } else {
+          mod.clock(step);
+        }
+      });
     }
   }
 
@@ -51,6 +58,8 @@ class Channel {
     source.enable();
     for_static<sizeof...(Mods)>([this](auto i) { std::get<i>(mods).enable(); });
   }
+
+  bool is_enabled() const { return enabled; }
 
   void disable() { enabled = false; }
 
