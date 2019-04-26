@@ -176,7 +176,7 @@ void run_with_options(const std::string& rom_name, bool trace, bool save) {
     });
   }
 
-  gb::Lcd lcd{cpu, memory, gpu};
+  gb::Lcd lcd{cpu, gpu};
   gb::Input input{memory};
   gb::Sound sound{memory, audio_device};
 

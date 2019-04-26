@@ -1,4 +1,3 @@
-#include <iostream>
 #include "cpu.h"
 #include "gpu.h"
 #include "lcd.h"
@@ -7,21 +6,22 @@
 #include "types.h"
 
 namespace gb {
-void Lcd::check_scanlines(Registers::LcdStat& lcd_stat) const {
-  if (lcd_stat.ly_equals_lyc_enabled() && scanlines == lyc) {
-    lcd_stat.set_ly_equals_lyc(true);
-    cpu->request_interrupt(Cpu::Interrupt::LcdStat);
+void Lcd::check_scanlines() {
+  if (scanlines == lyc) {
+    stat.set_ly_equals_lyc(true);
+    if (controller_enabled && stat.ly_equals_lyc_enabled()) {
+      cpu->request_interrupt(Cpu::Interrupt::LcdStat);
+    }
   } else {
-    lcd_stat.set_ly_equals_lyc(false);
+    stat.set_ly_equals_lyc(false);
   }
 }
 
-bool Lcd::update(unsigned int ticks) {
+std::tuple<bool, std::optional<Lcd::Mode>> Lcd::update(unsigned int ticks) {
   bool draw_frame = false;
 
-  if (!controller_enabled) {
-    return false;
-  }
+  // FIXME: Some games freeze when not ticking the lcd when it's disabled.
+  // For now, don't trigger any interrupts, but still tick the lcd
 
   lcd_ticks += ticks;
   switch (mode) {
@@ -39,12 +39,14 @@ bool Lcd::update(unsigned int ticks) {
           }
         });
         gpu->render_scanline(scanlines);
+        return {draw_frame, Mode::HBlank};
       }
       break;
 
     case 0:
       if (lcd_ticks >= 204) {
         scanlines++;
+        check_scanlines();
 
         if (scanlines >= 144) {
           change_mode(Mode::VBlank, [this](const Registers::LcdStat& lcd_stat) {
@@ -53,9 +55,11 @@ bool Lcd::update(unsigned int ticks) {
               cpu->request_interrupt(Cpu::Interrupt::LcdStat);
             }
           });
-          cpu->request_interrupt(Cpu::Interrupt::VBlank);
-          gpu->render();
-          draw_frame = true;
+          if (controller_enabled) {
+            cpu->request_interrupt(Cpu::Interrupt::VBlank);
+            gpu->render();
+            draw_frame = true;
+          }
         } else {
           change_mode(Mode::OAMRead,
                       [this](const Registers::LcdStat& lcd_stat) {
@@ -80,10 +84,11 @@ bool Lcd::update(unsigned int ticks) {
                         }
                       });
         }
+        check_scanlines();
       }
       break;
   }
 
-  return draw_frame;
+  return {draw_frame, {}};
 }
 }  // namespace gb
