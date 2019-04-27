@@ -61,10 +61,14 @@ nonstd::span<const u8> Memory::get_range(std::pair<u16, u16> range) {
 
 std::optional<u8> Memory::read_hardware(u16 addr) {
   switch (addr) {
-    case 0xff69: {
-      const u8 color = hardware.gpu->read_color_at_index();
-      return color;
-    }
+    case Registers::Cgb::BgPaletteIndex::Address:
+      return hardware.gpu->background_palette_index();
+    case Registers::Cgb::SpritePaletteIndex::Address:
+      return hardware.gpu->sprite_palette_index();
+    case Registers::Cgb::BgPaletteColor::Address:
+      return hardware.gpu->read_background_color();
+    case Registers::Cgb::SpritePaletteColor::Address:
+      return hardware.gpu->read_sprite_color();
     // Timers
     case Registers::Tac::Address:
       return hardware.timers->get_tac().get_value();
@@ -92,6 +96,18 @@ std::optional<u8> Memory::read_hardware(u16 addr) {
 
 void Memory::set(u16 addr, u8 val) {
   switch (addr) {
+    case Registers::Cgb::BgPaletteIndex::Address:
+      hardware.gpu->set_background_color_index(val);
+      return;
+    case Registers::Cgb::SpritePaletteIndex::Address:
+      hardware.gpu->set_sprite_color_index(val);
+      return;
+    case Registers::Cgb::BgPaletteColor::Address:
+      hardware.gpu->compute_background_color(val);
+      return;
+    case Registers::Cgb::SpritePaletteColor::Address:
+      hardware.gpu->compute_sprite_color(val);
+      return;
     case Registers::Ly::Address:
       hardware.lcd->set_ly(0);
       return;

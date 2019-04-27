@@ -142,7 +142,19 @@ void run_with_options(const std::string& rom_name, bool trace, bool save) {
   SDL_PauseAudioDevice(audio_device, 0);
 
   gb::SdlRenderer renderer{std::move(sdl_renderer)};
-  gb::Gpu gpu{memory, renderer};
+
+  auto sprite_filter = rom_header.is_cgb
+              ? [](SpriteAttribute attribute) {
+                  // Clear DMG palette number
+                  attribute.flags &= ~0x10;
+                  return attribute;
+              }
+              : [](SpriteAttribute attribute) {
+                  // Clear CGB specific sprite flags
+                  attribute.flags &= ~0xf;
+                  return attribute;
+              };
+  gb::Gpu gpu{memory, renderer, sprite_filter};
 
   if (!rom_header.is_cgb) {
     memory.set_write_listener(
@@ -160,20 +172,8 @@ void run_with_options(const std::string& rom_name, bool trace, bool save) {
           }
         });
   } else {
-    memory.set_write_listener([](u16 addr, u8 color, const Hardware& hardware) {
-      if (addr == 0xff68) {
-        hardware.gpu->set_color_palette_index(color & 0x3f);
-      } else if (addr == 0xff69) {
-        const u8 index = hardware.memory->get_ram(0xff68);
-        hardware.gpu->compute_cgb_color(index & 0x3f, color);
-
-        if (gb::test_bit(index, 7)) {
-          const u8 next_index = gb::increment_bits(index, 0x3f);
-          hardware.memory->set_ram(0xff68, next_index);
-          hardware.gpu->set_color_palette_index(next_index);
-        }
-      }
-    });
+    memory.set_write_listener(
+        [](u16 addr, u8 color, const Hardware& hardware) {});
   }
 
   gb::Lcd lcd{cpu, gpu};

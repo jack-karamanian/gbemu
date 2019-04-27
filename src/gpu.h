@@ -1,11 +1,13 @@
 #pragma once
 #include <array>
+#include <functional>
 #include <memory>
 #include <vector>
 #include "color.h"
 #include "nonstd/span.hpp"
 #include "registers/palette.h"
 #include "renderer.h"
+#include "sprite_attribute.h"
 #include "types.h"
 #include "utils.h"
 
@@ -35,23 +37,51 @@ class CgbColor {
   u16 value;
 };
 
+struct CgbPaletteIndex {
+  u8 value = 0;
+
+  [[nodiscard]] u8 index() const { return value & 0x3f; }
+
+  [[nodiscard]] bool auto_increment() const { return test_bit(value, 7); }
+
+  void increment_index() { value = increment_bits(value, 0x3f); }
+};
+
+struct CgbPalette {
+  std::vector<u8> color_bytes;
+  std::vector<Color> colors;
+  CgbPaletteIndex index;
+
+  CgbPalette() : color_bytes(64, 0), colors(32) {}
+
+  [[nodiscard]] nonstd::span<const Color> colors_for_palette(
+      int palette) const {
+    return {&colors[4 * palette], 4};
+  }
+
+  [[nodiscard]] u8 current_color_byte() const {
+    return color_bytes[index.index()];
+  }
+};
+
 class SdlRenderer;
 
 class Gpu {
+  using SpriteFilter = std::function<SpriteAttribute(SpriteAttribute)>;
   Memory* memory;
   SdlRenderer* renderer;
 
   Texture background_texture;
 
+  SpriteFilter sprite_filter;
+
+  CgbPalette background_palette;
+  CgbPalette sprite_palette;
+
   std::array<u8, SCREEN_WIDTH> background_color_indexes;
   std::vector<Color> background_framebuffer;
 
-  std::array<u8, 64> cached_color_bytes;
-  std::array<Color, 32> background_colors;
-
-  std::array<std::array<Color, 4>, 2> sprite_colors;
-
-  u8 render_pixel(const u8 byte1, const u8 byte2, const u8 pixel_x) const;
+  [[nodiscard]] u8 render_pixel(u8 byte1, u8 byte2, u8 pixel_x) const;
   void render_sprites(int scanline);
   void render_background(int scanline,
                          u16 tile_map_base,
@@ -74,15 +104,15 @@ class Gpu {
                                 u8 scy,
                                 int offset_x,
                                 int offset_y);
-  int color_palette_index = 0;
+
+  Color compute_cgb_color(Color real_color, int index, u8 color);
+  void add_color_to_palette(CgbPalette& palette, u8 color);
 
  public:
-  Gpu(Memory& memory, SdlRenderer& renderer);
+  Gpu(Memory& memory, SdlRenderer& renderer, SpriteFilter filter);
 
-  void set_color_palette_index(int value) { color_palette_index = value; }
-
-  u8 get_scx() const { return scx; }
-  u8 get_scy() const { return scy; }
+  [[nodiscard]] u8 get_scx() const { return scx; }
+  [[nodiscard]] u8 get_scy() const { return scy; }
 
   void set_scx(u8 value) { scx = value; }
   void set_scy(u8 value) { scy = value; }
@@ -90,8 +120,27 @@ class Gpu {
   void compute_background_palette(u8 palette);
   void compute_sprite_palette(int palette_number, u8 palette);
 
-  u8 read_color_at_index() const;
-  void compute_cgb_color(int index, u8 color);
+  [[nodiscard]] u8 read_background_color() const;
+
+  [[nodiscard]] u8 read_sprite_color() const;
+
+  void set_background_color_index(u8 value) {
+    background_palette.index.value = value;
+  }
+
+  [[nodiscard]] u8 background_palette_index() const {
+    return background_palette.index.index();
+  }
+
+  void set_sprite_color_index(u8 value) { sprite_palette.index.value = value; }
+
+  [[nodiscard]] u8 sprite_palette_index() const {
+    return sprite_palette.index.index();
+  }
+
+  void compute_background_color(u8 color);
+
+  void compute_sprite_color(u8 color);
 
   void render();
   void render_scanline(int scanline);
