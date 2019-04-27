@@ -83,7 +83,6 @@ void Gpu::render_sprites(int scanline) {
       const auto vram = memory->get_vram(sprite_attrib.vram_bank());
       const u8 byte1 = vram[tile_addr];
       const u8 byte2 = vram[tile_addr + 1];
-      const int y = adjusted_y + sprite_y;
       const int x = sprite_attrib.x - 8;
       const auto selected_colors =
           sprite_palette.colors_for_palette(sprite_palette_number);
@@ -127,8 +126,6 @@ void Gpu::render_background(
   const u16 y_base = scanline + scroll_y + offset_y;
 
   const int tile_y = ((scanline + scroll_y) % 8);
-
-  const int screen_y = scanline + offset_y;
 
   const auto tile_data_range = lcdc.bg_tile_data_range();
   const auto tile_data = memory->get_range(tile_data_range);
@@ -268,7 +265,7 @@ void Gpu::add_color_to_palette(CgbPalette& palette, u8 color) {
   palette.color_bytes[palette.index.index()] = color;
 
   const int color_index = palette.index.index() / 2;
-  Color& background_color = palette.colors[color_index];
+  const Color background_color = palette.colors[color_index];
 
   palette.colors[color_index] =
       compute_cgb_color(background_color, palette.index.index(), color);
