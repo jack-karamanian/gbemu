@@ -27,9 +27,9 @@ class CgbColor {
   CgbColor(int index, u8 color)
       : value{static_cast<u16>(index % 2 == 0 ? color : color << 8)} {}
 
-  u8 r() const { return value & 0x001f; }
-  u8 g() const { return (value & 0x03e0) >> 5; }
-  u8 b() const { return (value & 0x7c00) >> 10; }
+  [[nodiscard]] u8 r() const { return value & 0x001f; }
+  [[nodiscard]] u8 g() const { return (value & 0x03e0) >> 5; }
+  [[nodiscard]] u8 b() const { return (value & 0x7c00) >> 10; }
 
  private:
   u16 value;
