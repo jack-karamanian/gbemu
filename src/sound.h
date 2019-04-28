@@ -3,6 +3,7 @@
 #include <functional>
 #include <vector>
 #include "channel.h"
+#include "constants.h"
 #include "noise_source.h"
 #include "sound_mods/envelope_mod.h"
 #include "sound_mods/length_mod.h"
@@ -44,10 +45,9 @@ class Sound {
 
   Memory* memory;
 
-  Task samples_task{87};
+  Task samples_task{CLOCK_FREQUENCY / SOUND_SAMPLE_FREQUENCY};
   Task sequencer_task{8192};
 
-  int sequencer_ticks = 0;
   int sequencer_step = 0;
   int sample_ticks = 0;
 
@@ -61,16 +61,20 @@ class Sound {
   OutputControl left_output;
   OutputControl right_output;
 
+  std::vector<u8> noise_samples;
   std::vector<float> sample_buffer;
 
   SDL_AudioDeviceID audio_device;
 
-  float mix_samples(const AudioFrame& frame,
-                    const OutputControl& control) const;
+  [[nodiscard]] float mix_samples(const AudioFrame& frame,
+                                  const OutputControl& control) const;
+
+  bool sound_power_on = false;
 
  public:
   Sound(Memory& memory, SDL_AudioDeviceID device);
 
+  u8 handle_memory_read(u16 addr) const;
   void handle_memory_write(u16 addr, u8 value);
 
   void update(int ticks);

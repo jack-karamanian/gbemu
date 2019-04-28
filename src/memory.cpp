@@ -89,6 +89,9 @@ std::optional<u8> Memory::read_hardware(u16 addr) {
       return hardware.gpu->get_scx();
     case 0xff42:
       return hardware.gpu->get_scy();
+    // Sound
+    case Registers::Sound::Control::NR52::Address:
+      return hardware.sound->handle_memory_read(addr);
     default:
       return {};
   }

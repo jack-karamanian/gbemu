@@ -131,7 +131,7 @@ void run_with_options(const std::string& rom_name, bool trace, bool save) {
   SDL_AudioSpec want, have;
   std::memset(&want, 0, sizeof(want));
 
-  want.freq = 48000;
+  want.freq = gb::SOUND_SAMPLE_FREQUENCY;
   want.format = AUDIO_F32;
   want.channels = 2;
   want.samples = 4096;

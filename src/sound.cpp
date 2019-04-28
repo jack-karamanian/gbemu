@@ -1,11 +1,16 @@
 #include <SDL2/SDL.h>
 #include <array>
 #include <iostream>
+#include <numeric>
 #include "memory.h"
 #include "registers/sound.h"
 #include "sound.h"
 
 namespace gb {
+static float dac_output(u8 volume) {
+  return static_cast<float>(volume) / 15.0f;
+}
+
 Sound::Sound(Memory& memory, SDL_AudioDeviceID device)
     : memory{&memory},
       square1{{true}},
@@ -13,16 +18,17 @@ Sound::Sound(Memory& memory, SDL_AudioDeviceID device)
       wave_channel{{memory.get_range({0xff30, 0xff3f})}},
       audio_device{device} {
   sample_buffer.reserve(4096);
+  noise_samples.reserve(95);
 }
 
 float Sound::mix_samples(const AudioFrame& frame,
                          const OutputControl& control) const {
   float mixed_sample = 0.0f;
 
-  const float square1_sample = frame.square1_sample;
-  const float square2_sample = frame.square2_sample;
-  const float wave_sample = frame.wave_sample;
-  const float noise_sample = frame.noise_sample;
+  const float square1_sample = dac_output(frame.square1_sample);
+  const float square2_sample = dac_output(frame.square2_sample);
+  const float wave_sample = dac_output(frame.wave_sample);
+  const float noise_sample = dac_output(frame.noise_sample);
 
   int output_volume = ((control.volume * 128) / 16);
   if (control.square1) {
@@ -45,13 +51,30 @@ float Sound::mix_samples(const AudioFrame& frame,
                        reinterpret_cast<const Uint8*>(&noise_sample),
                        AUDIO_F32SYS, sizeof(float), output_volume);
   }
-  return mixed_sample * 0.002f;
+  return mixed_sample * 0.016f;
+}
+
+u8 Sound::handle_memory_read(u16 addr) const {
+  switch (addr) {
+    case Registers::Sound::Control::NR52::Address: {
+      const u8 square1_enabled = square1.is_enabled() ? 1 : 0;
+      const u8 square2_enabled = square2.is_enabled() ? 1 : 0;
+      const u8 wave_enabled = wave_channel.is_enabled() ? 1 : 0;
+      const u8 noise_enabled = noise_channel.is_enabled() ? 1 : 0;
+
+      return (sound_power_on ? (1 << 7) : 0) | (noise_enabled << 3) |
+             (wave_enabled << 2) | (square2_enabled << 1) | (square1_enabled);
+    }
+    default:
+      return 0;
+  }
 }
 
 void Sound::handle_memory_write(u16 addr, u8 value) {
   auto& square =
       addr <= Registers::Sound::Square1::NR14::Address ? square1 : square2;
   switch (addr) {
+    // Square
     case Registers::Sound::Square1::NR10::Address:
       square1.source.set_sweep_period((value & 0x70) >> 4);
       square1.source.set_sweep_negate((value & 0x8) != 0);
@@ -67,6 +90,9 @@ void Sound::handle_memory_write(u16 addr, u8 value) {
       square.dispatch(SetStartingVolumeCommand{(value & 0xf0) >> 4});
       square.dispatch(SetIncreaseVolumeCommand{(value & 0x08) != 0});
       square.dispatch(SetPeriodCommand{value & 0x07});
+      if (((value & 0xf8)) == 0) {
+        square.disable();
+      }
       break;
     case Registers::Sound::Square1::NR13::Address:
     case Registers::Sound::Square2::NR23::Address: {
@@ -86,6 +112,12 @@ void Sound::handle_memory_write(u16 addr, u8 value) {
 
       break;
     }
+      // Wave
+    case Registers::Sound::Wave::NR30::Address:
+      if (((value & 0xf8)) == 0) {
+        wave_channel.disable();
+      }
+
     case Registers::Sound::Wave::NR31::Address:
       wave_channel.dispatch(SetLengthCommand{value});
       break;
@@ -109,13 +141,18 @@ void Sound::handle_memory_write(u16 addr, u8 value) {
       break;
     }
 
+    // Noise
     case Registers::Sound::Noise::NR41::Address:
       noise_channel.dispatch(SetLengthCommand{value & 0x3f});
       break;
     case Registers::Sound::Noise::NR42::Address:
       noise_channel.dispatch(SetStartingVolumeCommand{(value & 0xf0) >> 4});
       noise_channel.dispatch(SetIncreaseVolumeCommand{(value & 0x8) != 0});
-      noise_channel.dispatch(SetPeriodCommand{value & 0x7});
+      noise_channel.dispatch(SetPeriodCommand{(value & 0x7)});
+      // std::cout << "length " << ((value & 0x7) >> 0) << '\n';
+      if (((value & 0xf8)) == 0) {
+        noise_channel.disable();
+      }
       break;
     case Registers::Sound::Noise::NR43::Address:
       noise_channel.source.set_prescalar_divider((value & 0xf0) >> 4);
@@ -142,29 +179,14 @@ void Sound::handle_memory_write(u16 addr, u8 value) {
       break;
 
     case Registers::Sound::Control::NR52::Address: {
-      if ((value & 0x01) != 0) {
-        // square1.enable();
-        printf("enable square1\n");
-      } else {
+      if (!test_bit(value, 7)) {
+        sound_power_on = false;
         square1.disable();
-        printf("disable square1\n");
-      }
-      if ((value & 0x02) != 0) {
-        // square2.enable();
-      } else {
         square2.disable();
-      }
-      if ((value & 0x04) != 0) {
-        // wave_channel.enable();
-      } else {
         wave_channel.disable();
-      }
-
-      if ((value & 0x80) != 0) {
-        // noise_channel.enable();
-        printf("enable noise\n");
+        noise_channel.disable();
       } else {
-        printf("disable noise\n");
+        sound_power_on = true;
       }
       break;
     }
@@ -173,17 +195,22 @@ void Sound::handle_memory_write(u16 addr, u8 value) {
 
 void Sound::update(int ticks) {
   sample_ticks += ticks;
-  samples_task.run(ticks, [&](int total_ticks) {
-    // printf("%d %d\n", total_ticks, sample_ticks);
-    square1.update(sample_ticks);
-    square2.update(sample_ticks);
-    wave_channel.update(sample_ticks);
-    noise_channel.update(sample_ticks);
+  noise_channel.update(ticks);
+  const u8 noise_volume = noise_channel.volume();
+  noise_samples.push_back(noise_volume);
+
+  square1.update(ticks);
+  square2.update(ticks);
+  wave_channel.update(ticks);
+  samples_task.run(ticks, [&]() {
     sample_ticks = 0;
     const u8 square1_sample = square1.volume();
     const u8 square2_sample = square2.volume();
     const u8 wave_sample = wave_channel.volume();
-    const u8 noise_sample = noise_channel.volume();
+    const u8 noise_sample =
+        std::accumulate(noise_samples.begin(), noise_samples.end(), 0) /
+        noise_samples.size();
+    noise_samples.clear();
     const AudioFrame frame{square1_sample, square2_sample, wave_sample,
                            noise_sample};
 
@@ -194,7 +221,6 @@ void Sound::update(int ticks) {
     sample_buffer.push_back(right_sample);
 
     if (sample_buffer.size() >= 4096) {
-      // samples_ready_callback(sample_buffer);
       while (SDL_GetQueuedAudioSize(audio_device) > 4096 * sizeof(float)) {
         SDL_Delay(1);
       }
