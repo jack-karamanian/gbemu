@@ -111,9 +111,6 @@ void Memory::set(u16 addr, u8 val) {
     case Registers::Cgb::SpritePaletteColor::Address:
       hardware.gpu->compute_sprite_color(val);
       return;
-    case Registers::Ly::Address:
-      hardware.lcd->set_ly(0);
-      return;
     case Registers::Lyc::Address:
       hardware.lcd->set_lyc(val);
       return;
