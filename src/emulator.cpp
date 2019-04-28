@@ -145,14 +145,10 @@ void run_with_options(const std::string& rom_name, bool trace, bool save) {
 
   auto sprite_filter = rom_header.is_cgb
               ? [](SpriteAttribute attribute) {
-                  // Clear DMG palette number
-                  attribute.flags &= ~0x10;
-                  return attribute;
+                  return SpriteAttribute::clear_dmg_palette(attribute);
               }
               : [](SpriteAttribute attribute) {
-                  // Clear CGB specific sprite flags
-                  attribute.flags &= ~0xf;
-                  return attribute;
+                  return SpriteAttribute::clear_cgb_flags(attribute);
               };
   gb::Gpu gpu{memory, renderer, sprite_filter};
 
