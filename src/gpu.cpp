@@ -1,4 +1,5 @@
 #include <doctest/doctest.h>
+#include <boost/range/adaptor/reversed.hpp>
 #include <boost/range/adaptor/transformed.hpp>
 #include <boost/range/irange.hpp>
 #include "constants.h"
@@ -63,7 +64,8 @@ void Gpu::render_sprites(int scanline) {
   }();
 
   for (const auto sprite_attrib :
-       sprite_attribs | boost::adaptors::transformed(std::ref(sprite_filter))) {
+       sprite_attribs | boost::adaptors::transformed(std::ref(sprite_filter)) |
+           boost::adaptors::reversed) {
     const int adjusted_y = sprite_attrib.y - 16;
     if (sprite_attrib.x > 0 && sprite_attrib.x < 168 && sprite_attrib.y > 0 &&
         sprite_attrib.y < 160 && scanline >= adjusted_y &&
