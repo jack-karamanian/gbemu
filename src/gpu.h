@@ -81,6 +81,9 @@ class Gpu {
   std::array<u8, SCREEN_WIDTH> background_color_indexes;
   std::vector<Color> background_framebuffer;
 
+  u8 scx = 0;
+  u8 scy = 0;
+
   [[nodiscard]] u8 render_pixel(u8 byte1, u8 byte2, u8 pixel_x) const;
   void render_sprites(int scanline);
   void render_background(int scanline,
@@ -93,9 +96,6 @@ class Gpu {
                          int offset_y);
 
   std::array<Color, 4> generate_colors(Palette palette, bool is_sprite = false);
-
-  u8 scx = 0;
-  u8 scy = 0;
 
   void render_background_pixels(int scanline,
                                 std::pair<u16, u16> tile_map,
