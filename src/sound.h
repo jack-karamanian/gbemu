@@ -66,10 +66,10 @@ class Sound {
 
   SDL_AudioDeviceID audio_device;
 
+  bool sound_power_on = false;
+
   [[nodiscard]] float mix_samples(const AudioFrame& frame,
                                   const OutputControl& control) const;
-
-  bool sound_power_on = false;
 
  public:
   Sound(Memory& memory, SDL_AudioDeviceID device);
