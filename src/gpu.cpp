@@ -169,7 +169,7 @@ void Gpu::render_background(
 
     const auto tile_vram =
         tile_attrib.vram_bank() == 1
-            ? nonstd::span<const u8>{&memory->get_vram_bank1()[0] +
+            ? nonstd::span<const u8>{&memory->get_vram(1)[0] +
                                          (tile_data_range.first - 0x8000),
                                      4096}
             : tile_data;
