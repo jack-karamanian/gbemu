@@ -241,13 +241,4 @@ void Memory::do_dma_transfer(const u8& data) {
     memory[0xfe00 + i] = memory[addr + i];
   }
 }
-
-nonstd::span<const SpriteAttribute> Memory::get_sprite_attributes() {
-  const u8* sprite_attrib_begin = &memory[0xfe00];
-  const u8* sprite_attrib_end = &memory[0xfea0];
-
-  return nonstd::span<const SpriteAttribute>(
-      reinterpret_cast<const SpriteAttribute*>(sprite_attrib_begin),
-      reinterpret_cast<const SpriteAttribute*>(sprite_attrib_end));
-}
 }  // namespace gb
