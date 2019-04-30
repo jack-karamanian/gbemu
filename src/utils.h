@@ -76,9 +76,4 @@ template <typename T, typename U>
   return (value & ~mask) | (((value & mask) + 1) & mask);
 }
 
-template <typename T>
-[[nodiscard]] constexpr T identity(T t) noexcept {
-  return t;
-}
-
 }  // namespace gb
