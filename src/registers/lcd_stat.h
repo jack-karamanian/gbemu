@@ -37,6 +37,13 @@ class LcdStat {
   void set_mode(u8 mode) { value = (value & ~0x03) | (mode & 0x03); }
 
   u8 get_value() const { return value; }
+
+  LcdStat write_value(u8 next_value) const {
+    // Preserve mode and ly_equals_lyc when LcdStat is written to
+    const u8 ly_eq_lyc = ly_equals_lyc() ? 1 : 0;
+    const u8 clean_next_value = (next_value & ~0x7) | (ly_eq_lyc << 2) | mode();
+    return LcdStat{clean_next_value};
+  }
 };
 }  // namespace Registers
 }  // namespace gb

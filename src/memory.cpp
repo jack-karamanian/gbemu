@@ -1,6 +1,7 @@
 #include <algorithm>
 #include <iostream>
 #include "gpu.h"
+#include "input.h"
 #include "lcd.h"
 #include "memory.h"
 #include "registers/cgb.h"
@@ -9,26 +10,15 @@
 #include "timers.h"
 
 namespace gb {
-
 std::pair<u16, nonstd::span<u8>> Memory::select_storage(u16 addr) {
-  if (addr < 0x8000) {
-    switch (addr & 0xf000) {
-      case 0x0000:
-      case 0x1000:
-      case 0x2000:
-      case 0x3000: {
-        const int start_addr = SIXTEEN_KB * mbc.lower_rom_bank_selected();
-        return {addr - start_addr, {&rom.at(start_addr), SIXTEEN_KB}};
-      }
+  if (addr >= 0 && addr <= 0x3fff) {
+    const int start_addr = SIXTEEN_KB * mbc.lower_rom_bank_selected();
+    return {addr - start_addr, {&rom.at(start_addr), SIXTEEN_KB}};
+  }
 
-      case 0x4000:
-      case 0x5000:
-      case 0x6000:
-      case 0x7000: {
-        const int start_addr = SIXTEEN_KB * mbc.rom_bank_selected();
-        return {addr - 0x4000, {&rom.at(start_addr), SIXTEEN_KB}};
-      }
-    }
+  if (addr >= 0x4000 && addr <= 0x7fff) {
+    const int start_addr = SIXTEEN_KB * mbc.rom_bank_selected();
+    return {addr - 0x4000, {&rom.at(start_addr), SIXTEEN_KB}};
   }
 
   if (mbc.in_ram_range(addr)) {
@@ -36,17 +26,19 @@ std::pair<u16, nonstd::span<u8>> Memory::select_storage(u16 addr) {
             {&save_ram[mbc.absolute_ram_offset()], 8192}};
   }
 
-  switch (addr & 0xf000) {
-    case 0x8000:
-    case 0x9000:
-      if ((memory[Registers::Cgb::Vbk::Address] & 1) != 0) {
-        return {addr - 0x8000, {vram_bank1}};
-      }
-      break;
-    case 0xd000: {
-      const u8 ram_bank = memory[Registers::Cgb::Svbk::Address] & 0x7;
-      const int start_addr = 4096 * (ram_bank == 0 ? 1 : ram_bank) - 1;
-      return {addr - 0xd000, {&extended_ram[start_addr], 4096}};
+  if (addr >= 0xc000 && addr <= 0xcfff) {
+    const u16 resolved_addr = addr - 0xc000;
+    return {resolved_addr, {wram.data(), 4096}};
+  }
+
+  if (addr >= 0xd000 && addr <= 0xdfff) {
+    const u8 ram_bank = memory[Registers::Cgb::Svbk::Address] & 0x7;
+    const int start_addr = 4096 * ((ram_bank == 0 ? 1 : ram_bank) - 1);
+    return {addr - 0xd000, {&extended_ram[start_addr], 4096}};
+  }
+  if (addr >= 0x8000 && addr <= 0x9fff) {
+    if ((memory[Registers::Cgb::Vbk::Address] & 1) != 0) {
+      return {addr - 0x8000, {vram_bank1}};
     }
   }
 
@@ -61,6 +53,10 @@ nonstd::span<const u8> Memory::get_range(std::pair<u16, u16> range) {
 
 std::optional<u8> Memory::read_hardware(u16 addr) {
   switch (addr) {
+    // Input
+    case Registers::Input::Address:
+      return hardware.input->input_state;
+    // Graphics
     case Registers::Cgb::BgPaletteIndex::Address:
       return hardware.gpu->background_palette_index();
     case Registers::Cgb::SpritePaletteIndex::Address:
@@ -85,13 +81,22 @@ std::optional<u8> Memory::read_hardware(u16 addr) {
       return hardware.lcd->get_lyc();
     case Registers::LcdStat::Address:
       return hardware.lcd->get_lcd_stat().get_value();
-    case 0xff43:
+    case Registers::Scx::Address:
       return hardware.gpu->get_scx();
-    case 0xff42:
+    case Registers::Scy::Address:
       return hardware.gpu->get_scy();
     // Sound
     case Registers::Sound::Control::NR52::Address:
       return hardware.sound->handle_memory_read(addr);
+    // HDMA
+    case Registers::Cgb::Hdma::SourceHigh::Address:
+    case Registers::Cgb::Hdma::SourceLow::Address:
+    case Registers::Cgb::Hdma::DestHigh::Address:
+    case Registers::Cgb::Hdma::DestLow::Address:
+      return 0xff;
+    case Registers::Cgb::Hdma::Start::Address:
+      std::cout << "UNIMPLEMENTED: READ HDMA START\n";
+      return {};
     default:
       return {};
   }
@@ -99,6 +104,27 @@ std::optional<u8> Memory::read_hardware(u16 addr) {
 
 void Memory::set(u16 addr, u8 val) {
   switch (addr) {
+    // Input
+    case Registers::Input::Address:
+      hardware.input->input_state = val;
+      return;
+    // HDMA
+    case Registers::Cgb::Hdma::SourceHigh::Address:
+      hardware.hdma->source_high = val;
+      return;
+    case Registers::Cgb::Hdma::SourceLow::Address:
+      hardware.hdma->source_low = val;
+      return;
+    case Registers::Cgb::Hdma::DestHigh::Address:
+      hardware.hdma->dest_high = val;
+      return;
+    case Registers::Cgb::Hdma::DestLow::Address:
+      hardware.hdma->dest_low = val;
+      return;
+    case Registers::Cgb::Hdma::Start::Address:
+      hardware.hdma->start(val);
+      return;
+    // Graphics
     case Registers::Cgb::BgPaletteIndex::Address:
       hardware.gpu->set_background_color_index(val);
       return;
@@ -114,18 +140,22 @@ void Memory::set(u16 addr, u8 val) {
     case Registers::Lyc::Address:
       hardware.lcd->set_lyc(val);
       return;
-    case Registers::LcdStat::Address:
-      hardware.lcd->set_lcd_stat(Registers::LcdStat{val});
+    case Registers::LcdStat::Address: {
+      const Registers::LcdStat lcd_stat = hardware.lcd->get_lcd_stat();
+      hardware.lcd->set_lcd_stat(lcd_stat.write_value(val));
       return;
+    }
     case Registers::Lcdc::Address:
       hardware.lcd->set_enabled(test_bit(val, 7));
-      break;
-    case 0xff43:
+      memory[addr] = val;
+      return;
+    case Registers::Scx::Address:
       hardware.gpu->set_scx(val);
       return;
-    case 0xff42:
+    case Registers::Scy::Address:
       hardware.gpu->set_scy(val);
       return;
+    // Sound
     case 0xff10:
     case 0xff11:
     case 0xff12:
@@ -173,7 +203,7 @@ void Memory::set(u16 addr, u8 val) {
     } else {
       switch (addr) {
         case 0xff46:
-          do_dma_transfer(val);
+          oam_dma_task = OamDmaTransfer{static_cast<u16>(val << 8)};
           break;
         case 0xff02:
           if (val == 0x81) {
@@ -183,7 +213,6 @@ void Memory::set(u16 addr, u8 val) {
 
         default:
           if (addr >= 0x8000 && !mbc.in_ram_range(addr)) {
-            // memory[addr] = val;
             const auto [resolved_addr, storage] = select_storage(addr);
             storage[resolved_addr] = val;
           }
@@ -191,6 +220,25 @@ void Memory::set(u16 addr, u8 val) {
       }
     }
   }
+}
+
+void Memory::update(int ticks) {
+  visit_optional(oam_dma_task, [&](auto& task) {
+    task.advance(ticks);
+    bool canceled = task.for_each_cycle([&](int cycles) {
+      if (cycles > 162) {
+        return true;
+      }
+      if (cycles > 1) {
+        int progress = cycles - 2;
+        memory[0xfe00 + progress] = at(task.start_addr + progress);
+      }
+      return false;
+    });
+    if (canceled) {
+      oam_dma_task = {};
+    }
+  });
 }
 
 void Memory::reset() {
@@ -226,7 +274,7 @@ void Memory::reset() {
   memory[0xFF4B] = 0x00;
   memory[0xFFFE] = 0x00;
   memory[0xFF00] = 0xFF;
-}
+  memory[0xFFFF] = 0x00;
 
   memory[0xff4d] = 0x7e;
 }

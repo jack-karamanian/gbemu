@@ -45,6 +45,16 @@ enum {
   C,
 };
 }
+
+struct Ticks {
+  int ticks;
+  int double_ticks;
+
+  Ticks operator+(const Ticks& other) const {
+    return {ticks + other.ticks, double_ticks + other.double_ticks};
+  }
+};
+
 class Cpu {
   enum MemoryRegister {
     InterruptRequest = 0xff0f,
@@ -58,7 +68,7 @@ class Cpu {
   u16 sp;
   u16 pc;
 
-  unsigned int ticks = 0;
+  int ticks = 0;
 
   u8 current_opcode = 0x00;
   std::variant<u8, u16> current_operand;
@@ -73,6 +83,10 @@ class Cpu {
 
   bool debug = false;
 
+  [[nodiscard]] Ticks adjusted_ticks(int num_ticks) const {
+    return {double_speed ? num_ticks / 2 : num_ticks, num_ticks};
+  }
+
  public:
   enum Register { C = 0, B, E, D, L, H, F, A, BC = 0, DE = 2, HL = 4 };
   enum Interrupt {
@@ -84,19 +98,21 @@ class Cpu {
   };
   Cpu(Memory& memory);
 
-  int fetch_and_decode();
+  Ticks fetch_and_decode();
 
   void execute_opcode(u8 opcode);
 
   void execute_cb_opcode(u8 opcode);
 
-  int handle_interrupts();
+  Ticks handle_interrupts();
 
-  bool handle_interrupt(u8 interrupt);
+  void handle_interrupt(u8 interrupt);
 
   void set_debug(bool value) { debug = value; }
 
   void debug_write();
+
+  [[nodiscard]] bool is_double_speed() const { return double_speed; }
 
   bool is_halted() const { return halted; }
 

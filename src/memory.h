@@ -2,6 +2,7 @@
 #include <algorithm>
 #include <cassert>
 #include <functional>
+#include <iostream>
 #include <optional>
 #include <unordered_map>
 #include <utility>
@@ -12,6 +13,7 @@
 #include "registers/interrupt_request.h"
 #include "registers/lcd_stat.h"
 #include "sprite_attribute.h"
+#include "task.h"
 #include "utils.h"
 
 #define SIXTEEN_KB 16384
@@ -34,6 +36,12 @@ struct BgAttribute {
   bool bg_priority() const { return test_bit(value, 7); }
 };
 
+class OamDmaTransfer : public ManualTask {
+ public:
+  u16 start_addr;
+  explicit OamDmaTransfer(u16 start) : ManualTask(4), start_addr{start} {}
+};
+
 class Cpu;
 class Timers;
 class Sound;
@@ -41,15 +49,63 @@ class Input;
 class Lcd;
 class Gpu;
 class Memory;
+class HdmaTransfer;
 
 struct Hardware {
   Cpu* cpu = nullptr;
   Memory* memory = nullptr;
+  HdmaTransfer* hdma = nullptr;
   Timers* timers = nullptr;
   Sound* sound = nullptr;
   Input* input = nullptr;
   Lcd* lcd = nullptr;
   Gpu* gpu = nullptr;
+};
+
+class HdmaTransfer {
+  Memory* memory;
+  int length = 0;
+  int progress = 0;
+  bool is_active = false;
+
+ public:
+  HdmaTransfer(Memory& memory_) : memory{&memory_} {}
+
+  u8 source_high = 0;
+  u8 source_low = 0;
+
+  u8 dest_high = 0;
+  u8 dest_low = 0;
+
+  inline void transfer_bytes(int num_bytes);
+
+  void start(u8 value) {
+    const int num_bytes = ((value & 0x7f) + 1) * 16;
+    if (is_active) {
+      is_active = test_bit(value, 7);
+      if (is_active) {
+        progress = 0;
+        length = num_bytes;
+      }
+    } else {
+      progress = 0;
+      length = num_bytes;
+      is_active = test_bit(value, 7);
+      if (!is_active) {
+        transfer_bytes(length);
+      }
+    }
+  }
+
+  [[nodiscard]] bool active() const { return is_active; }
+
+  [[nodiscard]] u16 source() const {
+    return ((source_high << 8) | source_low) & 0xfff0;
+  }
+
+  [[nodiscard]] u16 dest() const {
+    return 0x8000 + (((dest_high << 8) | dest_low) & 0x1ff0);
+  }
 };
 
 class Memory {
@@ -65,12 +121,14 @@ class Memory {
 
   std::vector<u8> vram_bank1;
 
+  std::vector<u8> wram;
   std::vector<u8> extended_ram;
 
   nonstd::span<u8> memory_span;
 
   Mbc mbc;
 
+  std::optional<OamDmaTransfer> oam_dma_task;
 
   SaveRamWriteListener save_ram_write_listener;
 
@@ -81,6 +139,7 @@ class Memory {
   Memory(Mbc mbc_)
       : memory(SIXTYFOUR_KB, 0),
         vram_bank1(0x2000, 0),
+        wram(0x1000, 0),
         extended_ram(0x1000 * 7, 0),
         memory_span{memory},
         mbc{mbc_} {}
@@ -117,6 +176,8 @@ class Memory {
 
   void set(u16 addr, u8 val);
 
+  void update(int ticks);
+
   void reset();
 
   void load_rom(std::vector<u8>&& data);
@@ -132,9 +193,6 @@ class Memory {
   u8 get_ram(u16 addr) const { return memory[addr]; }
 
   void set_ram(u16 addr, u8 val) { memory[addr] = val; }
-
-  u8 get_input_register() const { return memory[0xff00]; }
-  void set_input_register(u8 val) { memory[0xff00] = val; }
 
   u8 get_interrupts_enabled() const {
     return memory[Registers::InterruptEnabled::Address];
@@ -177,9 +235,22 @@ class Memory {
         throw std::runtime_error("invalid vram bank");
     }
   }
-
-  [[nodiscard]] nonstd::span<const u8> get_vram_bank1() const {
-    return vram_bank1;
-  }
 };
+
+inline void HdmaTransfer::transfer_bytes(int num_bytes) {
+  const u16 source_addr = source() + progress;
+  const u16 dest_addr = dest() + progress;
+
+  for (int i = 0; i < num_bytes; ++i) {
+    memory->set(dest_addr + i, memory->at(source_addr + i));
+  }
+
+  progress += num_bytes;
+
+  if (progress >= length) {
+    is_active = false;
+    progress = 0;
+  }
+}
+
 }  // namespace gb

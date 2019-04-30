@@ -1,6 +1,8 @@
 #pragma once
 #include <doctest/doctest.h>
+#include <cstddef>
 #include "types.h"
+
 namespace gb {
 template <typename T>
 T max_bits(T val) {

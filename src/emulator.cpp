@@ -1,7 +1,7 @@
 #include <SDL2/SDL.h>
 #include <algorithm>
+#include <cstdio>
 #include <cstring>
-#include <filesystem>
 #include <fstream>
 #include <iostream>
 #include <vector>
@@ -11,6 +11,7 @@
 #include "input.h"
 #include "lcd.h"
 #include "memory.h"
+#include "registers/cgb.h"
 #include "registers/div.h"
 #include "registers/palette.h"
 #include "registers/sound.h"
@@ -21,6 +22,12 @@
 #include "timers.h"
 
 namespace gb {
+static bool file_exists(const std::string& path) {
+  std::ifstream file{path};
+
+  return file.good();
+}
+
 static std::vector<u8> load_rom(const std::string& rom_name) {
   std::ifstream rom(rom_name, std::ios::in | std::ios::binary);
   rom.seekg(0, std::ios::end);
@@ -42,13 +49,12 @@ static std::vector<u8> load_rom(const std::string& rom_name) {
 
 void run_with_options(const std::string& rom_name, bool trace, bool save) {
   std::cout << rom_name << std::endl;
-  std::filesystem::path save_ram_path =
-      std::filesystem::absolute(rom_name + ".sav");
+  std::string save_ram_path = rom_name + ".sav";
 
   auto file_flags = std::fstream::out | std::fstream::in |
                     std::fstream::binary | std::fstream::ate;
 
-  if (!std::filesystem::exists(save_ram_path)) {
+  if (!file_exists(save_ram_path)) {
     file_flags |= std::fstream::trunc;
   }
 
@@ -56,6 +62,8 @@ void run_with_options(const std::string& rom_name, bool trace, bool save) {
   const RomHeader rom_header = gb::parse_rom(rom_data);
 
   gb::Memory memory{rom_header.mbc};
+
+  gb::HdmaTransfer hdma{memory};
 
   memory.reset();
 
@@ -168,17 +176,21 @@ void run_with_options(const std::string& rom_name, bool trace, bool save) {
           }
         });
   } else {
-    memory.set_write_listener(
-        [](u16 addr, u8 color, const Hardware& hardware) {});
+    memory.set_write_listener([](u16 addr, u8 color, const Hardware& hardware) {
+      static_cast<void>(addr);
+      static_cast<void>(color);
+      static_cast<void>(hardware);
+    });
   }
 
   gb::Lcd lcd{cpu, gpu};
-  gb::Input input{memory};
+  gb::Input input;
   gb::Sound sound{memory, audio_device};
 
-  gb::Hardware hardware{&cpu, &memory, &timers, &sound, &input, &lcd, &gpu};
+  gb::Hardware hardware{&cpu,   &memory, &hdma, &timers,
+                        &sound, &input,  &lcd,  &gpu};
   memory.set_hardware(hardware);
-  // TODO
+// TODO
 #if 0
   constexpr int step_ms = 1000 / 60;
   constexpr double FREQUENCY{4194304.0};
@@ -236,28 +248,32 @@ void run_with_options(const std::string& rom_name, bool trace, bool save) {
     bool draw_frame = false;
 
     while (!draw_frame) {
-      int ticks = cpu.fetch_and_decode();
-      if (!cpu.is_halted() && trace) {
+      const Ticks instruction_ticks = cpu.fetch_and_decode();
+      const Ticks interrupt_ticks = cpu.handle_interrupts();
+
+      const auto [ticks, double_ticks] = instruction_ticks + interrupt_ticks;
+
+      if (trace && !cpu.is_halted()) {
         cpu.debug_write();
       }
 
-      ticks += cpu.handle_interrupts();
+      memory.update(ticks);
 
-      draw_frame = lcd.update(ticks);
-      /*
-      std::optional<LcdState> lcd_state = lcd.update(ticks);
-      visit_optional(lcd_state, [&](LcdState state) {
-        std::cout << std::hex << +state.interrupts << '\n';
-        cpu.request_interrupt(static_cast<Cpu::Interrupt>(state.interrupts));
-        draw_frame = state.render;
+      const auto [render, next_mode] = lcd.update(ticks);
+      draw_frame = render;
+
+      visit_optional(next_mode, [&hdma, &cpu](const Lcd::Mode mode) {
+        if (hdma.active() && mode == gb::Lcd::Mode::HBlank &&
+            !cpu.is_halted()) {
+          hdma.transfer_bytes(16);
+        }
       });
-      */
 
       bool request_interrupt = input.update();
       if (request_interrupt) {
         cpu.request_interrupt(gb::Cpu::Interrupt::Joypad);
       }
-      request_interrupt = timers.update(ticks);
+      request_interrupt = timers.update(double_ticks);
 
       if (request_interrupt) {
         cpu.request_interrupt(gb::Cpu::Interrupt::Timer);
@@ -294,5 +310,5 @@ void run_with_options(const std::string& rom_name, bool trace, bool save) {
     // SDL_Delay(step_ms - diff);
   }
   std::cout << "exit" << std::endl;
-}
+}  // namespace gb
 }  // namespace gb

@@ -1,11 +1,9 @@
 #include "input.h"
 
 namespace gb {
-Input::Input(Memory& memory) : memory{&memory} {}
 
 bool Input::update() {
-  bool request_interrupt{false};
-  const u8 input_state = memory->get_input_register();
+  bool request_interrupt = false;
   const u8 input_selector = input_state & 0x30;
   const bool select_buttons{!(input_selector & 0x20)};
   const bool select_dpad{!(input_selector & 0x10)};
@@ -34,9 +32,9 @@ bool Input::update() {
       }
     }
 
-    memory->set_input_register(0xc0 | input_selector | button_bits);
+    input_state = 0xc0 | input_selector | button_bits;
   } else {
-    memory->set_input_register(0xff);
+    input_state = 0xff;
   }
   return request_interrupt;
 }

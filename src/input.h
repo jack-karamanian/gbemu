@@ -1,21 +1,10 @@
 #pragma once
-#include "memory.h"
 #include "utils.h"
 
 namespace gb {
 class Input {
-  Memory* memory;
-  bool start_set{false};
-  bool select_set{false};
-  bool a_set{false};
-  bool b_set{false};
-  bool up_set{false};
-  bool down_set{false};
-  bool left_set{false};
-  bool right_set{false};
-
  public:
-  Input(Memory&);
+  u8 input_state = 0xff;
   bool update();
   void set_start(bool start) { start_set = start; }
   void set_select(bool select) { select_set = select; }
@@ -25,5 +14,15 @@ class Input {
   void set_down(bool down) { down_set = down; }
   void set_left(bool left) { left_set = left; }
   void set_right(bool right) { right_set = right; }
+
+ private:
+  bool start_set = false;
+  bool select_set = false;
+  bool a_set = false;
+  bool b_set = false;
+  bool up_set = false;
+  bool down_set = false;
+  bool left_set = false;
+  bool right_set = false;
 };
 }  // namespace gb

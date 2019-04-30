@@ -36,8 +36,51 @@ constexpr std::array<std::array<int, 14>, 8> gen_timers() {
   return res;
 }
 
+constexpr u16 lfsr(u16 input, bool seven_stage) {
+  const u8 bit1 = input & 1;
+  const u8 bit2 = (input >> 1) & 1;
+
+  const u8 res = bit1 ^ bit2;
+
+  return (input >> 1) | (res << (seven_stage ? 6 : 14));
+}
+
+constexpr std::size_t lfsr_period(bool seven_stage) {
+  int period = 1;
+  const u16 start = seven_stage ? 0x7f : 0x7fff;
+
+  u16 counter = lfsr(start, seven_stage);
+  while (counter != start) {
+    counter = lfsr(counter, seven_stage);
+    ++period;
+  }
+
+  return period;
+}
+
+constexpr std::size_t fifteen_stage_period = lfsr_period(false);
+constexpr std::size_t seven_stage_period = lfsr_period(true);
+
+template <bool seven_stage>
+constexpr auto generate_lfsr_table() {
+  constexpr std::size_t period =
+      seven_stage ? seven_stage_period : fifteen_stage_period;
+  const u16 start = seven_stage ? 0x7f : 0x7fff;
+
+  std::array<u16, period> res = {};
+
+  res[0] = start;
+  for (std::size_t i = 1; i < period; ++i) {
+    res[i] = lfsr(res[i - 1], seven_stage);
+  }
+
+  return res;
+}
+
 class NoiseSource {
   constexpr static std::array<std::array<int, 14>, 8> timers = gen_timers();
+  constexpr static auto fifteen_stage_table = generate_lfsr_table<false>();
+  constexpr static auto seven_stage_table = generate_lfsr_table<true>();
 
   // 0 - 7
   int clock_divisor = 0;
@@ -45,15 +88,17 @@ class NoiseSource {
   // 0 - 13
   int prescalar_divider = 0;
 
-  int timer = 0;
-
   int timer_base = 0;
+
+  int timer = 0;
 
   u16 lfsr_counter = 0;
 
-  bool seven_stage = true;
-
   u8 output = 0;
+
+  bool seven_stage = false;
+
+  std::size_t counter = 0;
 
   void update_timer() {
     if (prescalar_divider < 14) {
@@ -65,7 +110,6 @@ class NoiseSource {
   void set_num_stages(bool value) { seven_stage = value; }
   void set_clock_divisor(int value) {
     clock_divisor = value;
-
     update_timer();
   }
   void set_prescalar_divider(int value) {
@@ -77,6 +121,8 @@ class NoiseSource {
     if (prescalar_divider < 14) {
       timer += ticks;
       if (timer >= timer_base) {
+        timer -= timer_base;
+
         u8 bit1 = lfsr_counter & 0x01;
         u8 bit2 = (lfsr_counter >> 1) & 1;
 
@@ -84,14 +130,15 @@ class NoiseSource {
 
         lfsr_counter >>= 1;
 
-        lfsr_counter |= res << 14;
         if (seven_stage) {
-          lfsr_counter &= ~0x40;
+          lfsr_counter &= 0x3f;
           lfsr_counter |= res << 6;
+        } else {
+          lfsr_counter &= 0x3fff;
+          lfsr_counter |= res << 14;
         }
 
-        output = (lfsr_counter & 0x1) != 0 ? 0 : 15;
-        timer -= timer_base;
+        output = (lfsr_counter & 0x1) * 15;
       }
     }
   }

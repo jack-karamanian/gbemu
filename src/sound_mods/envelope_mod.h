@@ -29,7 +29,18 @@ class EnvelopeMod {
 
   void set_increase_volume(bool value) { increase_volume = value; }
 
-  void set_period(int value) { period = value; }
+  void set_period(int value) {
+    period = value;
+    if (period == 0) {
+      if (increase_volume) {
+        volume = (volume + 1) & 0xf;
+      }
+      if (!increase_volume) {
+        volume = (volume - 1) & 0xf;
+      }
+      // volume = 0;
+    }
+  }
 
   void clock(int step);
 

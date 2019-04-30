@@ -5,18 +5,22 @@
 #include <sstream>
 #include <string>
 #include "cpu.h"
+#include "instruction_table.h"
 
 namespace gb {
 Cpu::Cpu(Memory& memory)
-    : regs{0x13, 0x00, 0xd8, 0x00, 0x4d, 0x01, 0xb0, 0x11}, // TODO: allow choice of CGB or DMG registers
+    : memory{&memory},
+      regs{0x0,  0x00, 0x56, 0xff, 0xd,
+           0x00, 0x80, 0x11},  // TODO: allow choice of CGB or DMG registers
+                               //: regs{0x13, 0x00, 0xd8, 0x00, 0x4d,
+      //       0x01, 0xb0, 0x11},  // TODO: allow choice of CGB or DMG registers
       sp{0xfffe},
-      pc{0x100},
-      memory{&memory} {}
+      pc{0x100} {}
 
-int Cpu::fetch_and_decode() {
+Ticks Cpu::fetch_and_decode() {
   ticks = 0;
   if (stopped || halted) {
-    return 4;
+    return adjusted_ticks(4);
   }
 
   if (queue_interrupts_enabled) {
@@ -26,30 +30,36 @@ int Cpu::fetch_and_decode() {
 
   current_opcode = memory->at(pc);
 
+  if (debug) {
+    std::cout << instruction_names[current_opcode] << '\n';
+  }
   if (current_opcode == 0xcb) {
     current_opcode = memory->at(pc + 1);
     execute_cb_opcode(current_opcode);
+    if (debug) {
+      std::cout << instruction_names[current_opcode] << '\n';
+    }
   } else {
     execute_opcode(current_opcode);
   }
 
-  return ticks / (double_speed ? 2 : 1);
+  return adjusted_ticks(ticks);
 }
 
-int Cpu::handle_interrupts() {
+Ticks Cpu::handle_interrupts() {
   if (interrupts_enabled) {
     for (int i = 0; i < 5; i++) {
       u8 interrupt = 0x01 << i;
       if (has_interrupt(interrupt) && interrupt_enabled(interrupt)) {
         handle_interrupt(interrupt);
-        return 20;
+        return adjusted_ticks(20);
       }
     }
   }
-  return 0;
+  return adjusted_ticks(0);
 }
 
-bool Cpu::handle_interrupt(u8 interrupt) {
+void Cpu::handle_interrupt(u8 interrupt) {
   halted = false;
   stopped = false;
   disable_interrupts();
@@ -71,10 +81,7 @@ bool Cpu::handle_interrupt(u8 interrupt) {
     case Interrupt::Joypad:
       pc = 0x60;
       break;
-    default:
-      return false;
   }
-  return true;
 }
 
 void Cpu::debug_write() {
@@ -120,13 +127,13 @@ bool Cpu::has_interrupt(u8 interrupt) const {
 }
 
 void Cpu::request_interrupt(Interrupt interrupt) {
-  const u8 interrupts = memory->at(MemoryRegister::InterruptRequest);
-  memory->set(MemoryRegister::InterruptRequest, interrupts | interrupt);
+  const u8 interrupts = memory->get_ram(MemoryRegister::InterruptRequest);
+  memory->set_ram(MemoryRegister::InterruptRequest, interrupts | interrupt);
 }
 
 void Cpu::clear_interrupt(const u8 interrupt) const {
-  const u8 interrupts = memory->at(0xff0f);
-  memory->set(0xff0f, interrupts & ~interrupt);
+  const u8 interrupts = memory->get_ram(0xff0f);
+  memory->set_ram(0xff0f, interrupts & ~interrupt);
 }
 
 void Cpu::invalid() const {
@@ -508,7 +515,7 @@ void Cpu::halt() {
 void Cpu::inc(u8& val) {
   u8 res = val + 1;
 
-  set_half_carry(val, (u8)1);
+  set_half_carry(val, static_cast<u8>(1));
   set_zero(res);
   clear_flag(FLAG_SUBTRACT);
 
@@ -697,7 +704,7 @@ void Cpu::load_hl_a() {
 }
 
 void Cpu::load_a_hl() {
-  const u8& val = value_at_r16(Register::HL);
+  const u8 val = value_at_r16(Register::HL);
   regs[Register::A] = val;
 }
 
@@ -761,7 +768,7 @@ void Cpu::ld_hl_sp_s8() {
 
 // LD SP,HL
 void Cpu::ld_sp_hl() {
-  const u16& hl = get_r16(Register::HL);
+  const u16 hl = get_r16(Register::HL);
   sp = hl;
 }
 
@@ -1149,8 +1156,11 @@ void Cpu::srl_hl() {
 // STOP
 void Cpu::stop() {
   const u8 speed_switch = memory->get_ram(0xff4d);
+  memory->set_ram(0xff41, memory->get_ram(0xff41) & ~0x80);
   if ((speed_switch & 0x1) != 0) {
+    double_speed = !double_speed;
     memory->set_ram(0xff4d, ~speed_switch & 0x80);
+    ticks = (128 * 1024) - 76;
   } else {
     stopped = true;
   }
@@ -1251,21 +1261,27 @@ u8 Cpu::value_at_r16(Register reg) {
   return memory->at(addr);
 }
 
-#define GB_INSTRUCTION(op, size, cycles, function)            \
-  case op: {                                                  \
-    constexpr int operands_size = size - 1;                   \
-    if constexpr (operands_size == 1) {                       \
-      current_operand = memory->at(pc + 1);                   \
-    } else if constexpr (operands_size == 2) {                \
-      current_operand = memory->at<u16>(pc + 1);              \
-    } else if constexpr (operands_size > 2) {                 \
-      static_assert(operands_size <= 2,                       \
-                    "number of operands must be 0, 1, or 2"); \
-    }                                                         \
-    pc += size;                                               \
-    ticks += cycles;                                          \
-    function;                                                 \
-    break;                                                    \
+#define GB_INSTRUCTION(op, size, cycles, function)                       \
+  case op: {                                                             \
+    constexpr int operands_size = size - 1;                              \
+    if constexpr (operands_size == 1) {                                  \
+      current_operand = memory->at(pc + 1);                              \
+      if (debug) {                                                       \
+        std::cout << std::hex << +std::get<u8>(current_operand) << '\n'; \
+      }                                                                  \
+    } else if constexpr (operands_size == 2) {                           \
+      current_operand = memory->at<u16>(pc + 1);                         \
+      if (debug) {                                                       \
+        std::cout << std::hex << std::get<u16>(current_operand) << '\n'; \
+      }                                                                  \
+    } else if constexpr (operands_size > 2) {                            \
+      static_assert(operands_size <= 2,                                  \
+                    "number of operands must be 0, 1, or 2");            \
+    }                                                                    \
+    pc += size;                                                          \
+    ticks += cycles;                                                     \
+    function;                                                            \
+    break;                                                               \
   }
 
 void Cpu::execute_opcode(u8 opcode) {
