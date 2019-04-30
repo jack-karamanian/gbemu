@@ -15,15 +15,6 @@ namespace gb {
 class Memory;
 struct BgAttribute;
 
-enum class PixelType {
-  None,
-  Sprite,
-  Window,
-  Background,
-};
-
-enum class BackgroundPosition { None, Above, Below };
-
 class CgbColor {
  public:
   CgbColor(int index, u8 color)
@@ -64,6 +55,11 @@ struct CgbPalette {
   }
 };
 
+struct BgPixel {
+  bool priority : 1;
+  u8 color_index : 7;
+};
+
 class SdlRenderer;
 
 class Gpu {
@@ -78,7 +74,7 @@ class Gpu {
   CgbPalette background_palette;
   CgbPalette sprite_palette;
 
-  std::array<u8, SCREEN_WIDTH> background_color_indexes;
+  std::array<BgPixel, SCREEN_WIDTH> background_pixels;
   std::vector<Color> background_framebuffer;
 
   u8 scx = 0;

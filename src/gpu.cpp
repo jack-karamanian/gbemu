@@ -30,7 +30,7 @@ Gpu::Gpu(Memory& memory, SdlRenderer& sdl_renderer, SpriteFilter filter)
       background_texture{
           renderer->create_texture(SCREEN_WIDTH, SCREEN_HEIGHT, false)},
       sprite_filter{std::move(filter)},
-      background_color_indexes{},
+      background_pixels{},
       background_framebuffer(DISPLAY_SIZE) {
   std::copy(COLORS.begin(), COLORS.end(), background_palette.colors.begin());
   std::copy(SPRITE_COLORS.begin(), SPRITE_COLORS.end(),
@@ -101,9 +101,11 @@ void Gpu::render_sprites(int scanline) {
         assert(screen_x >= 0 && screen_x < SCREEN_WIDTH);
 
         const u8 color_index = render_pixel(byte1, byte2, flipped_pixel_x);
-        const u8 bg_color = background_color_indexes[screen_x] % 4;
+        const BgPixel bg_pixel = background_pixels[screen_x];
+        const u8 bg_color = bg_pixel.color_index % 4;
 
-        if (color_index != 0 && (sprite_attrib.above_bg() || bg_color == 0)) {
+        if (color_index != 0 && !bg_pixel.priority &&
+            (sprite_attrib.above_bg() || bg_color == 0)) {
           background_framebuffer[SCREEN_WIDTH * scanline + screen_x] =
               selected_colors[color_index];
         }
@@ -202,7 +204,7 @@ void Gpu::render_background(
           static_cast<u8>((4 * tile_attrib.bg_palette()) + color_index);
       background_framebuffer[160 * scanline + x] =
           background_palette.colors[palette_color_index];
-      background_color_indexes[x] = palette_color_index;
+      background_pixels[x] = {tile_attrib.bg_priority(), palette_color_index};
     }
   }
 }
