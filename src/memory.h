@@ -160,18 +160,6 @@ class Memory {
             reinterpret_cast<const SpriteAttribute*>(sprite_attrib_end)};
   }
 
-  nonstd::span<const BgAttribute> get_background_attributes() const {
-    const u8* begin = &vram_bank1[0x1800];  // 0x9800
-
-    return {reinterpret_cast<const BgAttribute*>(begin), 1024};
-  }
-
-  nonstd::span<const BgAttribute> get_window_attributes() const {
-    const u8* begin = &vram_bank1[0x1c00];  // 0x9c00
-
-    return {reinterpret_cast<const BgAttribute*>(begin), 1024};
-  }
-
   [[nodiscard]] nonstd::span<const BgAttribute> get_tile_atributes(
       u16 addr) const {
     const u8* begin = &vram_bank1[addr - 0x8000];
