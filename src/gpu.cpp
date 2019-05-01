@@ -313,7 +313,9 @@ void Gpu::render_scanline(int scanline) {
     render_background_pixels(scanline, range, tile_attribs, scx, scy, 0, 0);
   }
 
-  render_sprites(scanline);
+  if (lcdc.obj_on()) {
+    render_sprites(scanline);
+  }
 }
 
 void Gpu::render() {

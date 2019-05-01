@@ -40,6 +40,7 @@ class Lcdc {
     return {0x8800, 0x97ff};
   }
 
+  // Bit 3
   std::pair<u16, u16> bg_tile_map_range() const {
     bool selection = value & 0x8;
 
@@ -50,12 +51,14 @@ class Lcdc {
     return {0x9800, 0x9bff};
   }
 
+  // Bit 2
   SpriteMode sprite_size() const {
     bool eight_by_sixteen = value & 0x4;
     return eight_by_sixteen ? SpriteMode::EightBySixteen
                             : SpriteMode::EightByEight;
   }
 
+  // Bit 1
   bool obj_on() const { return value & 0x2; }
 
   // Bit 0
