@@ -82,9 +82,9 @@ std::optional<u8> Memory::read_hardware(u16 addr) {
     case Registers::LcdStat::Address:
       return hardware.lcd->get_lcd_stat().get_value();
     case Registers::Scx::Address:
-      return hardware.gpu->get_scx();
+      return hardware.gpu->scx;
     case Registers::Scy::Address:
-      return hardware.gpu->get_scy();
+      return hardware.gpu->scy;
     // Sound
     case Registers::Sound::Control::NR52::Address:
       return hardware.sound->handle_memory_read(addr);
@@ -150,10 +150,10 @@ void Memory::set(u16 addr, u8 val) {
       memory[addr] = val;
       return;
     case Registers::Scx::Address:
-      hardware.gpu->set_scx(val);
+      hardware.gpu->scx = val;
       return;
     case Registers::Scy::Address:
-      hardware.gpu->set_scy(val);
+      hardware.gpu->scy = val;
       return;
     // Sound
     case 0xff10:

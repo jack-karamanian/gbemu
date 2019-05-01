@@ -77,9 +77,6 @@ class Gpu {
   std::array<BgPixel, SCREEN_WIDTH> background_pixels;
   std::vector<Color> background_framebuffer;
 
-  u8 scx = 0;
-  u8 scy = 0;
-
   [[nodiscard]] u8 render_pixel(u8 byte1, u8 byte2, u8 pixel_x) const;
   void render_sprites(int scanline);
   void render_background(int scanline,
@@ -105,13 +102,10 @@ class Gpu {
   void add_color_to_palette(CgbPalette& palette, u8 color);
 
  public:
+  u8 scx = 0;
+  u8 scy = 0;
+
   Gpu(Memory& memory, SdlRenderer& renderer, SpriteFilter filter);
-
-  [[nodiscard]] u8 get_scx() const { return scx; }
-  [[nodiscard]] u8 get_scy() const { return scy; }
-
-  void set_scx(u8 value) { scx = value; }
-  void set_scy(u8 value) { scy = value; }
 
   void compute_background_palette(u8 palette);
   void compute_sprite_palette(int palette_number, u8 palette);
