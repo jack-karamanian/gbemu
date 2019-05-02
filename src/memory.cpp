@@ -56,15 +56,6 @@ std::optional<u8> Memory::read_hardware(u16 addr) {
     // Input
     case Registers::Input::Address:
       return hardware.input->input_state;
-    // Graphics
-    case Registers::Cgb::BgPaletteIndex::Address:
-      return hardware.gpu->background_palette_index();
-    case Registers::Cgb::SpritePaletteIndex::Address:
-      return hardware.gpu->sprite_palette_index();
-    case Registers::Cgb::BgPaletteColor::Address:
-      return hardware.gpu->read_background_color();
-    case Registers::Cgb::SpritePaletteColor::Address:
-      return hardware.gpu->read_sprite_color();
     // Timers
     case Registers::Tac::Address:
       return hardware.timers->get_tac().get_value();
@@ -75,6 +66,14 @@ std::optional<u8> Memory::read_hardware(u16 addr) {
     case Registers::Div::Address:
       return hardware.timers->get_div();
     // Graphics
+    case Registers::Cgb::BgPaletteIndex::Address:
+      return hardware.gpu->background_palette_index();
+    case Registers::Cgb::SpritePaletteIndex::Address:
+      return hardware.gpu->sprite_palette_index();
+    case Registers::Cgb::BgPaletteColor::Address:
+      return hardware.gpu->read_background_color();
+    case Registers::Cgb::SpritePaletteColor::Address:
+      return hardware.gpu->read_sprite_color();
     case Registers::Ly::Address:
       return hardware.lcd->get_ly();
     case Registers::Lyc::Address:
@@ -85,6 +84,10 @@ std::optional<u8> Memory::read_hardware(u16 addr) {
       return hardware.gpu->scx;
     case Registers::Scy::Address:
       return hardware.gpu->scy;
+    case Registers::WindowX::Address:
+      return hardware.gpu->window_x;
+    case Registers::WindowY::Address:
+      return hardware.gpu->window_y;
     // Sound
     case Registers::Sound::Control::NR52::Address:
       return hardware.sound->handle_memory_read(addr);
@@ -154,6 +157,13 @@ void Memory::set(u16 addr, u8 val) {
       return;
     case Registers::Scy::Address:
       hardware.gpu->scy = val;
+      return;
+
+    case Registers::WindowX::Address:
+      hardware.gpu->window_x = val;
+      return;
+    case Registers::WindowY::Address:
+      hardware.gpu->window_y = val;
       return;
     // Sound
     case 0xff10:

@@ -24,4 +24,10 @@ constexpr u16 Address = 0xff42;
 namespace Input {
 constexpr u16 Address = 0xff00;
 }
+namespace WindowY {
+constexpr u16 Address = 0xff4a;
+}
+namespace WindowX {
+constexpr u16 Address = 0xff4b;
+}
 }  // namespace gb::Registers

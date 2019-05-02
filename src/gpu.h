@@ -105,6 +105,9 @@ class Gpu {
   u8 scx = 0;
   u8 scy = 0;
 
+  u8 window_y = 0;
+  u8 window_x = 0;
+
   Gpu(Memory& memory, SdlRenderer& renderer, SpriteFilter filter);
 
   void compute_background_palette(u8 palette);

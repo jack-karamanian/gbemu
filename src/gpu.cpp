@@ -192,7 +192,7 @@ void Gpu::render_background(
                           : TILE_SIZE;  // Make sure x is < 160
 
     for (int pixel_x : boost::irange(x_begin, x_end)) {
-      const u16 x = tile_x + pixel_x - tile_scroll_x;
+      const u16 x = tile_x + pixel_x - tile_scroll_x + offset_x;
 
       assert(x >= 0 && x < 160);
 
@@ -202,9 +202,11 @@ void Gpu::render_background(
 
       const u8 palette_color_index =
           static_cast<u8>((4 * tile_attrib.bg_palette()) + color_index);
-      background_framebuffer[160 * scanline + x] =
-          background_palette.colors[palette_color_index];
-      background_pixels[x] = {tile_attrib.bg_priority(), palette_color_index};
+      if (x < 160) {
+        background_framebuffer[SCREEN_WIDTH * scanline + x] =
+            background_palette.colors[palette_color_index];
+        background_pixels[x] = {tile_attrib.bg_priority(), palette_color_index};
+      }
     }
   }
 }
@@ -301,18 +303,19 @@ TEST_CASE("read_color_at_index should read the same color that was written") {
 
 void Gpu::render_scanline(int scanline) {
   const Registers::Lcdc lcdc{memory->get_ram(Registers::Lcdc::Address)};
-  const u16 window_y = memory->get_ram(0xff4a);
 
-  if (lcdc.window_on() && scanline >= window_y) {
-    const auto range = lcdc.window_tile_map_range();
-    const auto tile_attribs = memory->get_tile_atributes(range.first);
-    render_background_pixels(scanline, range, tile_attribs, 0, 0, 0, -window_y);
-  } else if (lcdc.bg_on()) {
+  if (lcdc.bg_on()) {
     const auto range = lcdc.bg_tile_map_range();
     const auto tile_attribs = memory->get_tile_atributes(range.first);
     render_background_pixels(scanline, range, tile_attribs, scx, scy, 0, 0);
+    if (lcdc.window_on() && scanline >= window_y) {
+      const auto window_range = lcdc.window_tile_map_range();
+      const auto window_tile_attribs =
+          memory->get_tile_atributes(window_range.first);
+      render_background_pixels(scanline, window_range, window_tile_attribs, 0,
+                               0, window_x - 7, -window_y);
+    }
   }
-
   if (lcdc.obj_on()) {
     render_sprites(scanline);
   }
