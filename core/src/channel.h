@@ -23,7 +23,7 @@ class Channel {
  public:
   Source source;
 
-  Channel(Source source) : source(std::move(source)) {}
+  Channel(Source source_) : source(std::move(source_)) {}
 
   Channel() {}
 
