@@ -126,15 +126,17 @@ void run_with_options(const std::string& rom_name, bool trace, bool save) {
 #ifdef __SWITCH__
   constexpr int WINDOW_WIDTH = 1920;
   constexpr int WINDOW_HEIGHT = 1080;
+  constexpr auto window_flags = SDL_WINDOW_FULLSCREEN;
 #else
   constexpr int WINDOW_WIDTH = 160 * 2;
   constexpr int WINDOW_HEIGHT = 144 * 2;
+  constexpr auto window_flags = 0;
 #endif
 
   SDL_SetHint(SDL_HINT_RENDER_VSYNC, "1");
   SDL_Window* window = SDL_CreateWindow("gbemu", SDL_WINDOWPOS_UNDEFINED,
                                         SDL_WINDOWPOS_UNDEFINED, WINDOW_WIDTH,
-                                        WINDOW_HEIGHT, SDL_WINDOW_FULLSCREEN);
+                                        WINDOW_HEIGHT, window_flags);
 
   if (!window) {
     std::cout << "SDL Error: " << SDL_GetError() << std::endl;
@@ -154,8 +156,6 @@ void run_with_options(const std::string& rom_name, bool trace, bool save) {
 
   SDL_RenderSetLogicalSize(sdl_renderer.get(), 160, 144);
 
-  std::cerr << "Init Audio SDL Error: " << SDL_GetError() << '\n';
-
   SDL_AudioSpec want, have;
   std::memset(&want, 0, sizeof(want));
 
@@ -173,7 +173,6 @@ void run_with_options(const std::string& rom_name, bool trace, bool save) {
   }
 
   SDL_PauseAudioDevice(audio_device, 0);
-  std::cerr << "PauseAudio SDL Error: " << SDL_GetError() << '\n';
 
   gb::SdlRenderer renderer{std::move(sdl_renderer)};
 
