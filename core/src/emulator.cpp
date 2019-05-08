@@ -48,6 +48,18 @@ static std::vector<u8> load_rom(const std::string& rom_name) {
 }
 
 void run_with_options(const std::string& rom_name, bool trace, bool save) {
+  if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO | SDL_INIT_JOYSTICK) < 0) {
+    std::cerr << "Error SDL_Init: " << SDL_GetError() << '\n';
+    return;
+  }
+  SDL_JoystickEventState(SDL_ENABLE);
+
+  for (int i = 0; i < SDL_NumJoysticks(); ++i) {
+    if (SDL_JoystickOpen(i) == nullptr) {
+      std::cerr << "JoypadOpen: " << SDL_GetError() << '\n';
+    }
+  }
+
   std::cout << rom_name << std::endl;
   std::string save_ram_path = rom_name + ".sav";
 
@@ -107,16 +119,22 @@ void run_with_options(const std::string& rom_name, bool trace, bool save) {
 
   cpu.set_debug(trace);
 
-  SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO);
-
 #if __linux__ && !defined RASPBERRYPI
   SDL_SetHint(SDL_HINT_VIDEO_X11_NET_WM_BYPASS_COMPOSITOR, "0");
 #endif
 
+#ifdef __SWITCH__
+  constexpr int WINDOW_WIDTH = 1920;
+  constexpr int WINDOW_HEIGHT = 1080;
+#else
+  constexpr int WINDOW_WIDTH = 160 * 2;
+  constexpr int WINDOW_HEIGHT = 144 * 2;
+#endif
+
   SDL_SetHint(SDL_HINT_RENDER_VSYNC, "1");
-  SDL_Window* window = SDL_CreateWindow(
-      "gbemu", SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED, 160 * 2,
-      144 * 2, SDL_WINDOW_SHOWN | SDL_WINDOW_RESIZABLE);
+  SDL_Window* window = SDL_CreateWindow("gbemu", SDL_WINDOWPOS_UNDEFINED,
+                                        SDL_WINDOWPOS_UNDEFINED, WINDOW_WIDTH,
+                                        WINDOW_HEIGHT, SDL_WINDOW_FULLSCREEN);
 
   if (!window) {
     std::cout << "SDL Error: " << SDL_GetError() << std::endl;
@@ -136,6 +154,8 @@ void run_with_options(const std::string& rom_name, bool trace, bool save) {
 
   SDL_RenderSetLogicalSize(sdl_renderer.get(), 160, 144);
 
+  std::cerr << "Init Audio SDL Error: " << SDL_GetError() << '\n';
+
   SDL_AudioSpec want, have;
   std::memset(&want, 0, sizeof(want));
 
@@ -143,11 +163,17 @@ void run_with_options(const std::string& rom_name, bool trace, bool save) {
   want.format = AUDIO_F32;
   want.channels = 2;
   want.samples = 4096;
+  want.callback = nullptr;
 
   SDL_AudioDeviceID audio_device =
-      SDL_OpenAudioDevice(nullptr, 0, &want, &have, SDL_AUDIO_ALLOW_ANY_CHANGE);
+      SDL_OpenAudioDevice(nullptr, 0, &want, &have, 0);
+  if (audio_device == 0) {
+    std::cerr << "OpenAudioDevice SDL Error: " << SDL_GetError() << '\n';
+    return;
+  }
 
   SDL_PauseAudioDevice(audio_device, 0);
+  std::cerr << "PauseAudio SDL Error: " << SDL_GetError() << '\n';
 
   gb::SdlRenderer renderer{std::move(sdl_renderer)};
 
@@ -204,6 +230,7 @@ void run_with_options(const std::string& rom_name, bool trace, bool save) {
   Uint32 delay = 0;
   double speed_compensation = 0;
 #endif
+
   while (true) {
     // prev_time = SDL_GetTicks();
 
@@ -211,8 +238,7 @@ void run_with_options(const std::string& rom_name, bool trace, bool save) {
     if (SDL_PollEvent(&e)) {
       if (e.type == SDL_QUIT) {
         break;
-      }
-      if (e.type == SDL_KEYUP || e.type == SDL_KEYDOWN) {
+      } else if (e.type == SDL_KEYUP || e.type == SDL_KEYDOWN) {
         const bool set_key = e.type == SDL_KEYDOWN;
         switch (e.key.keysym.sym) {
           case SDLK_UP:
@@ -238,6 +264,37 @@ void run_with_options(const std::string& rom_name, bool trace, bool save) {
             break;
           case SDLK_RSHIFT:
             input.set_select(set_key);
+            break;
+          default:
+            break;
+        }
+      } else if (e.type == SDL_JOYBUTTONDOWN || e.type == SDL_JOYBUTTONUP) {
+        const bool set_key = e.type == SDL_JOYBUTTONDOWN;
+
+        switch (e.jbutton.button) {
+          case 0:
+            input.set_a(set_key);
+            break;
+          case 1:
+            input.set_b(set_key);
+            break;
+          case 10:
+            input.set_start(set_key);
+            break;
+          case 11:
+            input.set_select(set_key);
+            break;
+          case 12:
+            input.set_left(set_key);
+            break;
+          case 13:
+            input.set_up(set_key);
+            break;
+          case 14:
+            input.set_right(set_key);
+            break;
+          case 15:
+            input.set_down(set_key);
             break;
           default:
             break;

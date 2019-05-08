@@ -1,1 +1,6 @@
 build/
+desktop/build/
+switch/build/
+*.nro
+*.nacp
+*.elf
