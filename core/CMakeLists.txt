@@ -69,7 +69,6 @@ set(SRCS
 
 
 add_library(${PROJECT_NAME} ${SRCS})
-#add_test(${PROJECT_NAME}_test gbemu --exit)
 
 set_target_properties(${PROJECT_NAME} PROPERTIES CXX_STANDARD 17)
 
@@ -79,16 +78,12 @@ target_include_directories(${PROJECT_NAME}
   PRIVATE $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/src>
 )
 
-#target_compile_definitions(${PROJECT_NAME} PRIVATE span_FEATURE_MEMBER_AT=1 BOOST_RESULT_OF_USE_DECLTYPE=1)
 target_compile_definitions(${PROJECT_NAME} PRIVATE
   span_FEATURE_MEMBER_AT=1
-  span_CONFIG_CONTRACT_VIOLATION_THROWS
   BOOST_RESULT_OF_USE_DECLTYPE=1
-  _GLIBCXX_DEBUG
 )
 
-#target_link_libraries(${PROJECT_NAME} PRIVATE ${PROJECT_NAME}_core doctest::doctest ${BOOST_PROGRAM_OPTIONS_LIB})
-target_link_libraries(${PROJECT_NAME} PRIVATE SDL2 doctest::doctest ${GBEMU_CORE_EXTRA_LIBS})
+target_link_libraries(${PROJECT_NAME} PRIVATE SDL2::SDL2-static doctest::doctest ${GBEMU_CORE_EXTRA_LIBS})
 
 target_compile_options(${PROJECT_NAME} PRIVATE
  -Wall
@@ -103,6 +98,4 @@ target_compile_options(${PROJECT_NAME} PRIVATE
 if (NOT ANDROID)
   target_link_options(${PROJECT_NAME} PRIVATE -march=native)
 endif()
-#target_link_options(${PROJECT_NAME} PRIVATE -fuse-ld=gold)
-#target_link_options(${PROJECT_NAME}_core PRIVATE -fuse-ld=gold)
 
