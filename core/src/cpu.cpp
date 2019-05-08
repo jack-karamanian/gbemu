@@ -37,7 +37,7 @@ Ticks Cpu::fetch_and_decode() {
     current_opcode = memory->at(pc + 1);
     execute_cb_opcode(current_opcode);
     if (debug) {
-      std::cout << instruction_names[current_opcode] << '\n';
+      std::cout << cb_instruction_names[current_opcode] << '\n';
     }
   } else {
     execute_opcode(current_opcode);
@@ -268,7 +268,7 @@ void Cpu::add_sp_s8() {
     clear_flag(FLAG_CARRY);
   }
 
-  set_half_carry(sp, (u16)val);
+  set_half_carry(sp, static_cast<u16>(val));
 
   clear_flag(FLAG_ZERO);
   clear_flag(FLAG_SUBTRACT);
@@ -758,7 +758,7 @@ void Cpu::ld_hl_sp_s8() {
     clear_flag(FLAG_CARRY);
   }
 
-  set_half_carry(sp, (u16)val);
+  set_half_carry(sp, static_cast<u16>(val));
 
   clear_flag(FLAG_ZERO);
   clear_flag(FLAG_SUBTRACT);
@@ -800,7 +800,7 @@ void Cpu::pop(u16& reg) {
   const u8 high = memory->at(sp);
   sp += 2;
 
-  reg = (((u16)low) << 8) | high;
+  reg = ((static_cast<u16>(low)) << 8) | high;
 }
 
 // POP AF
@@ -1253,7 +1253,7 @@ void Cpu::load_reg_to_addr(Register dst, Register src) {
 }
 
 u16& Cpu::get_r16(Register reg) {
-  return (u16&)*&regs[reg];
+  return reinterpret_cast<u16&>(*&regs[reg]);
 }
 
 u8 Cpu::value_at_r16(Register reg) {
