@@ -44,7 +44,7 @@ class SquareSource {
   void overflow_check(int freq);
 
  public:
-  SquareSource(bool enabled) : sweep_enabled{enabled} {}
+  SquareSource(bool enabled_) : sweep_enabled{enabled_} {}
 
   void set_timer_base(int value) {
     staged_timer_base = value;

@@ -133,7 +133,7 @@ void Mbc::set_ram_bank(u8 val) {
 }
 
 bool Mbc::in_ram_enable_range(u16 addr) const {
-  return addr >= 0x0000 && addr <= 0x1fff;
+  return addr <= 0x1fff;
 }
 
 bool Mbc::in_ram_bank_write_range(u16 addr) const {
