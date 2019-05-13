@@ -427,7 +427,7 @@ class DataProcessing : public Instruction {
         }
 
         if (write) {
-          cpu.reg(dest_register()) = result;
+          cpu.reg(dest_reg) = result;
         }
       };
 
@@ -446,62 +446,78 @@ class DataProcessing : public Instruction {
         }
 
         if (write) {
-          cpu.reg(dest_register()) = static_cast<u32>(result);
+          cpu.reg(dest_reg) = static_cast<u32>(result);
         }
       };
       switch (op) {
         // Arithmetic
         case Opcode::Sub:
-          return run_arithmetic(operand1, operand2, true,
-                                [](u64 op1, u64 op2) { return op1 - op2; });
+          run_arithmetic(operand1, operand2, true,
+                         [](u64 op1, u64 op2) { return op1 - op2; });
+          break;
         case Opcode::Rsb:
-          return run_arithmetic(operand1, operand2, true,
-                                [](u64 op1, u64 op2) { return op2 - op1; });
+          run_arithmetic(operand1, operand2, true,
+                         [](u64 op1, u64 op2) { return op2 - op1; });
+          break;
         case Opcode::Add:
-          return run_arithmetic(operand1, operand2, true,
-                                [](u64 op1, u64 op2) { return op1 + op2; });
+          run_arithmetic(operand1, operand2, true,
+                         [](u64 op1, u64 op2) { return op1 + op2; });
+          break;
           // return op1 + op2;
         case Opcode::Adc:
-          return run_arithmetic(operand1, operand2, true,
-                                [carry_value](u64 op1, u64 op2) {
-                                  return op1 + op2 + carry_value;
-                                });
+          run_arithmetic(operand1, operand2, true,
+                         [carry_value](u64 op1, u64 op2) {
+                           return op1 + op2 + carry_value;
+                         });
+          break;
           // return op1 + op2 + carry_value;
         case Opcode::Sbc:
-          return run_arithmetic(operand1, operand2, true,
-                                [carry_value](u64 op1, u64 op2) {
-                                  return op1 - op2 + carry_value - 1;
-                                });
+          run_arithmetic(operand1, operand2, true,
+                         [carry_value](u64 op1, u64 op2) {
+                           return op1 - op2 + carry_value - 1;
+                         });
+          break;
           // return op1 - op2 + carry_value - 1;
         case Opcode::Rsc:
-          return run_arithmetic(operand1, operand2, true,
-                                [carry_value](u64 op1, u64 op2) {
-                                  return op2 - op1 + carry_value - 1;
-                                });
+          run_arithmetic(operand1, operand2, true,
+                         [carry_value](u64 op1, u64 op2) {
+                           return op2 - op1 + carry_value - 1;
+                         });
+          break;
           // return op2 - op1 + carry_value - 1;
         case Opcode::Cmp:
-          return run_arithmetic(operand1, operand2, false,
-                                [](u64 op1, u64 op2) { return op1 - op2; });
+          run_arithmetic(operand1, operand2, false,
+                         [](u64 op1, u64 op2) { return op1 - op2; });
+          break;
         case Opcode::Cmn:
-          return run_arithmetic(operand1, operand2, false,
-                                [](u64 op1, u64 op2) { return op1 + op2; });
+          run_arithmetic(operand1, operand2, false,
+                         [](u64 op1, u64 op2) { return op1 + op2; });
+          break;
         // Logical
         case Opcode::And:
           run_logical(operand1 & operand2);
+          break;
         case Opcode::Eor:
           run_logical(operand1 ^ operand2);
+          break;
         case Opcode::Tst:
           run_logical(operand1 & operand2, false);
+          break;
         case Opcode::Teq:
           run_logical(operand1 ^ operand2, false);
+          break;
         case Opcode::Orr:
           run_logical(operand1 | operand2);
+          break;
         case Opcode::Mov:
           run_logical(operand2);
+          break;
         case Opcode::Bic:
           run_logical(operand1 & ~operand2);
+          break;
         case Opcode::Mvn:
           run_logical(~operand2);
+          break;
       }
     }
   }
