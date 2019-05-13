@@ -65,24 +65,6 @@ enum class Register : u32 {
   R15,
 };
 
-enum class Condition : u32 {
-  EQ = 0,
-  NE,
-  CS,
-  CC,
-  MI,
-  PL,
-  VS,
-  VC,
-  HI,
-  LS,
-  GE,
-  LT,
-  GT,
-  LE,
-  AL,
-};
-
 struct LookupEntry {
   u32 mask = 0;
   u32 expected = 0;
@@ -149,6 +131,24 @@ class ProgramStatus : public Integer<u32> {
 
 class Instruction : public Integer<u32> {
  public:
+  enum class Condition : u32 {
+    EQ = 0,  // Z set
+    NE,      // Z clear
+    CS,      // C set
+    CC,      // C clear
+    MI,      // N set
+    PL,      // N clear
+    VS,      // V set
+    VC,      // V clear
+    HI,      // C set and Z clear
+    LS,      // C clear or Z set
+    GE,      // N equals V
+    LT,      // N not equal to V
+    GT,      // Z clear AND (N equals V)
+    LE,      // Z set OR (N not equal to V)
+    AL,      // ignored
+  };
+
   using Integer::Integer;
   [[nodiscard]] constexpr Register dest_register() const {
     return static_cast<Register>((value >> 12) & 0xf);
@@ -158,6 +158,44 @@ class Instruction : public Integer<u32> {
   }
   [[nodiscard]] constexpr Condition condition() const {
     return static_cast<Condition>((value >> 28) & 0xf);
+  }
+
+  [[nodiscard]] constexpr bool should_execute(
+      ProgramStatus program_status) const {
+    switch (condition()) {
+      case Condition::EQ:
+        return program_status.zero();
+      case Condition::NE:
+        return !program_status.zero();
+      case Condition::CS:
+        return program_status.carry();
+      case Condition::CC:
+        return !program_status.carry();
+      case Condition::MI:
+        return program_status.negative();
+      case Condition::PL:
+        return !program_status.negative();
+      case Condition::VS:
+        return program_status.overflow();
+      case Condition::VC:
+        return !program_status.overflow();
+      case Condition::HI:
+        return program_status.carry() && !program_status.zero();
+      case Condition::LS:
+        return !program_status.carry() || program_status.zero();
+      case Condition::GE:
+        return program_status.negative() == program_status.overflow();
+      case Condition::LT:
+        return program_status.negative() != program_status.overflow();
+      case Condition::GT:
+        return !program_status.zero() &&
+               program_status.negative() == program_status.overflow();
+      case Condition::LE:
+        return program_status.zero() ||
+               program_status.negative() != program_status.overflow();
+      case Condition::AL:
+        return true;
+    }
   }
 };
 
@@ -186,7 +224,7 @@ class Cpu {
     return current_program_status;
   }
 
-  constexpr u32 carry() { return program_status().carry() ? 1 : 0; }
+  constexpr u32 carry() const { return program_status().carry() ? 1 : 0; }
 
   friend class DataProcessing;
 };
@@ -257,7 +295,9 @@ class DataProcessing : public Instruction {
       if (register_specified) {
         // Shift by bottom byte of register
         const u32 reg = (value >> 8) & 0xf;
-        return reg == 15 ? 0 : static_cast<u8>(cpu.regs.at(reg) & 0xff);
+        const u8 amount =
+            reg == 15 ? 0 : static_cast<u8>(cpu.regs.at(reg) & 0xff);
+        return amount;
       }
 
       // Shift by 5 bit number
@@ -266,19 +306,24 @@ class DataProcessing : public Instruction {
     const u32 reg_value = cpu.reg(reg);  // Rm
 
     // TODO: Finish shift carry calculation
+    // Allow carry and the result to be overriden
     const auto [error_value, set_carry] =
         [&]() -> std::tuple<std::optional<u32>, std::optional<bool>> {
+      if (register_specified && shift_amount == 0) {
+        return {{}, cpu.program_status().carry()};
+      }
       switch (shift_type) {
         case ShiftType::LogicalLeft:
           if (register_specified) {
             if (shift_amount == 32) {
               return {0, gb::test_bit(reg_value, 0)};
-            } else if (shift_amount > 32) {
+            }
+            if (shift_amount > 32) {
               return {0, false};
             }
           } else {
             if (shift_amount == 0) {
-              return {{}, cpu.program_status().carry()};
+              return {reg_value, cpu.program_status().carry()};
             }
           }
           return {{}, {}};
@@ -287,15 +332,30 @@ class DataProcessing : public Instruction {
           if (register_specified) {
             if (shift_amount == 32) {
               return {0, gb::test_bit(reg_value, 31)};
-            } else if (shift_amount > 32) {
+            }
+            if (shift_amount > 32) {
               return {0, false};
             }
           } else {
             if (shift_amount == 0) {
-              return {0, gb::test_bit(reg_value, 31)};
+              return {reg_value, gb::test_bit(reg_value, 31)};
             }
           }
           return {{}, {}};
+        case ShiftType::ArithmeticRight:
+          if (shift_amount == 32) {
+            const bool is_negative = gb::test_bit(reg_value, 31);
+            return {is_negative ? 0xffffffff : 0, is_negative};
+          }
+          return {{}, {}};
+
+        case ShiftType::RotateRight:
+          if (shift_amount == 0) {
+            const bool carry = gb::test_bit(reg_value, 0);
+            return {(cpu.carry() << 31) | (reg_value >> 1), carry};
+          }
+          return {{}, {}};
+
         default:
           return {{}, {}};
       }
@@ -310,20 +370,38 @@ class DataProcessing : public Instruction {
         shift_value(cpu);
     // const bool carry = set_carry.value_or(cpu.program_status().carry());
     // const bool carry = cpu.program_status().carry();
-    switch (shift_type) {
-      case ShiftType::LogicalLeft:
-        return {gb::test_bit(shift_operand, 32 - shift_amount),
-                shift_operand << shift_amount};
-      case ShiftType::LogicalRight:
-        return {gb::test_bit(shift_operand, shift_amount - 1),
-                shift_operand >> shift_amount};
-      case ShiftType::ArithmeticRight:
-        return {gb::test_bit(shift_operand, shift_amount - 1),
-                arithmetic_shift_right(shift_operand, shift_amount)};
-      case ShiftType::RotateRight:
-        return {gb::test_bit(shift_operand, shift_amount - 1),
-                rotate_right(shift_operand, shift_amount)};
-    }
+    constexpr auto compute_carry = [](ShiftType shift_type, u32 shift_operand,
+                                      u32 shift_amount) {
+      switch (shift_type) {
+        case ShiftType::LogicalLeft:
+          return gb::test_bit(shift_operand, 32 - shift_amount);
+        case ShiftType::LogicalRight:
+          return gb::test_bit(shift_operand, shift_amount - 1);
+        case ShiftType::ArithmeticRight:
+          return gb::test_bit(shift_operand, shift_amount - 1);
+        case ShiftType::RotateRight:
+          return gb::test_bit(shift_operand, shift_amount - 1);
+      }
+    };
+
+    constexpr auto compute_result = [](ShiftType shift_type, u32 shift_operand,
+                                       u32 shift_amount) {
+      switch (shift_type) {
+        case ShiftType::LogicalLeft:
+          return shift_operand << shift_amount;
+        case ShiftType::LogicalRight:
+          return shift_operand >> shift_amount;
+        case ShiftType::ArithmeticRight:
+          return arithmetic_shift_right(shift_operand, shift_amount);
+        case ShiftType::RotateRight:
+          return rotate_right(shift_operand, shift_amount);
+      }
+    };
+
+    return {set_carry.value_or(
+                compute_carry(shift_type, shift_operand, shift_amount)),
+            result.value_or(
+                compute_result(shift_type, shift_operand, shift_amount))};
   }
 
   constexpr void execute(Cpu& cpu) {
@@ -337,55 +415,95 @@ class DataProcessing : public Instruction {
 
     const Opcode op = opcode();
     const u32 carry_value = cpu.carry();
-    const u32 result = [operand1, operand2, op, carry_value]() -> u32 {
+
+    const Register dest_reg = dest_register();
+
+    if (dest_reg != Register::R15) {
+      const auto run_logical = [&](u32 result, bool write = true) {
+        if (set_condition_code()) {
+          cpu.program_status().set_carry(shift_carry);
+          cpu.program_status().set_zero(result == 0);
+          cpu.program_status().set_negative(gb::test_bit(result, 31));
+        }
+
+        if (write) {
+          cpu.reg(dest_register()) = result;
+        }
+      };
+
+      const auto run_arithmetic = [&](u64 op1, u64 op2, bool write, auto impl) {
+        const u32 dest_value = cpu.reg(dest_register());
+
+        const u64 result = impl(op1, op2);
+
+        if (set_condition_code()) {
+          cpu.program_status().set_overflow(gb::test_bit(dest_value, 31) !=
+                                            gb::test_bit(result, 31));
+          cpu.program_status().set_zero(result == 0);
+          cpu.program_status().set_negative(gb::test_bit(result, 31));
+          cpu.program_status().set_carry(result >
+                                         std::numeric_limits<u32>::max());
+        }
+
+        if (write) {
+          cpu.reg(dest_register()) = static_cast<u32>(result);
+        }
+      };
       switch (op) {
         // Arithmetic
         case Opcode::Sub:
-          return operand1 - operand2;
+          return run_arithmetic(operand1, operand2, true,
+                                [](u64 op1, u64 op2) { return op1 - op2; });
         case Opcode::Rsb:
-          return operand2 - operand1;
+          return run_arithmetic(operand1, operand2, true,
+                                [](u64 op1, u64 op2) { return op2 - op1; });
         case Opcode::Add:
-          return operand1 + operand2;
+          return run_arithmetic(operand1, operand2, true,
+                                [](u64 op1, u64 op2) { return op1 + op2; });
+          // return op1 + op2;
         case Opcode::Adc:
-          return operand1 + operand2 + carry_value;
+          return run_arithmetic(operand1, operand2, true,
+                                [carry_value](u64 op1, u64 op2) {
+                                  return op1 + op2 + carry_value;
+                                });
+          // return op1 + op2 + carry_value;
         case Opcode::Sbc:
-          return operand1 - operand2 + carry_value - 1;
+          return run_arithmetic(operand1, operand2, true,
+                                [carry_value](u64 op1, u64 op2) {
+                                  return op1 - op2 + carry_value - 1;
+                                });
+          // return op1 - op2 + carry_value - 1;
         case Opcode::Rsc:
-          return operand2 - operand1 + carry_value - 1;
+          return run_arithmetic(operand1, operand2, true,
+                                [carry_value](u64 op1, u64 op2) {
+                                  return op2 - op1 + carry_value - 1;
+                                });
+          // return op2 - op1 + carry_value - 1;
         case Opcode::Cmp:
-          break;
+          return run_arithmetic(operand1, operand2, false,
+                                [](u64 op1, u64 op2) { return op1 - op2; });
         case Opcode::Cmn:
-          break;
+          return run_arithmetic(operand1, operand2, false,
+                                [](u64 op1, u64 op2) { return op1 + op2; });
         // Logical
         case Opcode::And:
-          return operand1 & operand2;
+          run_logical(operand1 & operand2);
         case Opcode::Eor:
-          return operand1 ^ operand2;
+          run_logical(operand1 ^ operand2);
         case Opcode::Tst:
-          break;
+          run_logical(operand1 & operand2, false);
         case Opcode::Teq:
-          break;
+          run_logical(operand1 ^ operand2, false);
         case Opcode::Orr:
-          return operand1 | operand2;
+          run_logical(operand1 | operand2);
         case Opcode::Mov:
-          return operand2;
+          run_logical(operand2);
         case Opcode::Bic:
-          return operand1 & ~operand2;
+          run_logical(operand1 & ~operand2);
         case Opcode::Mvn:
-          return ~operand2;
+          run_logical(~operand2);
       }
-    }();
-
-    const u32 dest_value = cpu.reg(dest_register());
-
-    if (set_condition_code()) {
-      cpu.program_status().set_overflow(gb::test_bit(dest_value, 31) !=
-                                        gb::test_bit(result, 31));
-      cpu.program_status().set_zero(result == 0);
-      cpu.program_status().set_negative(gb::test_bit(result, 31));
     }
-
-    cpu.reg(dest_register()) = result;
   }
 };
 
@@ -468,11 +586,9 @@ static_assert([]() -> bool {
     throw "it should be immedeiate";
   }
 
-  // inst.execute(cpu);
-  const auto [x, y] = inst.compute_operand2(cpu);
+  inst.execute(cpu);
 
-  return true;
-  // return cpu.reg(Register::R0) == 456;
+  return cpu.reg(Register::R0) == 456;
 }());
 static_assert(
     decode_instruction_type(0b0000'0011'1111'0011'0011'0000'0000'0000) ==
