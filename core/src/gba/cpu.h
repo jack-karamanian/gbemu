@@ -306,7 +306,7 @@ class DataProcessing : public Instruction {
     const u32 reg_value = cpu.reg(reg);  // Rm
 
     // TODO: Finish shift carry calculation
-    // Allow carry and the result to be overriden
+    // Allow carry and the result to be overridden
     const auto [error_value, set_carry] =
         [&]() -> std::tuple<std::optional<u32>, std::optional<bool>> {
       if (register_specified && shift_amount == 0) {
@@ -413,7 +413,6 @@ class DataProcessing : public Instruction {
 
     const u32 operand1 = cpu.reg(operand_register());
 
-    const Opcode op = opcode();
     const u32 carry_value = cpu.carry();
 
     const Register dest_reg = dest_register();
@@ -449,7 +448,7 @@ class DataProcessing : public Instruction {
           cpu.reg(dest_reg) = static_cast<u32>(result);
         }
       };
-      switch (op) {
+      switch (opcode()) {
         // Arithmetic
         case Opcode::Sub:
           run_arithmetic(operand1, operand2, true,
@@ -599,7 +598,7 @@ static_assert([]() -> bool {
     throw "dest should be r0";
   }
   if (!inst.immediate_operand()) {
-    throw "it should be immedeiate";
+    throw "it should be immediate";
   }
 
   inst.execute(cpu);
