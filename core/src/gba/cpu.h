@@ -1,6 +1,7 @@
 #pragma once
 #include <algorithm>
 #include <array>
+#include <optional>
 #include <tuple>
 #include "types.h"
 #include "utils.h"
@@ -11,6 +12,8 @@ namespace gb::advance {
 
 enum class InstructionType {
   DataProcessing,
+  MRS,
+  MSR,
   Multiply,
   MultiplyLong,
   SingleDataSwap,
@@ -25,6 +28,7 @@ enum class InstructionType {
   CoprocessorDataOperation,
   CoprocessorRegisterTransfer,
   SoftwareInterrupt,
+
 };
 
 enum class Opcode : u32 {
@@ -78,7 +82,6 @@ struct LookupEntry {
     mask = set_bits<u32>(args...);
     return *this;
   }
-
   constexpr LookupEntry& mask_bit_range(int begin, int end) {
     for (int i = begin; i <= end; ++i) {
       mask |= (1 << i);
@@ -103,6 +106,7 @@ class Integer {
   [[nodiscard]] constexpr bool test_bit(unsigned int bit) const {
     return gb::test_bit(value, bit);
   }
+
   constexpr void set_bit(unsigned int bit, bool set) {
     const T mask = 1 << bit;
     value = (value & ~mask) | (set ? 0 : mask);
@@ -114,7 +118,7 @@ class Integer {
 
 class ProgramStatus : public Integer<u32> {
  public:
-  using Integer::Integer;
+  constexpr ProgramStatus() : Integer::Integer{0} {}
 
   [[nodiscard]] constexpr bool negative() const { return test_bit(31); }
   constexpr void set_negative(bool set) { set_bit(31, set); }
@@ -199,34 +203,51 @@ class Instruction : public Integer<u32> {
   }
 };
 
-class LogicalOperation {};
-
 class Cpu {
  public:
-  std::array<u32, 16> regs = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
-  ProgramStatus current_program_status{0};
+  enum class Mode { User = 0, FIQ, Supervisor, Abort, IRQ, Undefined };
+  std::array<u32, 16> m_regs = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
+
+  Mode m_mode = Mode::User;
 
   constexpr u32& reg(Register reg_selected) {
     const u32 index = static_cast<u32>(reg_selected);
-    return regs[index];
+    return m_regs[index];
   }
 
   constexpr u32 reg(Register reg_selected) const {
     const u32 index = static_cast<u32>(reg_selected);
-    return regs[index];
+    return m_regs[index];
   }
 
   [[nodiscard]] constexpr ProgramStatus& program_status() {
-    return current_program_status;
+    return m_current_program_status;
   }
 
   [[nodiscard]] constexpr const ProgramStatus& program_status() const {
-    return current_program_status;
+    return m_current_program_status;
+  }
+
+#if 0
+  [[nodiscard]] constexpr ProgramStatus saved_program_status() const {
+    return m_saved_program_status[static_cast<u32>(m_mode)];
+  }
+#endif
+
+  constexpr void move_spsr_to_cpsr() {
+    if (m_mode != Mode::User) {
+      m_current_program_status =
+          m_saved_program_status[static_cast<u32>(m_mode) - 1];
+    }
   }
 
   constexpr u32 carry() const { return program_status().carry() ? 1 : 0; }
 
   friend class DataProcessing;
+
+ private:
+  ProgramStatus m_current_program_status{};
+  std::array<ProgramStatus, 5> m_saved_program_status{};
 };
 
 class DataProcessing : public Instruction {
@@ -296,7 +317,9 @@ class DataProcessing : public Instruction {
         // Shift by bottom byte of register
         const u32 reg = (value >> 8) & 0xf;
         const u8 amount =
-            reg == 15 ? 0 : static_cast<u8>(cpu.regs.at(reg) & 0xff);
+            reg == 15
+                ? 0
+                : static_cast<u8>(cpu.reg(static_cast<Register>(reg)) & 0xff);
         return amount;
       }
 
@@ -417,114 +440,131 @@ class DataProcessing : public Instruction {
 
     const Register dest_reg = dest_register();
 
-    if (dest_reg != Register::R15) {
-      const auto run_logical = [&](u32 result, bool write = true) {
-        if (set_condition_code()) {
-          cpu.program_status().set_carry(shift_carry);
-          cpu.program_status().set_zero(result == 0);
-          cpu.program_status().set_negative(gb::test_bit(result, 31));
-        }
-
-        if (write) {
-          cpu.reg(dest_reg) = result;
-        }
-      };
-
-      const auto run_arithmetic = [&](u64 op1, u64 op2, bool write, auto impl) {
-        const u32 dest_value = cpu.reg(dest_register());
-
-        const u64 result = impl(op1, op2);
-
-        if (set_condition_code()) {
-          cpu.program_status().set_overflow(gb::test_bit(dest_value, 31) !=
-                                            gb::test_bit(result, 31));
-          cpu.program_status().set_zero(result == 0);
-          cpu.program_status().set_negative(gb::test_bit(result, 31));
-          cpu.program_status().set_carry(result >
-                                         std::numeric_limits<u32>::max());
-        }
-
-        if (write) {
-          cpu.reg(dest_reg) = static_cast<u32>(result);
-        }
-      };
-      switch (opcode()) {
-        // Arithmetic
-        case Opcode::Sub:
-          run_arithmetic(operand1, operand2, true,
-                         [](u64 op1, u64 op2) { return op1 - op2; });
-          break;
-        case Opcode::Rsb:
-          run_arithmetic(operand1, operand2, true,
-                         [](u64 op1, u64 op2) { return op2 - op1; });
-          break;
-        case Opcode::Add:
-          run_arithmetic(operand1, operand2, true,
-                         [](u64 op1, u64 op2) { return op1 + op2; });
-          break;
-          // return op1 + op2;
-        case Opcode::Adc:
-          run_arithmetic(operand1, operand2, true,
-                         [carry_value](u64 op1, u64 op2) {
-                           return op1 + op2 + carry_value;
-                         });
-          break;
-          // return op1 + op2 + carry_value;
-        case Opcode::Sbc:
-          run_arithmetic(operand1, operand2, true,
-                         [carry_value](u64 op1, u64 op2) {
-                           return op1 - op2 + carry_value - 1;
-                         });
-          break;
-          // return op1 - op2 + carry_value - 1;
-        case Opcode::Rsc:
-          run_arithmetic(operand1, operand2, true,
-                         [carry_value](u64 op1, u64 op2) {
-                           return op2 - op1 + carry_value - 1;
-                         });
-          break;
-          // return op2 - op1 + carry_value - 1;
-        case Opcode::Cmp:
-          run_arithmetic(operand1, operand2, false,
-                         [](u64 op1, u64 op2) { return op1 - op2; });
-          break;
-        case Opcode::Cmn:
-          run_arithmetic(operand1, operand2, false,
-                         [](u64 op1, u64 op2) { return op1 + op2; });
-          break;
-        // Logical
-        case Opcode::And:
-          run_logical(operand1 & operand2);
-          break;
-        case Opcode::Eor:
-          run_logical(operand1 ^ operand2);
-          break;
-        case Opcode::Tst:
-          run_logical(operand1 & operand2, false);
-          break;
-        case Opcode::Teq:
-          run_logical(operand1 ^ operand2, false);
-          break;
-        case Opcode::Orr:
-          run_logical(operand1 | operand2);
-          break;
-        case Opcode::Mov:
-          run_logical(operand2);
-          break;
-        case Opcode::Bic:
-          run_logical(operand1 & ~operand2);
-          break;
-        case Opcode::Mvn:
-          run_logical(~operand2);
-          break;
+    const auto write_result = [&cpu, this](Register dest_reg, u32 result) {
+      if (dest_reg == Register::R15 && set_condition_code()) {
+        cpu.move_spsr_to_cpsr();
       }
+      cpu.reg(dest_reg) = result;
+    };
+
+    const auto run_logical = [&](u32 result, bool write = true) {
+      if (set_condition_code()) {
+        cpu.program_status().set_carry(shift_carry);
+        cpu.program_status().set_zero(result == 0);
+        cpu.program_status().set_negative(gb::test_bit(result, 31));
+      }
+
+      if (write) {
+        write_result(dest_reg, result);
+      }
+    };
+
+    const auto run_arithmetic = [&](u64 op1, u64 op2, bool write, auto impl) {
+      const u32 dest_value = cpu.reg(dest_register());
+
+      const u64 result = impl(op1, op2);
+
+      if (set_condition_code()) {
+        cpu.program_status().set_overflow(gb::test_bit(dest_value, 31) !=
+                                          gb::test_bit(result, 31));
+        cpu.program_status().set_zero(result == 0);
+        cpu.program_status().set_negative(gb::test_bit(result, 31));
+        cpu.program_status().set_carry(result >
+                                       std::numeric_limits<u32>::max());
+      }
+
+      if (write) {
+        write_result(dest_reg, static_cast<u32>(result));
+      }
+    };
+
+    switch (opcode()) {
+      // Arithmetic
+      case Opcode::Sub:
+        run_arithmetic(operand1, operand2, true,
+                       [](u64 op1, u64 op2) { return op1 - op2; });
+        break;
+      case Opcode::Rsb:
+        run_arithmetic(operand1, operand2, true,
+                       [](u64 op1, u64 op2) { return op2 - op1; });
+        break;
+      case Opcode::Add:
+        run_arithmetic(operand1, operand2, true,
+                       [](u64 op1, u64 op2) { return op1 + op2; });
+        break;
+        // return op1 + op2;
+      case Opcode::Adc:
+        run_arithmetic(operand1, operand2, true,
+                       [carry_value](u64 op1, u64 op2) {
+                         return op1 + op2 + carry_value;
+                       });
+        break;
+        // return op1 + op2 + carry_value;
+      case Opcode::Sbc:
+        run_arithmetic(operand1, operand2, true,
+                       [carry_value](u64 op1, u64 op2) {
+                         return op1 - op2 + carry_value - 1;
+                       });
+        break;
+        // return op1 - op2 + carry_value - 1;
+      case Opcode::Rsc:
+        run_arithmetic(operand1, operand2, true,
+                       [carry_value](u64 op1, u64 op2) {
+                         return op2 - op1 + carry_value - 1;
+                       });
+        break;
+        // return op2 - op1 + carry_value - 1;
+      case Opcode::Cmp:
+        run_arithmetic(operand1, operand2, false,
+                       [](u64 op1, u64 op2) { return op1 - op2; });
+        break;
+      case Opcode::Cmn:
+        run_arithmetic(operand1, operand2, false,
+                       [](u64 op1, u64 op2) { return op1 + op2; });
+        break;
+      // Logical
+      case Opcode::And:
+        run_logical(operand1 & operand2);
+        break;
+      case Opcode::Eor:
+        run_logical(operand1 ^ operand2);
+        break;
+      case Opcode::Tst:
+        run_logical(operand1 & operand2, false);
+        break;
+      case Opcode::Teq:
+        run_logical(operand1 ^ operand2, false);
+        break;
+      case Opcode::Orr:
+        run_logical(operand1 | operand2);
+        break;
+      case Opcode::Mov:
+        run_logical(operand2);
+        break;
+      case Opcode::Bic:
+        run_logical(operand1 & ~operand2);
+        break;
+      case Opcode::Mvn:
+        run_logical(~operand2);
+        break;
     }
   }
 };
 
-constexpr std::array<LookupEntry, 15> generate_lookup_table() {
-  std::array<LookupEntry, 15> lookup_table = {
+class MRS : public DataProcessing {
+ public:
+  constexpr void execute(Cpu& cpu) {}
+};
+
+constexpr std::array<LookupEntry, 17> generate_lookup_table() {
+  std::array<LookupEntry, 17> lookup_table = {
       LookupEntry{InstructionType::DataProcessing}.mask_bits(27, 26),
+      LookupEntry{InstructionType::MRS}
+          .mask_bit_range(23, 27)
+          .mask_bit_range(16, 21)
+          .mask_bit_range(0, 11)
+          .expect_bits(24, 19, 18, 17, 16),
+      LookupEntry{InstructionType::MSR},
       LookupEntry{InstructionType::Multiply}
           .mask_bit_range(22, 27)
           .mask_bit_range(4, 7)
@@ -573,7 +613,7 @@ constexpr std::array<LookupEntry, 15> generate_lookup_table() {
   return lookup_table;
 }
 
-constexpr std::array<LookupEntry, 15> lookup_table = generate_lookup_table();
+constexpr std::array<LookupEntry, 17> lookup_table = generate_lookup_table();
 
 constexpr auto decode_instruction_type(u32 instruction) {
   const auto decoded_type =
