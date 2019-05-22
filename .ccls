@@ -1,0 +1,5 @@
+%compile_commands.json
+%cpp -std=gnu++17
+-Icore/src
+-Icore/include
+-Iexternal/span-lite/include
