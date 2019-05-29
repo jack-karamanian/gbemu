@@ -194,8 +194,6 @@ void Gpu::render_background(
     for (int pixel_x : boost::irange(x_begin, x_end)) {
       const u16 x = tile_x + pixel_x - tile_scroll_x + offset_x;
 
-      assert(x >= 0 && x < 160);
-
       const u8 color_index = render_pixel(
           byte1, byte2,
           tile_attrib.horizontal_flip() ? TILE_SIZE - pixel_x - 1 : pixel_x);
@@ -254,15 +252,22 @@ u8 Gpu::read_sprite_color() const {
   return sprite_palette.current_color_byte();
 }
 
+static u8 convert_from_cgb_color(u8 color) {
+  return convert_space<32, 255>(color);
+}
+static u8 convert_to_cgb_color(u8 color) {
+  return convert_space<255, 32>(color);
+}
+
 Color Gpu::compute_cgb_color(Color real_color, int index, u8 color) {
   const CgbColor cgb_color{index, color};
   if (index % 2 == 0) {
-    real_color.r = (cgb_color.r() * 255) / 32;
-    real_color.g = (cgb_color.g() * 255) / 32;
+    real_color.r = convert_from_cgb_color(cgb_color.r());
+    real_color.g = convert_from_cgb_color(cgb_color.g());
   } else {
-    const u8 green = (real_color.g * 32) / 255;
-    real_color.g = ((cgb_color.g() | green) * 255) / 32;
-    real_color.b = (cgb_color.b() * 255) / 32;
+    const u8 green = convert_to_cgb_color(real_color.g);
+    real_color.g = convert_from_cgb_color(cgb_color.g() | green);
+    real_color.b = convert_from_cgb_color(cgb_color.b());
   }
   return real_color;
 }
