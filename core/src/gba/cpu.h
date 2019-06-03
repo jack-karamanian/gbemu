@@ -5,6 +5,7 @@
 #include <nonstd/span.hpp>
 #include <optional>
 #include <tuple>
+#include "mmu.h"
 #include "types.h"
 #include "utils.h"
 
@@ -31,7 +32,6 @@ enum class InstructionType {
   CoprocessorDataOperation,
   CoprocessorRegisterTransfer,
   SoftwareInterrupt,
-
 };
 
 enum class Opcode : u32 {
@@ -249,7 +249,7 @@ constexpr std::array<LookupEntry, 18> generate_lookup_table() {
           .expect_bits(24, 7, 4),
       LookupEntry{InstructionType::BranchAndExchange}
           .mask_bit_range(4, 27)
-          .expect_bits(25, 21, 19, 18, 17, 16, 15, 14, 13, 12, 11, 10, 9, 8, 4),
+          .expect_bits(24, 21, 19, 18, 17, 16, 15, 14, 13, 12, 11, 10, 9, 8, 4),
       LookupEntry{InstructionType::HalfwordDataTransferReg}
           .mask_bits(27, 26, 25, 22, 11, 10, 9, 8, 7, 4)
           .expect_bits(7, 4),
@@ -302,55 +302,28 @@ constexpr auto decode_instruction_type(u32 instruction) {
                                             : decoded_type->type;
 }
 
-class Mmu {
- public:
-  constexpr Mmu() = default;
-  constexpr Mmu(nonstd::span<u8> memory) : m_memory{memory} {}
-
-  // constexpr u8& at(u32 addr) { return m_memory.at(addr); }
-
-  template <typename T>
-  constexpr T at(u32 addr) {
-    return convert_bytes_endian<u32>({&m_memory.at(addr), sizeof(T)});
-  }
-
-  template <typename T>
-  constexpr void set(u32 addr, T value) {
-    const auto converted = to_bytes(value);
-    for (std::size_t i = 0; i < sizeof(T); ++i) {
-      m_memory[addr + i] = converted[i];
-    }
-#if 0
-    for (int i = sizeof(T); i >= 0; --i) {
-      std::size_t shift = i * 8;
-      m_memory[addr + i - sizeof(T)] = (value & (0xff << shift));
-    }
-#endif
-  }
-
- private:
-  nonstd::span<u8> m_memory;
-};
-
 class Cpu {
  public:
   enum class Mode { User = 0, FIQ, Supervisor, Abort, IRQ, Undefined };
   std::array<u32, 16> m_regs = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
 
-  constexpr Cpu() = default;
-  constexpr Cpu(nonstd::span<u8> memory) : m_mmu{memory} {}
+  Cpu() = default;
+  Cpu(Mmu& mmu) : m_mmu{&mmu} {}
 
   [[nodiscard]] constexpr u32 reg(Register reg_selected) const {
     const u32 index = static_cast<u32>(reg_selected);
 
     if (reg_selected == Register::R15) {
-      return m_regs[index] + 4;
+      return (m_regs[index] + 4) & ~0b11;
     }
     return m_regs[index];
   }
 
   constexpr void set_reg(Register reg_selected, u32 value) {
     const u32 index = static_cast<u32>(reg_selected);
+    if (reg_selected == Register::R15) {
+      value &= ~0b11;
+    }
     m_regs[index] = value;
   }
 
@@ -405,6 +378,8 @@ class Cpu {
 
   friend class DataProcessing;
   friend class SingleDataTransfer;
+  friend class HalfwordDataTransfer;
+  friend class BlockDataTransfer;
 
  private:
   constexpr ProgramStatus& get_current_program_status() {
@@ -417,9 +392,11 @@ class Cpu {
     }
   }
 
-  constexpr u32 index_from_mode() const { return static_cast<u32>(m_mode) - 1; }
+  [[nodsicard]] constexpr u32 index_from_mode() const {
+    return static_cast<u32>(m_mode) - 1;
+  }
 
-  Mmu m_mmu;
+  Mmu* m_mmu;
   Mode m_mode = Mode::User;
   ProgramStatus m_current_program_status{};
   std::array<ProgramStatus, 5> m_saved_program_status{};
@@ -885,12 +862,25 @@ class Branch : public Instruction {
     const s32 offset = ((value & 0b0111'1111'1111'1111'1111'1111) << 2) |
                        (negative ? (0xfe << 24) : 0);
 
+    printf("offset: %d\n", offset);
     const u32 next_pc = cpu.reg(Register::R15) + offset;
-    cpu.set_reg(Register::R15, next_pc);
-
+    // const u32 next_pc = cpu.reg(Register::R15) + offset - 8;
+    printf("next pc: %d\n", next_pc);
     if (link) {
-      cpu.set_reg(Register::R14, next_pc);
+      cpu.set_reg(Register::R14, cpu.reg(Register::R15) - 4);
+      // cpu.set_reg(Register::R14, cpu.reg(Register::R15));
     }
+    cpu.set_reg(Register::R15, next_pc);
+  }
+};
+
+class BranchAndExchange : public Instruction {
+ public:
+  using Instruction::Instruction;
+
+  void execute(Cpu& cpu) {
+    const auto next_pc_reg = static_cast<Register>(value & 0xf);
+    cpu.set_reg(Register::R15, cpu.reg(next_pc_reg));
   }
 };
 
@@ -909,50 +899,20 @@ class SingleDataTransfer : public Instruction {
   [[nodiscard]] constexpr bool write_back() const { return test_bit(21); }
   [[nodiscard]] constexpr bool load() const { return test_bit(20); }
 
-  void execute(Cpu& cpu) {
-    Mmu& mmu = cpu.m_mmu;
-    const auto calculate_offset = [&]() -> u32 {
-      if (immediate_offset()) {
-        return value & 0xfff;
-      }
-
-      const ShiftResult shift_result = compute_shift_value(value, cpu);
-      const auto [set_carry, offset] = compute_shifted_operand(shift_result);
-
-      return offset;
-    };
-
+  template <typename Func>
+  void write_value_to_addr(Cpu& cpu,
+                           u32 aligned_addr,
+                           u32 raw_addr,
+                           u32 rotate_amount,
+                           Func calculate_addr) {
     const Register base_register = operand_register();
-    const u32 base_value = cpu.reg(base_register);
-
-    const auto calculate_addr = [&]() -> u32 {
-      const u32 offset = calculate_offset();
-      const u32 addr =
-          add_offset_to_base() ? offset + base_value : offset - base_value;
-      return addr;
-    };
-
-    // The address to be used in the transfer
-    const auto [aligned_addr, raw_addr,
-                rotate_amount] = [&]() -> std::tuple<u32, u32, u32> {
-      const u32 raw_addr = [&] {
-        if (preindex()) {
-          const u32 addr = calculate_addr();
-          if (write_back()) {
-            cpu.set_reg(base_register, addr);
-          }
-          return addr;
-        }
-        return base_value;
-      }();
-      return {raw_addr & ~0b11, raw_addr, (raw_addr & 0b11) * 8};
-    }();
-
+    Mmu& mmu = *cpu.m_mmu;
     if (load()) {
       if (word()) {
         // Load a word
         const u32 value =
             rotate_right(mmu.at<u32>(aligned_addr & ~0b11), rotate_amount);
+        printf("aligned_addr: %d\n", aligned_addr);
 
         cpu.set_reg(dest_register(), value);
 
@@ -974,20 +934,205 @@ class SingleDataTransfer : public Instruction {
 
     if (!preindex()) {
       const u32 writeback_addr = calculate_addr();
-      cpu.set_reg(base_register, writeback_addr);
+      run_write_back(cpu, writeback_addr);
+    }
+  }
+
+  constexpr void run_write_back(Cpu& cpu, u32 addr) {
+    const Register base_register = operand_register();
+    cpu.set_reg(base_register, addr);
+  }
+
+  [[nodiscard]] constexpr u32 calculate_addr(u32 base_value, u32 offset) const {
+    const u32 addr =
+        add_offset_to_base() ? offset + base_value : offset - base_value;
+    return addr;
+  }
+
+  [[nodiscard]] constexpr u32 select_addr(Cpu& cpu,
+                                          u32 base_value,
+                                          u32 offset) {
+    if (preindex()) {
+      const u32 addr = calculate_addr(base_value, offset);
+
+      if (write_back()) {
+        run_write_back(cpu, addr);
+      }
+      return addr;
+    }
+    return base_value;
+  }
+
+  void execute(Cpu& cpu) {
+    Mmu& mmu = *cpu.m_mmu;
+    const auto calculate_offset = [&]() -> u32 {
+      if (immediate_offset()) {
+        return value & 0xfff;
+      }
+
+      const ShiftResult shift_result = compute_shift_value(value, cpu);
+      const auto [set_carry, offset] = compute_shifted_operand(shift_result);
+
+      return offset;
+    };
+
+    const Register base_register = operand_register();
+    const u32 base_value = cpu.reg(base_register);
+
+    const u32 offset = calculate_offset();
+
+    // The address to be used in the transfer
+    const auto [aligned_addr, raw_addr,
+                rotate_amount] = [&]() -> std::tuple<u32, u32, u32> {
+      const u32 raw_addr = select_addr(cpu, base_value, offset);
+      return {raw_addr & ~0b11, raw_addr, (raw_addr & 0b11) * 8};
+    }();
+
+    write_value_to_addr(cpu, aligned_addr, raw_addr, rotate_amount,
+                        [this, base_value, offset, &cpu] {
+                          return select_addr(cpu, base_value, offset);
+                        });
+  }
+};
+
+class HalfwordDataTransfer : public SingleDataTransfer {
+ public:
+  enum class TransferType : u32 {
+    Swp = 0,
+    UnsignedHalfword,
+    SignedByte,
+    SignedHalfword,
+  };
+
+  using SingleDataTransfer::SingleDataTransfer;
+
+  [[nodiscard]] constexpr bool immediate_offset() const { return test_bit(22); }
+
+  [[nodiscard]] constexpr u32 offset_value(const Cpu& cpu) const {
+    if (immediate_offset()) {
+      return ((value & 0xf00) >> 4) | (value & 0xf);
+    }
+
+    const auto offset_reg = static_cast<Register>(value & 0xf);
+    return cpu.reg(offset_reg);
+  }
+
+  template <typename T>
+  constexpr void run_load(Cpu& cpu, u32 addr) {
+    const Register dest_reg = dest_register();
+
+    printf("addr: %d\n", addr);
+    if constexpr (std::is_signed_v<T>) {
+      cpu.set_reg(dest_reg, static_cast<s32>(cpu.m_mmu->at<T>(addr)));
+    } else {
+      cpu.set_reg(dest_reg, cpu.m_mmu->at<T>(addr));
+    }
+  }
+
+  void execute(Cpu& cpu) {
+    Mmu& mmu = *cpu.m_mmu;
+    const u32 offset = offset_value(cpu);
+    const u32 base_value = cpu.reg(operand_register());
+    const u32 addr = select_addr(cpu, base_value, offset);
+    printf("addr: %d\n", addr);
+    printf("base_value: %d\n", addr);
+
+    const auto transfer_type = static_cast<TransferType>((value & 0x60) >> 5);
+
+    const Register src_or_dest_reg = dest_register();
+
+    if (load()) {
+      printf("load\n");
+      switch (transfer_type) {
+        case TransferType::Swp:
+          break;
+        case TransferType::UnsignedHalfword:
+          run_load<u16>(cpu, addr);
+          break;
+        case TransferType::SignedByte: {
+          run_load<s8>(cpu, addr);
+          break;
+        }
+        case TransferType::SignedHalfword: {
+          run_load<s16>(cpu, addr);
+          break;
+        }
+      }
+    } else {
+      printf("store\n");
+      // Store
+      switch (transfer_type) {
+        case TransferType::Swp:
+          break;
+        case TransferType::UnsignedHalfword:
+          mmu.set(addr, static_cast<u16>(cpu.reg(src_or_dest_reg)));
+          break;
+        case TransferType::SignedByte:
+          mmu.set(addr, static_cast<s8>(cpu.reg(src_or_dest_reg)));
+          break;
+        case TransferType::SignedHalfword:
+          mmu.set(addr, static_cast<s16>(cpu.reg(src_or_dest_reg)));
+          break;
+      }
+    }
+
+    if (!preindex()) {
+      run_write_back(cpu, addr);
+    }
+  }
+};
+
+class BlockDataTransfer : public SingleDataTransfer {
+ public:
+  using SingleDataTransfer::SingleDataTransfer;
+
+  [[nodiscard]] bool load_psr_and_user_mode() const { return test_bit(22); }
+
+  [[nodiscard]] std::array<Register, 4> register_list() const {
+    std::array<Register, 4> registers{};
+    for (int i = 0; i < 4; ++i) {
+      registers[i] = static_cast<Register>(value & (0xf << (i * 4)));
+    }
+    std::sort(registers.begin(), registers.end(), std::less<>());
+    return registers;
+  }
+
+  void execute(Cpu& cpu) {
+    u32 offset = cpu.reg(operand_register());
+
+    const auto change_offset = add_offset_to_base()
+                                   ? [](u32 val) { return val + 4; }
+                                   : [](u32 val) { return val - 4; };
+    const auto registers = register_list();
+    printf("block offset %08x\n", offset);
+    if (preindex()) {
+      for (const Register reg : registers) {
+        offset = change_offset(offset);
+        cpu.m_mmu->set(offset, cpu.reg(reg));
+      }
+    } else {
+      for (const Register reg : registers) {
+        cpu.m_mmu->set(offset, cpu.reg(reg));
+        offset = change_offset(offset);
+      }
     }
   }
 };
 
 inline void Cpu::execute() {
   const u32 pc = reg(Register::R15) - 4;
-  const u32 instruction = m_mmu.at<u32>(pc);
+  printf("pc: %08x\n", pc);
+  const u32 instruction = m_mmu->at<u32>(pc);
   set_reg(Register::R15, pc + 4);
 
   const InstructionType type = decode_instruction_type(instruction);
   switch (type) {
     case InstructionType::DataProcessing:
+      if (pc == 0x08000100) {
+        printf("data processing\n");
+      }
       run_instruction(DataProcessing{instruction});
+      printf("r0: %08x\n", reg(Register::R0));
       break;
     case InstructionType::Mrs:
       run_instruction(Mrs{instruction});
@@ -1007,9 +1152,20 @@ inline void Cpu::execute() {
     case InstructionType::Branch:
       run_instruction(Branch{instruction});
       break;
+    case InstructionType::BranchAndExchange:
+      run_instruction(BranchAndExchange{instruction});
+      break;
     case InstructionType::SingleDataTransfer:
       run_instruction(SingleDataTransfer{instruction});
       break;
+    case InstructionType::HalfwordDataTransferImm:
+    case InstructionType::HalfwordDataTransferReg:
+      run_instruction(HalfwordDataTransfer{instruction});
+      break;
+    case InstructionType::BlockDataTransfer:
+      run_instruction(BlockDataTransfer{instruction});
+      break;
+
     default:
       printf("found instruction %08x, type %d\n", instruction, type);
       throw std::runtime_error("unknown instruction type ");

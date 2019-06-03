@@ -3,6 +3,8 @@
 #include <llvm/MC/MCAsmInfo.h>
 #include <llvm/MC/MCCodeEmitter.h>
 #include <llvm/MC/MCContext.h>
+#include <llvm/MC/MCDisassembler/MCDisassembler.h>
+#include <llvm/MC/MCInstPrinter.h>
 #include <llvm/MC/MCInstrInfo.h>
 #include <llvm/MC/MCObjectFileInfo.h>
 #include <llvm/MC/MCObjectWriter.h>
@@ -21,8 +23,8 @@
 #include "assembler.h"
 
 namespace experiments {
+static const std::string triple_name = "arm-none-eabi";
 static llvm::SmallVector<char, 64> assemble_elf(const std::string& src) {
-  const std::string triple_name = "arm-none-eabi";
   std::string error;
 
   llvm::InitializeAllTargetInfos();
@@ -80,9 +82,6 @@ static llvm::SmallVector<char, 64> assemble_elf(const std::string& src) {
       target->createMCAsmParser(*subtarget_info, *asm_parser, *instr_info,
                                 llvm::MCTargetOptions{})};
   asm_parser->setTargetParser(*target_asm_parser);
-  if (!asm_parser) {
-    printf("null\n");
-  }
 
   asm_parser->Run(false);
 
@@ -91,10 +90,6 @@ static llvm::SmallVector<char, 64> assemble_elf(const std::string& src) {
 
 std::vector<gb::u8> assemble(const std::string& src) {
   auto elf_bytes = assemble_elf(src);
-  for (char c : elf_bytes) {
-    std::cout << c;
-  }
-  std::cout << '\n';
 
   auto elf = llvm::object::ELF32LEFile::create(
       llvm::StringRef(elf_bytes.data(), elf_bytes.size()));
@@ -107,5 +102,95 @@ std::vector<gb::u8> assemble(const std::string& src) {
   auto contents = elf->getSectionContents(section.get());
 
   return std::vector<gb::u8>(contents->begin(), contents->end());
+}
+
+std::vector<std::tuple<std::string, gb::u32>> disassemble(
+    nonstd::span<gb::u8> bytes) {
+  llvm::InitializeAllTargetInfos();
+  llvm::InitializeAllTargetMCs();
+  llvm::InitializeAllAsmParsers();
+  llvm::InitializeAllDisassemblers();
+
+  llvm::SmallString<64> asm_string;
+  llvm::raw_svector_ostream ostream{asm_string};
+  std::string error;
+
+  llvm::Triple triple(llvm::Triple::normalize(triple_name));
+
+  const llvm::Target* target =
+      llvm::TargetRegistry::lookupTarget("arm", triple, error);
+
+  if (!target) {
+    printf("Error %s\n", error.c_str());
+  }
+
+  llvm::SourceMgr src_mgr;
+
+  std::unique_ptr<llvm::MCRegisterInfo> register_info{
+      target->createMCRegInfo(triple_name)};
+
+  std::unique_ptr<llvm::MCAsmInfo> asm_info{
+      target->createMCAsmInfo(*register_info, triple_name)};
+
+  llvm::MCObjectFileInfo object_file_info;
+
+  llvm::MCContext mc_context{asm_info.get(), register_info.get(), nullptr};
+
+  std::unique_ptr<llvm::MCInstrInfo> instr_info{target->createMCInstrInfo()};
+
+  llvm::MCInstPrinter* inst_printer =
+      target->createMCInstPrinter(triple, asm_info->getAssemblerDialect(),
+                                  *asm_info, *instr_info, *register_info);
+
+  std::unique_ptr<llvm::MCCodeEmitter> code_emitter{
+      target->createMCCodeEmitter(*instr_info, *register_info, mc_context)};
+
+  std::unique_ptr<llvm::MCSubtargetInfo> subtarget_info{
+      target->createMCSubtargetInfo(triple_name, "arm7tdmi", "armv4t")};
+
+  llvm::MCAsmBackend* asm_backend = target->createMCAsmBackend(
+      *subtarget_info, *register_info, llvm::MCTargetOptions{});
+
+  std::unique_ptr<llvm::MCStreamer> stream{target->createAsmStreamer(
+      mc_context, std::make_unique<llvm::formatted_raw_ostream>(ostream), true,
+      false, inst_printer, std::move(code_emitter),
+      std::unique_ptr<llvm::MCAsmBackend>{asm_backend}, false)};
+
+  std::unique_ptr<llvm::MCDisassembler> disassembler{
+      target->createMCDisassembler(*subtarget_info, mc_context)};
+
+  uint64_t size = 0;
+
+  llvm::ArrayRef<gb::u8> bytes_ref{bytes.data(),
+                                   static_cast<std::size_t>(bytes.size())};
+
+  llvm::SmallString<64> line_string;
+  llvm::raw_svector_ostream line_stream{line_string};
+
+  std::vector<std::tuple<std::string, gb::u32>> asm_lines;
+  for (uint64_t i = 0; i < bytes.size(); i += size) {
+    llvm::MCInst inst;
+    auto status = disassembler->getInstruction(inst, size, bytes_ref.slice(i),
+                                               i, llvm::nulls(), llvm::nulls());
+
+    switch (status) {
+      case llvm::MCDisassembler::Fail:
+        if (size == 0) {
+          size = 1;
+        }
+        break;
+      case llvm::MCDisassembler::Success:
+
+        stream->AddComment(std::string{"Offset: "} + std::to_string(i));
+        stream->EmitInstruction(inst, *subtarget_info);
+        std::cout << asm_string.c_str() << '\n';
+        asm_lines.emplace_back(
+            std::string(asm_string.begin(), asm_string.end()), i);
+        asm_string.clear();
+        break;
+    }
+  }
+
+  return asm_lines;
 }
 }  // namespace experiments

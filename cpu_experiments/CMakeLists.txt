@@ -39,7 +39,10 @@ target_include_directories(cpu_experiments
 target_compile_definitions(cpu_experiments PRIVATE
   IMGUI_IMPL_OPENGL_LOADER_CUSTOM=<GL/glew.h> 
   span_FEATURE_MEMBER_AT=1
+  span_CONFIG_CONTRACT_VIOLATION_THROWS
 )
+
+target_link_options(${PROJECT_NAME} PRIVATE -fuse-ld=lld)
 
 target_compile_options(${PROJECT_NAME} PRIVATE
  -Wall
