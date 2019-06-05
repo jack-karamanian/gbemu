@@ -392,7 +392,7 @@ class Cpu {
     }
   }
 
-  [[nodsicard]] constexpr u32 index_from_mode() const {
+  [[nodiscard]] constexpr u32 index_from_mode() const {
     return static_cast<u32>(m_mode) - 1;
   }
 
