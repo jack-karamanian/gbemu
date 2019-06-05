@@ -899,44 +899,6 @@ class SingleDataTransfer : public Instruction {
   [[nodiscard]] constexpr bool write_back() const { return test_bit(21); }
   [[nodiscard]] constexpr bool load() const { return test_bit(20); }
 
-  template <typename Func>
-  void write_value_to_addr(Cpu& cpu,
-                           u32 aligned_addr,
-                           u32 raw_addr,
-                           u32 rotate_amount,
-                           Func calculate_addr) {
-    const Register base_register = operand_register();
-    Mmu& mmu = *cpu.m_mmu;
-    if (load()) {
-      if (word()) {
-        // Load a word
-        const u32 value =
-            rotate_right(mmu.at<u32>(aligned_addr & ~0b11), rotate_amount);
-        printf("aligned_addr: %d\n", aligned_addr);
-
-        cpu.set_reg(dest_register(), value);
-
-      } else {
-        // Load a byte
-        const u8 value = mmu.at<u8>(raw_addr);
-        cpu.set_reg(dest_register(), value);
-      }
-    } else {
-      const u32 stored_value = cpu.reg(dest_register());
-      if (word()) {
-        // Store a word
-        mmu.set(aligned_addr, stored_value);
-      } else {
-        // Store a byte
-        mmu.set(raw_addr, static_cast<u8>(stored_value & 0xff));
-      }
-    }
-
-    if (!preindex()) {
-      const u32 writeback_addr = calculate_addr();
-      run_write_back(cpu, writeback_addr);
-    }
-  }
 
   constexpr void run_write_back(Cpu& cpu, u32 addr) {
     const Register base_register = operand_register();
@@ -988,10 +950,35 @@ class SingleDataTransfer : public Instruction {
       return {raw_addr & ~0b11, raw_addr, (raw_addr & 0b11) * 8};
     }();
 
-    write_value_to_addr(cpu, aligned_addr, raw_addr, rotate_amount,
-                        [this, base_value, offset, &cpu] {
-                          return select_addr(cpu, base_value, offset);
-                        });
+    if (load()) {
+      if (word()) {
+        // Load a word
+        const u32 value =
+            rotate_right(mmu.at<u32>(aligned_addr & ~0b11), rotate_amount);
+        printf("aligned_addr: %d\n", aligned_addr);
+
+        cpu.set_reg(dest_register(), value);
+
+      } else {
+        // Load a byte
+        const u8 value = mmu.at<u8>(raw_addr);
+        cpu.set_reg(dest_register(), value);
+      }
+    } else {
+      const u32 stored_value = cpu.reg(dest_register());
+      if (word()) {
+        // Store a word
+        mmu.set(aligned_addr, stored_value);
+      } else {
+        // Store a byte
+        mmu.set(raw_addr, static_cast<u8>(stored_value & 0xff));
+      }
+    }
+
+    if (!preindex()) {
+      const u32 writeback_addr = select_addr(cpu, base_value, offset);
+      run_write_back(cpu, writeback_addr);
+    }
   }
 };
 
