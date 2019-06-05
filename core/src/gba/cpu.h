@@ -99,32 +99,6 @@ struct LookupEntry {
   }
 };
 
-template <typename T>
-class Integer {
-  static_assert(std::is_integral_v<T>);
-
- public:
-  static constexpr Integer<T> from_bytes(
-      nonstd::span<const u8, sizeof(T)> bytes) {
-    return Integer<T>{convert_bytes_endian<T>(bytes)};
-  }
-
-  constexpr explicit Integer(T value_) : value{value_} {}
-
-  [[nodiscard]] constexpr T data() const { return value; }
-  [[nodiscard]] constexpr bool test_bit(unsigned int bit) const {
-    return gb::test_bit(value, bit);
-  }
-
-  constexpr void set_bit(unsigned int bit, bool set) {
-    const T mask = 1 << bit;
-    value = (value & ~mask) | (set ? 0 : mask);
-  }
-
- protected:
-  T value;
-};
-
 class ProgramStatus : public Integer<u32> {
  public:
   using Integer::Integer;
