@@ -1049,13 +1049,17 @@ class BlockDataTransfer : public SingleDataTransfer {
 
   [[nodiscard]] bool load_psr_and_user_mode() const { return test_bit(22); }
 
-  [[nodiscard]] std::array<Register, 4> register_list() const {
-    std::array<Register, 4> registers{};
-    for (int i = 0; i < 4; ++i) {
-      registers[i] = static_cast<Register>(value & (0xf << (i * 4)));
+  [[nodiscard]] std::tuple<std::array<Register, 15>, int> register_list()
+      const {
+    std::array<Register, 15> registers{};
+    int end = 0;
+
+    for (int i = 0; i < 15; ++i) {
+      if (test_bit(i)) {
+        registers[end++] = static_cast<Register>(i);
+      }
     }
-    std::sort(registers.begin(), registers.end(), std::less<>());
-    return registers;
+    return {registers, end};
   }
 
   void execute(Cpu& cpu) {
@@ -1064,15 +1068,18 @@ class BlockDataTransfer : public SingleDataTransfer {
     const auto change_offset = add_offset_to_base()
                                    ? [](u32 val) { return val + 4; }
                                    : [](u32 val) { return val - 4; };
-    const auto registers = register_list();
+    const auto [registers, registers_end] = register_list();
+    const nonstd::span<Register> registers_span =
+        nonstd::span<Register>{registers}.subspan(0, registers_end);
+
     printf("block offset %08x\n", offset);
     if (preindex()) {
-      for (const Register reg : registers) {
+      for (const Register reg : registers_span) {
         offset = change_offset(offset);
         cpu.m_mmu->set(offset, cpu.reg(reg));
       }
     } else {
-      for (const Register reg : registers) {
+      for (const Register reg : registers_span) {
         cpu.m_mmu->set(offset, cpu.reg(reg));
         offset = change_offset(offset);
       }
