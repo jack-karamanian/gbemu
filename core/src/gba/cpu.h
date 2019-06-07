@@ -1069,8 +1069,8 @@ class BlockDataTransfer : public SingleDataTransfer {
                                    ? [](u32 val) { return val + 4; }
                                    : [](u32 val) { return val - 4; };
     const auto [registers, registers_end] = register_list();
-    const nonstd::span<Register> registers_span =
-        nonstd::span<Register>{registers}.subspan(0, registers_end);
+    const nonstd::span<const Register> registers_span{registers.data(),
+                                                      registers_end};
 
     printf("block offset %08x\n", offset);
     if (preindex()) {
