@@ -12,8 +12,10 @@
 #include "imgui/examples/imgui_impl_opengl3.h"
 // clang-format on
 #include "gba/cpu.h"
+#include "memory.h"
 #include "color.h"
 #include "assembler.h"
+#include "gba/lcd.h"
 #include "imgui_memory_editor.h"
 
 static const char* FILE_NAME = "program.s";
@@ -45,6 +47,18 @@ static std::vector<gb::u8> load_file(const std::string_view file_name) {
                            std::istreambuf_iterator<char>{});
 
   return data;
+}
+
+static void execute_hardware(gb::advance::Hardware hardware) {
+  constexpr gb::u32 DrawCycles = 280896;
+
+  gb::u32 total_cycles = 0;
+  while (total_cycles < DrawCycles) {
+    gb::u32 cycles = hardware.cpu->execute();
+    total_cycles += cycles;
+
+    hardware.lcd->update(cycles);
+  }
 }
 
 int main(int argc, char** argv) {
@@ -103,9 +117,15 @@ int main(int argc, char** argv) {
   auto disassembly = experiments::disassemble(mmu.rom);
   gb::advance::Cpu cpu{mmu};
 
+  gb::advance::Lcd lcd;
+
+  gb::advance::Hardware hardware{&cpu, &lcd};
+
+  mmu.hardware = hardware;
+
   cpu.set_reg(gb::advance::Register::R0, 10);
   cpu.set_reg(gb::advance::Register::R15, 0x080002f0);
-  cpu.set_reg(gb::advance::Register::R13, gb::advance::Mmu::IWramEnd - 0x100);
+  cpu.set_reg(gb::advance::Register::R13, gb::advance::Mmu::EWramEnd - 0x100);
   // cpu.set_reg(gb::advance::Register::R15, 0x08000000);
 
   bool running = true;
@@ -139,7 +159,8 @@ int main(int argc, char** argv) {
 
     if (execute) {
       try {
-        cpu.execute();
+        execute_hardware(hardware);
+        // cpu.execute();
       } catch (const std::exception& e) {
         std::cerr << e.what() << '\n';
         execute = false;
@@ -168,6 +189,7 @@ int main(int argc, char** argv) {
 
       if (ImGui::Button("Step")) {
         try {
+          // execute_hardware(hardware);
           cpu.execute();
         } catch (const std::exception& e) {
           std::cerr << e.what() << '\n';
@@ -206,16 +228,16 @@ int main(int argc, char** argv) {
       ImGui::End();
       ImGui::Begin("Disassembly");
       const gb::u32 offset = (cpu.reg(gb::advance::Register::R15) - 4 -
-                              gb::advance::Mmu::RomBegin);
+                              gb::advance::Mmu::RomRegion0Begin);
       for (const auto& line : disassembly) {
         const std::string& text = std::get<0>(line);
         const gb::u32 loc = std::get<1>(line);
         if (loc == offset) {
-          ImGui::Text("-> %08x %s", loc + gb::advance::Mmu::RomBegin,
+          ImGui::Text("-> %08x %s", loc + gb::advance::Mmu::RomRegion0Begin,
                       text.c_str());
           ImGui::SetScrollHereY();
         } else {
-          ImGui::Text("%08x %s", loc + gb::advance::Mmu::RomBegin,
+          ImGui::Text("%08x %s", loc + gb::advance::Mmu::RomRegion0Begin,
                       text.c_str());
         }
       }
@@ -233,7 +255,9 @@ int main(int argc, char** argv) {
           static_cast<long>(mmu.vram.size() / sizeof(gb::u16))};
 
       for (int i = 0; i < 240 * 160; ++i) {
-        gb::u16 color = pixels[i];
+        gb::u8 color_index = mmu.vram[i];
+        gb::u16 color = mmu.palette_ram[color_index * 2];
+
         framebuffer[i] = {
             static_cast<gb::u8>(gb::convert_space<32, 255>(color & 0x1f)),
             static_cast<gb::u8>(

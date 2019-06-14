@@ -8,6 +8,8 @@ find_package(SDL2 CONFIG REQUIRED)
 find_package(doctest CONFIG REQUIRED)
 find_package(LLVM CONFIG REQUIRED)
 
+add_subdirectory(../core ./gbemu_core_build)
+
 set(SRCS
   src/main.cpp
   src/assembler.h
@@ -26,12 +28,10 @@ set(SRCS
 add_executable(cpu_experiments ${SRCS})
 set_target_properties(cpu_experiments PROPERTIES CXX_STANDARD 17)
 
-target_link_libraries(cpu_experiments PRIVATE SDL2::SDL2-static GLEW GL LLVM)
+target_link_libraries(cpu_experiments PRIVATE SDL2::SDL2-static GLEW GL LLVM gbemu_core)
 
 target_include_directories(cpu_experiments 
   PRIVATE $<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/src/imgui>
-  $<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/../core/src>
-  $<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/../core/include>
   $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/../external/span-lite/include>
 
 )

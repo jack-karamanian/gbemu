@@ -1,5 +1,6 @@
 #pragma once
 #include <vector>
+#include "gba/lcd.h"
 #include "types.h"
 #include "utils.h"
 
@@ -8,9 +9,96 @@ inline std::size_t operator"" _kb(unsigned long long int kilobytes) {
   return kilobytes * 1024;
 }
 
+struct Cycles {
+  u32 sequential = 0;
+  u32 nonsequential = 0;
+  u32 internal = 0;
+
+  [[nodiscard]] constexpr u32 sum() const {
+    return sequential + nonsequential + internal;
+  }
+};
+
+inline constexpr Cycles operator"" _seq(unsigned long long int cycles) {
+  return {static_cast<u32>(cycles)};
+}
+
+inline constexpr Cycles operator"" _nonseq(unsigned long long int cycles) {
+  return {0, static_cast<u32>(cycles)};
+}
+
+inline constexpr Cycles operator"" _intern(unsigned long long int cycles) {
+  return {0, 0, static_cast<u32>(cycles)};
+}
+
+inline constexpr Cycles operator+(Cycles lhs, Cycles rhs) {
+  return {lhs.sequential + rhs.sequential,
+          lhs.nonsequential + rhs.nonsequential, lhs.internal + rhs.internal};
+}
+
+class Waitcnt : public Integer<u32> {
+ public:
+  using Integer::Integer;
+  [[nodiscard]] u32 sram_wait_control() const {
+    return decode_cycles(value & 0b11);
+  }
+
+  [[nodiscard]] u32 wait_zero_nonsequential() const {
+    return decode_cycles((value >> 2) & 0b11);
+  }
+
+  [[nodiscard]] u32 wait_zero_sequential() const { return test_bit(4) ? 1 : 2; }
+
+  [[nodiscard]] u32 wait_one_nonsequential() const {
+    return decode_cycles((value >> 5) & 0b11);
+  }
+
+  [[nodiscard]] u32 wait_one_sequential() const { return test_bit(7) ? 1 : 4; }
+
+  [[nodiscard]] u32 wait_two_nonsequential() const {
+    return decode_cycles((value >> 8) & 0b11);
+  }
+
+  [[nodiscard]] u32 wait_two_sequential() const { return test_bit(10) ? 1 : 8; }
+
+  [[nodiscard]] bool enable_prefetch_buffer() const { return test_bit(14); }
+
+ private:
+  static u32 decode_cycles(u32 value) {
+    switch (value) {
+      case 0:
+        return 4;
+      case 1:
+        return 3;
+      case 2:
+        return 2;
+      case 3:
+        return 8;
+      default:
+        throw std::runtime_error("expected 0, 1, 2, or 3 for decode_cycles");
+    }
+  }
+};
+
+class Lcd;
+class Cpu;
+struct Hardware {
+  Cpu* cpu = nullptr;
+  Lcd* lcd = nullptr;
+};
+
 struct Mmu {
+  static constexpr u32 BiosBegin = 0x00000000;
+  static constexpr u32 BiosEnd = 0x00003fff;
+
+  static constexpr u32 EWramBegin = 0x02000000;
+  static constexpr u32 EWramEnd = 0x0203ffff;
+
   static constexpr u32 IWramBegin = 0x03000000;
   static constexpr u32 IWramEnd = 0x03007fff;
+
+  static constexpr u32 IoRegistersBegin = 0x04000000;
+  static constexpr u32 IoRegistersEnd = 0x040003fe;
 
   static constexpr u32 PaletteBegin = 0x05000000;
   static constexpr u32 PaletteEnd = 0x050003ff;
@@ -18,11 +106,23 @@ struct Mmu {
   static constexpr u32 VramBegin = 0x06000000;
   static constexpr u32 VramEnd = 0x06017fff;
 
-  static constexpr u32 RomBegin = 0x08000000;
+  static constexpr u32 RomRegion0Begin = 0x08000000;
+  static constexpr u32 RomRegion0End = 0x09ffffff;
+
+  static constexpr u32 RomRegion1Begin = 0x0a000000;
+  static constexpr u32 RomRegion1End = 0x0bffffff;
+
+  static constexpr u32 RomRegion2Begin = 0x0c000000;
+
+  static constexpr std::array<std::pair<u32, u32>, 3> rom_regions{
+      {{RomRegion0Begin, RomRegion0End},
+       {RomRegion1Begin, RomRegion1End},
+       {RomRegion2Begin, 0xffffffff}}};
+
   static constexpr u32 Ime = 0x04000208;
 
   static constexpr u32 Dispcnt = 0x04000000;
-  static constexpr u32 DispStat = 0x04000004;
+  static constexpr u32 DispStatAddr = 0x04000004;
 
   std::vector<u8> ewram;
   std::vector<u8> iwram;
@@ -35,6 +135,10 @@ struct Mmu {
   u32 dispstat = 0;
   u32 ime = 0;
 
+  Waitcnt waitcnt{0};
+
+  Hardware hardware;
+
   Mmu()
       : ewram(256_kb, 0),
         iwram(32_kb, 0),
@@ -42,25 +146,9 @@ struct Mmu {
         vram(96_kb, 0),
         oam_ram(1_kb, 0) {}
 
-  std::tuple<nonstd::span<u8>, u32> select_storage(u32 addr) {
-    if (addr >= IWramBegin && addr <= IWramEnd) {
-      return {iwram, addr - IWramBegin};
-    }
-    if (addr >= VramBegin && addr <= VramEnd) {
-      return {vram, addr - VramBegin};
-    }
+  [[nodiscard]] u32 wait_cycles(u32 addr, Cycles cycles);
 
-    if (addr >= RomBegin) {
-      return {rom, addr - RomBegin};
-    }
-
-    if (addr >= PaletteBegin && addr <= PaletteEnd) {
-      return {palette_ram, addr - PaletteBegin};
-    }
-
-    printf("unimplemented %08x\n", addr);
-    throw std::runtime_error("unimplemented select storage");
-  }
+  std::tuple<nonstd::span<u8>, u32> select_storage(u32 addr);
 
   template <typename T>
   void set(u32 addr, T value) {
@@ -68,8 +156,9 @@ struct Mmu {
       case Dispcnt:
         dispcnt = value;
         return;
-      case DispStat:
-        dispstat = value;
+      case DispStatAddr:
+        hardware.lcd->dispstat = DispStat{static_cast<u32>(value)};
+        // hardware.lcd->dispstat.
         return;
       case Ime:
         ime = value;
@@ -88,8 +177,8 @@ struct Mmu {
     switch (addr) {
       case Dispcnt:
         return dispcnt;
-      case DispStat:
-        return dispstat;
+      case DispStatAddr:
+        return hardware.lcd->dispstat.data();
       case Ime:
         return ime;
     }

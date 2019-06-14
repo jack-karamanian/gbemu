@@ -7,6 +7,7 @@ include(CTest)
 
 find_package(SDL2 CONFIG REQUIRED)
 find_package(doctest CONFIG REQUIRED)
+find_package(fmt CONFIG REQUIRED)
 
 set(SRCS
   include/emulator.h
@@ -65,6 +66,12 @@ set(SRCS
   src/task.h
   src/rom_loader.h
   src/rom_loader.cpp
+  src/gba/cpu.h
+  src/gba/mmu.h
+  src/gba/mmu.cpp
+  src/gba/lcd.h
+  src/gba/lcd.cpp
+  tests/gba/cpu.cpp
 )
 
 
@@ -72,10 +79,9 @@ add_library(${PROJECT_NAME} ${SRCS})
 
 set_target_properties(${PROJECT_NAME} PROPERTIES CXX_STANDARD 17)
 
-
 target_include_directories(${PROJECT_NAME}
   PUBLIC $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
-  PRIVATE $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/src>
+  $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/src>
   $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/../external/span-lite/include>
 )
 
@@ -84,7 +90,14 @@ target_compile_definitions(${PROJECT_NAME} PRIVATE
   BOOST_RESULT_OF_USE_DECLTYPE=1
 )
 
-target_link_libraries(${PROJECT_NAME} PRIVATE SDL2::SDL2-static doctest::doctest ${GBEMU_CORE_EXTRA_LIBS})
+target_link_libraries(${PROJECT_NAME}
+  PRIVATE
+  SDL2::SDL2-static
+  doctest::doctest
+  fmt::fmt
+  fmt::fmt-header-only
+  ${GBEMU_CORE_EXTRA_LIBS}
+)
 
 target_compile_options(${PROJECT_NAME} PRIVATE
  -Wall
@@ -92,7 +105,8 @@ target_compile_options(${PROJECT_NAME} PRIVATE
  -Wshadow
  -Wpedantic
  -Wdouble-promotion
- -Weffc++
+ -Wunused
+ -Wold-style-cast
  -ggdb3
  )
 

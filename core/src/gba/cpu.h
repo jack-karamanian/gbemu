@@ -342,13 +342,14 @@ class Cpu {
   }
 
   template <typename T>
-  constexpr void run_instruction(T instruction) {
+  constexpr u32 run_instruction(T instruction) {
     if (instruction.should_execute(get_current_program_status())) {
-      instruction.execute(*this);
+      return instruction.execute(*this);
     }
+    return 0;
   }
 
-  inline void execute();
+  inline u32 execute();
 
   friend class DataProcessing;
   friend class SingleDataTransfer;
@@ -559,13 +560,25 @@ class DataProcessing : public Instruction {
     return compute_shift_value(value, cpu);
   }
 
+  [[nodiscard]] Cycles cycles() const {
+    const bool register_shift = !immediate_operand() && test_bit(4);
+    if (register_shift && dest_register() == Register::R15) {
+      return 2_seq + 1_nonseq + 1_intern;
+    } else if (register_shift) {
+      return 1_seq + 1_intern;
+    } else if (dest_register() == Register::R15) {
+      return 2_seq + 1_nonseq;
+    }
+    return 1_seq;
+  }
+
   [[nodiscard]] constexpr std::tuple<bool, u32> compute_operand2(
       const Cpu& cpu) const {
     const ShiftResult shift_result = shift_value(cpu);
     return compute_shifted_operand(shift_result);
   }
 
-  constexpr void execute(Cpu& cpu) {
+  u32 execute(Cpu& cpu) {
     // TODO: Find out why structured bindings don't work on clang
     const auto operand2_result = compute_operand2(cpu);
     const bool shift_carry = std::get<0>(operand2_result);
@@ -685,6 +698,8 @@ class DataProcessing : public Instruction {
         run_logical(~operand2);
         break;
     }
+
+    return cycles().sum();
   }
 };
 
@@ -692,12 +707,15 @@ class Mrs : public Instruction {
  public:
   using Instruction::Instruction;
 
-  constexpr void execute(Cpu& cpu) {
+  u32 execute(Cpu& cpu) {
     const u32 program_status =
         (test_bit(22) ? cpu.saved_program_status() : cpu.program_status())
             .data();
 
     cpu.set_reg(dest_register(), program_status);
+
+    // 1S
+    return 1;
   }
 };
 
@@ -705,7 +723,7 @@ class Msr : public Instruction {
  public:
   using Instruction::Instruction;
 
-  constexpr void execute(Cpu& cpu) {
+  u32 execute(Cpu& cpu) {
     const ProgramStatus program_status{
         cpu.reg(static_cast<Register>(value & 0xf))};
     if (test_bit(22)) {
@@ -713,6 +731,9 @@ class Msr : public Instruction {
     } else {
       cpu.set_program_status(program_status);
     }
+
+    // 1S
+    return 1;
   }
 };
 
@@ -720,7 +741,7 @@ class MsrFlagBits : public DataProcessing {
  public:
   using DataProcessing::DataProcessing;
 
-  constexpr void execute(Cpu& cpu) {
+  u32 execute(Cpu& cpu) {
     const auto [shift_carry, operand2] = compute_operand2(cpu);
 
     const u32 masked_program_status =
@@ -734,6 +755,9 @@ class MsrFlagBits : public DataProcessing {
     } else {
       cpu.set_program_status(next_program_status);
     }
+
+    // 1S
+    return 1;
   }
 };
 
@@ -762,10 +786,33 @@ class Multiply : public Instruction {
 
   [[nodiscard]] constexpr bool accumulate() const { return test_bit(21); }
 
-  constexpr void execute(Cpu& cpu) {
+  [[nodiscard]] Cycles cycles(u32 rhs_operand) const {
+    const u32 multiply_cycles = [&]() -> u32 {
+      if (const u32 masked = rhs_operand & 0xffffff00;
+          masked == 0 || masked == 0xffffff00) {
+        return 1;
+      }
+      if (const u32 masked = rhs_operand & 0xffff0000;
+          masked == 0 || masked == 0xffff0000) {
+        return 2;
+      }
+
+      if (const u32 masked = rhs_operand & 0xff000000;
+          masked == 0 || masked == 0xff000000) {
+        return 3;
+      }
+
+      return 4;
+    }();
+
+    return Cycles{1, 0, multiply_cycles + (accumulate() ? 1 : 0)};
+  }
+
+  u32 execute(Cpu& cpu) {
+    const u32 rhs_operand = cpu.reg(rhs_register());
     const u32 res =
         static_cast<u32>(static_cast<u64>(cpu.reg(lhs_register())) *
-                             static_cast<u64>(cpu.reg(rhs_register())) +
+                             static_cast<u64>(rhs_operand) +
                          (accumulate() ? cpu.reg(accumulate_register()) : 0));
 
     cpu.set_reg(dest_register(), res);
@@ -774,6 +821,8 @@ class Multiply : public Instruction {
       cpu.set_zero(res == 0);
       cpu.set_negative(gb::test_bit(res, 31));
     }
+
+    return cycles(rhs_operand).sum();
   }
 };
 
@@ -800,6 +849,30 @@ class MultiplyLong : public Multiply {
            static_cast<u64>(cpu.reg(dest_register_low()));
   }
 
+  [[nodiscard]] Cycles cycles(u32 rhs_operand) const {
+    if (is_signed()) {
+      return this->Multiply::cycles(rhs_operand);
+    }
+
+    const u32 multiply_cycles = [rhs_operand] {
+      if (const u32 masked = rhs_operand & 0xffffff00; masked == 0) {
+        return 1;
+      }
+
+      if (const u32 masked = rhs_operand & 0xffff0000; masked == 0) {
+        return 2;
+      }
+
+      if (const u32 masked = rhs_operand & 0xff000000; masked == 0) {
+        return 3;
+      }
+
+      return 4;
+    }();
+
+    return {1, 0, multiply_cycles + (accumulate() ? 2 : 1)};
+  }
+
   template <typename T>
   [[nodiscard]] constexpr T multiply(T lhs, T rhs) {
     static_assert(std::is_integral_v<T>);
@@ -807,7 +880,7 @@ class MultiplyLong : public Multiply {
     return lhs * rhs;
   }
 
-  constexpr void execute(Cpu& cpu) {
+  u32 execute(Cpu& cpu) {
     const u32 lhs = cpu.reg(lhs_register());
     const u32 rhs = cpu.reg(rhs_register());
 
@@ -822,13 +895,14 @@ class MultiplyLong : public Multiply {
       cpu.set_zero(res == 0);
       cpu.set_negative(gb::test_bit(res, 63));
     }
+    return cycles(rhs).sum();
   }
 };
 
 class Branch : public Instruction {
  public:
   using Instruction::Instruction;
-  void execute(Cpu& cpu) {
+  u32 execute(Cpu& cpu) {
     const bool link = test_bit(24);
     const bool negative = test_bit(23);
 
@@ -845,6 +919,7 @@ class Branch : public Instruction {
       // cpu.set_reg(Register::R14, cpu.reg(Register::R15));
     }
     cpu.set_reg(Register::R15, next_pc);
+    return (2_seq + 1_nonseq).sum();
   }
 };
 
@@ -852,9 +927,11 @@ class BranchAndExchange : public Instruction {
  public:
   using Instruction::Instruction;
 
-  void execute(Cpu& cpu) {
+  u32 execute(Cpu& cpu) {
     const auto next_pc_reg = static_cast<Register>(value & 0xf);
     cpu.set_reg(Register::R15, cpu.reg(next_pc_reg));
+
+    return (2_seq + 1_nonseq).sum();
   }
 };
 
@@ -873,6 +950,16 @@ class SingleDataTransfer : public Instruction {
   [[nodiscard]] constexpr bool write_back() const { return test_bit(21); }
   [[nodiscard]] constexpr bool load() const { return test_bit(20); }
 
+  [[nodiscard]] Cycles cycles() const {
+    // Store
+    if (!load()) {
+      return 2_nonseq;
+    }
+
+    // Load
+    return dest_register() == Register::R15 ? (2_seq + 2_nonseq + 1_intern)
+                                            : (1_seq + 1_nonseq + 1_intern);
+  }
 
   constexpr void run_write_back(Cpu& cpu, u32 addr) {
     const Register base_register = operand_register();
@@ -881,7 +968,7 @@ class SingleDataTransfer : public Instruction {
 
   [[nodiscard]] constexpr u32 calculate_addr(u32 base_value, u32 offset) const {
     const u32 addr =
-        add_offset_to_base() ? offset + base_value : offset - base_value;
+        add_offset_to_base() ? offset + base_value : base_value - offset;
     return addr;
   }
 
@@ -899,7 +986,7 @@ class SingleDataTransfer : public Instruction {
     return base_value;
   }
 
-  void execute(Cpu& cpu) {
+  u32 execute(Cpu& cpu) {
     Mmu& mmu = *cpu.m_mmu;
     const auto calculate_offset = [&]() -> u32 {
       if (immediate_offset()) {
@@ -950,9 +1037,11 @@ class SingleDataTransfer : public Instruction {
     }
 
     if (!preindex()) {
-      const u32 writeback_addr = select_addr(cpu, base_value, offset);
+      const u32 writeback_addr = calculate_addr(base_value, offset);
       run_write_back(cpu, writeback_addr);
     }
+
+    return mmu.wait_cycles(aligned_addr, cycles());
   }
 };
 
@@ -990,13 +1079,11 @@ class HalfwordDataTransfer : public SingleDataTransfer {
     }
   }
 
-  void execute(Cpu& cpu) {
+  u32 execute(Cpu& cpu) {
     Mmu& mmu = *cpu.m_mmu;
     const u32 offset = offset_value(cpu);
     const u32 base_value = cpu.reg(operand_register());
     const u32 addr = select_addr(cpu, base_value, offset);
-    printf("addr: %d\n", addr);
-    printf("base_value: %d\n", addr);
 
     const auto transfer_type = static_cast<TransferType>((value & 0x60) >> 5);
 
@@ -1038,8 +1125,11 @@ class HalfwordDataTransfer : public SingleDataTransfer {
     }
 
     if (!preindex()) {
-      run_write_back(cpu, addr);
+      const u32 writeback_addr = calculate_addr(base_value, offset);
+      run_write_back(cpu, writeback_addr);
     }
+
+    return mmu.wait_cycles(addr, cycles());
   }
 };
 
@@ -1049,20 +1139,31 @@ class BlockDataTransfer : public SingleDataTransfer {
 
   [[nodiscard]] bool load_psr_and_user_mode() const { return test_bit(22); }
 
-  [[nodiscard]] std::tuple<std::array<Register, 15>, int> register_list()
+  [[nodiscard]] std::tuple<std::array<Register, 16>, int> register_list()
       const {
-    std::array<Register, 15> registers{};
+    std::array<Register, 16> registers{};
     int end = 0;
 
-    for (int i = 0; i < 15; ++i) {
+    const auto append_register = [&](int i) {
       if (test_bit(i)) {
+        printf("REG: %d\n", i);
         registers[end++] = static_cast<Register>(i);
+      }
+    };
+
+    if (add_offset_to_base()) {
+      for (int i = 15; i >= 0; --i) {
+        append_register(i);
+      }
+    } else {
+      for (int i = 0; i < 16; ++i) {
+        append_register(i);
       }
     }
     return {registers, end};
   }
 
-  void execute(Cpu& cpu) {
+  u32 execute(Cpu& cpu) {
     u32 offset = cpu.reg(operand_register());
 
     const auto change_offset = add_offset_to_base()
@@ -1073,66 +1174,67 @@ class BlockDataTransfer : public SingleDataTransfer {
                                                       registers_end};
 
     printf("block offset %08x\n", offset);
-    if (preindex()) {
-      for (const Register reg : registers_span) {
+
+    u32 addr_cycles = 0;
+    for (const Register reg : registers_span) {
+      if (preindex()) {
         offset = change_offset(offset);
+      }
+
+      addr_cycles += cpu.m_mmu->wait_cycles(offset, 1_seq);
+      if (load()) {
+        cpu.set_reg(reg, cpu.m_mmu->at<u32>(offset));
+      } else {
         cpu.m_mmu->set(offset, cpu.reg(reg));
       }
-    } else {
-      for (const Register reg : registers_span) {
-        cpu.m_mmu->set(offset, cpu.reg(reg));
+
+      if (!preindex()) {
         offset = change_offset(offset);
       }
     }
+
+    if (write_back()) {
+      cpu.set_reg(operand_register(), offset);
+    }
+
+    return addr_cycles + (1_nonseq + 1_intern).sum();
   }
 };
 
-inline void Cpu::execute() {
+inline u32 Cpu::execute() {
   const u32 pc = reg(Register::R15) - 4;
   printf("pc: %08x\n", pc);
   const u32 instruction = m_mmu->at<u32>(pc);
   set_reg(Register::R15, pc + 4);
+  if (pc - 4 == 0x0800097c) {
+    printf("r5: %08x\n", reg(Register::R0));
+  }
 
   const InstructionType type = decode_instruction_type(instruction);
   switch (type) {
     case InstructionType::DataProcessing:
-      if (pc == 0x08000100) {
-        printf("data processing\n");
-      }
-      run_instruction(DataProcessing{instruction});
-      printf("r0: %08x\n", reg(Register::R0));
-      break;
+      return run_instruction(DataProcessing{instruction});
     case InstructionType::Mrs:
-      run_instruction(Mrs{instruction});
-      break;
+      return run_instruction(Mrs{instruction});
     case InstructionType::Msr:
-      run_instruction(Msr{instruction});
-      break;
+      return run_instruction(Msr{instruction});
     case InstructionType::MsrFlagBits:
-      run_instruction(MsrFlagBits{instruction});
-      break;
+      return run_instruction(MsrFlagBits{instruction});
     case InstructionType::Multiply:
-      run_instruction(Multiply{instruction});
-      break;
+      return run_instruction(Multiply{instruction});
     case InstructionType::MultiplyLong:
-      run_instruction(MultiplyLong{instruction});
-      break;
+      return run_instruction(MultiplyLong{instruction});
     case InstructionType::Branch:
-      run_instruction(Branch{instruction});
-      break;
+      return run_instruction(Branch{instruction});
     case InstructionType::BranchAndExchange:
-      run_instruction(BranchAndExchange{instruction});
-      break;
+      return run_instruction(BranchAndExchange{instruction});
     case InstructionType::SingleDataTransfer:
-      run_instruction(SingleDataTransfer{instruction});
-      break;
+      return run_instruction(SingleDataTransfer{instruction});
     case InstructionType::HalfwordDataTransferImm:
     case InstructionType::HalfwordDataTransferReg:
-      run_instruction(HalfwordDataTransfer{instruction});
-      break;
+      return run_instruction(HalfwordDataTransfer{instruction});
     case InstructionType::BlockDataTransfer:
-      run_instruction(BlockDataTransfer{instruction});
-      break;
+      return run_instruction(BlockDataTransfer{instruction});
 
     default:
       printf("found instruction %08x, type %d\n", instruction, type);
