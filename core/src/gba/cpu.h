@@ -1126,15 +1126,17 @@ class SingleDataTransfer : public Instruction {
       return {raw_addr & ~0b11, raw_addr, (raw_addr & 0b11) * 8};
     }();
 
+    if (!preindex()) {
+      const u32 writeback_addr = calculate_addr(base_value, offset);
+      run_write_back(cpu, writeback_addr);
+    }
+
     if (load()) {
       if (word()) {
         // Load a word
         const u32 value =
             rotate_right(mmu.at<u32>(aligned_addr & ~0b11), rotate_amount);
-        // printf("aligned_addr: %d\n", aligned_addr);
-
         cpu.set_reg(dest_register(), value);
-
       } else {
         // Load a byte
         const u8 value = mmu.at<u8>(raw_addr);
@@ -1149,11 +1151,6 @@ class SingleDataTransfer : public Instruction {
         // Store a byte
         mmu.set(raw_addr, static_cast<u8>(stored_value & 0xff));
       }
-    }
-
-    if (!preindex()) {
-      const u32 writeback_addr = calculate_addr(base_value, offset);
-      run_write_back(cpu, writeback_addr);
     }
 
     return mmu.wait_cycles(aligned_addr, cycles());
