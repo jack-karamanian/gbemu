@@ -71,6 +71,10 @@ set(SRCS
   src/gba/mmu.cpp
   src/gba/lcd.h
   src/gba/lcd.cpp
+  src/gba/thumb_to_arm.h
+  src/gba/thumb_to_arm.cpp
+  src/gba/assembler.h
+  src/gba/assembler.cpp
   tests/gba/cpu.cpp
 )
 
