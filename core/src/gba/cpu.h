@@ -156,10 +156,10 @@ class ProgramStatus : public Integer<u32> {
   constexpr void set_overflow(bool set) { set_bit(28, set); }
 
   [[nodiscard]] constexpr Mode mode() const {
-    return static_cast<Mode>(value & 0b1111);
+    return static_cast<Mode>(m_value & 0b1111);
   }
   constexpr void set_mode(Mode mode) {
-    value = (value & ~0b1111) | static_cast<u32>(mode);
+    m_value = (m_value & ~0b1111) | static_cast<u32>(mode);
   }
 
   [[nodiscard]] constexpr bool thumb_mode() const { return test_bit(5); }
@@ -189,13 +189,13 @@ class Instruction : public Integer<u32> {
   using Integer::Integer;
 
   [[nodiscard]] constexpr Register dest_register() const {
-    return static_cast<Register>((value >> 12) & 0xf);
+    return static_cast<Register>((m_value >> 12) & 0xf);
   }
   [[nodiscard]] constexpr Register operand_register() const {
-    return static_cast<Register>((value >> 16) & 0xf);
+    return static_cast<Register>((m_value >> 16) & 0xf);
   }
   [[nodiscard]] constexpr Condition condition() const {
-    return static_cast<Condition>((value >> 28) & 0xf);
+    return static_cast<Condition>((m_value >> 28) & 0xf);
   }
 
   [[nodiscard]] constexpr bool should_execute(
@@ -234,6 +234,7 @@ class Instruction : public Integer<u32> {
       case Condition::AL:
         return true;
     }
+    throw std::runtime_error("invalid condition");
   }
 };
 
@@ -576,7 +577,7 @@ constexpr ShiftResult compute_shift_value(u32 value, const Cpu& cpu) {
             return {reg_value, cpu.program_status().carry()};
           }
         }
-        return {{}, {}};
+        return {std::nullopt, std::nullopt};
 
       case ShiftType::LogicalRight:
         if (register_specified) {
@@ -592,65 +593,67 @@ constexpr ShiftResult compute_shift_value(u32 value, const Cpu& cpu) {
             // return {reg_value, gb::test_bit(reg_value, 31)};
           }
         }
-        return {{}, {}};
+        return {std::nullopt, std::nullopt};
       case ShiftType::ArithmeticRight:
         if (shift_amount >= 32 || shift_amount == 0) {
           const bool is_negative = gb::test_bit(reg_value, 31);
           return {is_negative ? 0xffffffff : 0, is_negative};
         }
-        return {{}, {}};
+        return {std::nullopt, std::nullopt};
 
       case ShiftType::RotateRight:
         if (shift_amount == 0) {
           const bool carry = gb::test_bit(reg_value, 0);
           return {(cpu.carry() << 31) | (reg_value >> 1), carry};
         }
-        return {{}, {}};
+        return {std::nullopt, std::nullopt};
 
       default:
-        return {{}, {}};
+        return {std::nullopt, std::nullopt};
     }
   }();
 
   return {shift_type, shift_amount, reg_value, error_value, set_carry};
+}
+constexpr bool compute_carry(ShiftType shift_type,
+                             u32 shift_operand,
+                             u32 shift_amount) {
+  switch (shift_type) {
+    case ShiftType::LogicalLeft:
+      return shift_amount != 0 &&
+             gb::test_bit(shift_operand, 32 - shift_amount);
+    case ShiftType::LogicalRight:
+      return gb::test_bit(shift_operand, shift_amount - 1);
+    case ShiftType::ArithmeticRight:
+      return gb::test_bit(shift_operand, shift_amount - 1);
+    case ShiftType::RotateRight:
+      return gb::test_bit(shift_operand, shift_amount - 1);
+    default:
+      throw std::runtime_error("invalid shift type");
+  }
+}
+
+constexpr u32 compute_result(ShiftType shift_type,
+                             u32 shift_operand,
+                             u32 shift_amount) {
+  switch (shift_type) {
+    case ShiftType::LogicalLeft:
+      return shift_operand << shift_amount;
+    case ShiftType::LogicalRight:
+      return shift_operand >> shift_amount;
+    case ShiftType::ArithmeticRight:
+      return arithmetic_shift_right(shift_operand, shift_amount);
+    case ShiftType::RotateRight:
+      return rotate_right(shift_operand, shift_amount);
+    default:
+      throw std::runtime_error("invalid shift type");
+  }
 }
 
 constexpr std::tuple<bool, u32> compute_shifted_operand(
     const ShiftResult& shift_result) {
   const auto [shift_type, shift_amount, shift_operand, result, set_carry] =
       shift_result;
-  // const bool carry = set_carry.value_or(cpu.program_status().carry());
-  // const bool carry = cpu.program_status().carry();
-  constexpr auto compute_carry = [](ShiftType shift_type, u32 shift_operand,
-                                    u32 shift_amount) {
-    switch (shift_type) {
-      case ShiftType::LogicalLeft:
-        return shift_amount != 0 &&
-               gb::test_bit(shift_operand, 32 - shift_amount);
-      case ShiftType::LogicalRight:
-        return gb::test_bit(shift_operand, shift_amount - 1);
-      case ShiftType::ArithmeticRight:
-        return gb::test_bit(shift_operand, shift_amount - 1);
-      case ShiftType::RotateRight:
-        return gb::test_bit(shift_operand, shift_amount - 1);
-    }
-  };
-
-  constexpr auto compute_result = [](ShiftType shift_type, u32 shift_operand,
-                                     u32 shift_amount) {
-    switch (shift_type) {
-      case ShiftType::LogicalLeft:
-        return shift_operand << shift_amount;
-      case ShiftType::LogicalRight:
-        return shift_operand >> shift_amount;
-      case ShiftType::ArithmeticRight:
-        return arithmetic_shift_right(shift_operand, shift_amount);
-      case ShiftType::RotateRight:
-        return rotate_right(shift_operand, shift_amount);
-      default:
-        throw std::runtime_error("invalid shift type");
-    }
-  };
 
   return {
       set_carry.value_or(
@@ -666,7 +669,7 @@ class DataProcessing : public Instruction {
   }
 
   [[nodiscard]] constexpr Opcode opcode() const {
-    return static_cast<Opcode>((value >> 21) & 0xf);
+    return static_cast<Opcode>((m_value >> 21) & 0xf);
   }
 
   [[nodiscard]] constexpr bool set_condition_code() const {
@@ -674,11 +677,11 @@ class DataProcessing : public Instruction {
   }
 
   [[nodiscard]] constexpr u8 immediate_value() const {
-    return static_cast<u8>(value & 0xff);
+    return static_cast<u8>(m_value & 0xff);
   }
 
   [[nodiscard]] constexpr u8 immediate_shift() const {
-    return static_cast<u8>((value >> 8) & 0xf);
+    return static_cast<u8>((m_value >> 8) & 0xf);
   }
 
 #if 0
@@ -697,12 +700,12 @@ class DataProcessing : public Instruction {
   [[nodiscard]] constexpr ShiftResult shift_value(const Cpu& cpu) const {
     if (immediate_operand()) {
       return {ShiftType::RotateRight,
-              static_cast<u8>(((value >> 8) & 0xf) * 2),
-              value & 0xff,
+              static_cast<u8>(((m_value >> 8) & 0xf) * 2),
+              m_value & 0xff,
               {},
               {}};
     }
-    return compute_shift_value(value, cpu);
+    return compute_shift_value(m_value, cpu);
   }
 
   [[nodiscard]] Cycles cycles() const {
@@ -890,7 +893,7 @@ class Msr : public Instruction {
 
   u32 execute(Cpu& cpu) {
     const ProgramStatus program_status{
-        cpu.reg(static_cast<Register>(value & 0xf))};
+        cpu.reg(static_cast<Register>(m_value & 0xf))};
     if (test_bit(22)) {
       cpu.set_saved_program_status(program_status);
     } else {
@@ -930,19 +933,19 @@ class Multiply : public Instruction {
  public:
   using Instruction::Instruction;
   [[nodiscard]] constexpr Register dest_register() const {
-    return static_cast<Register>((value >> 16) & 0xf);
+    return static_cast<Register>((m_value >> 16) & 0xf);
   }
 
   [[nodiscard]] constexpr Register lhs_register() const {
-    return static_cast<Register>(value & 0xf);
+    return static_cast<Register>(m_value & 0xf);
   }
 
   [[nodiscard]] constexpr Register rhs_register() const {
-    return static_cast<Register>((value >> 8) & 0xf);
+    return static_cast<Register>((m_value >> 8) & 0xf);
   }
 
   [[nodiscard]] constexpr Register accumulate_register() const {
-    return static_cast<Register>((value >> 12) & 0xf);
+    return static_cast<Register>((m_value >> 12) & 0xf);
   }
 
   [[nodiscard]] constexpr bool set_condition_code() const {
@@ -996,11 +999,11 @@ class MultiplyLong : public Multiply {
   using Multiply::Multiply;
 
   [[nodiscard]] constexpr Register dest_register_high() const {
-    return static_cast<Register>((value >> 16) & 0xf);
+    return static_cast<Register>((m_value >> 16) & 0xf);
   }
 
   [[nodiscard]] constexpr Register dest_register_low() const {
-    return static_cast<Register>((value >> 12) & 0xf);
+    return static_cast<Register>((m_value >> 12) & 0xf);
   }
 
   [[nodiscard]] constexpr bool is_signed() const { return test_bit(22); }
@@ -1075,20 +1078,14 @@ class Branch : public Instruction {
     const bool thumb_mode = cpu.program_status().thumb_mode();
     // Convert 24 bit signed to 32 bit signed
     const s32 offset =
-        ((value & 0b0111'1111'1111'1111'1111'1111)
+        ((m_value & 0b0111'1111'1111'1111'1111'1111)
          << (cpu.program_status().thumb_mode() ? 0 : 2)) |
         (negative ? (thumb_mode ? 0xff800000 : (0xfe << 24)) : 0);
 
-    // fmt::print("offset {}\n", offset);
+    const u32 next_pc = cpu.reg(Register::R15) + offset;
 
-    // printf("offset: %d\n", offset);
-    const u32 next_pc = cpu.reg(Register::R15) + offset +
-                        (cpu.program_status().thumb_mode() ? 0 : 0);
-    // const u32 next_pc = cpu.reg(Register::R15) + offset - 8;
-    // fmt::printf("next pc: %08x\n", next_pc);
     if (link) {
       cpu.set_reg(Register::R14, cpu.reg(Register::R15) - 4);
-      // cpu.set_reg(Register::R14, cpu.reg(Register::R15));
     }
     cpu.set_reg(Register::R15, next_pc);
     return (2_seq + 1_nonseq).sum();
@@ -1100,7 +1097,7 @@ class BranchAndExchange : public Instruction {
   using Instruction::Instruction;
 
   u32 execute(Cpu& cpu) {
-    const auto next_pc_reg = static_cast<Register>(value & 0xf);
+    const auto next_pc_reg = static_cast<Register>(m_value & 0xf);
     const u32 reg_value = cpu.reg(next_pc_reg);
     cpu.set_reg(Register::R15, reg_value);
     const bool thumb_mode = gb::test_bit(reg_value, 0);
@@ -1165,10 +1162,10 @@ class SingleDataTransfer : public Instruction {
     Mmu& mmu = *cpu.m_mmu;
     const auto calculate_offset = [&]() -> u32 {
       if (immediate_offset()) {
-        return value & 0xfff;
+        return m_value & 0xfff;
       }
 
-      const ShiftResult shift_result = compute_shift_value(value, cpu);
+      const ShiftResult shift_result = compute_shift_value(m_value, cpu);
       const auto [set_carry, offset] = compute_shifted_operand(shift_result);
 
       return offset;
@@ -1199,13 +1196,13 @@ class SingleDataTransfer : public Instruction {
     if (load()) {
       if (word()) {
         // Load a word
-        const u32 value =
+        const u32 loaded_value =
             rotate_right(mmu.at<u32>(aligned_addr & ~0b11), rotate_amount);
-        cpu.set_reg(dest_register(), value);
+        cpu.set_reg(dest_register(), loaded_value);
       } else {
         // Load a byte
-        const u8 value = mmu.at<u8>(raw_addr);
-        cpu.set_reg(dest_register(), value);
+        const u8 loaded_value = mmu.at<u8>(raw_addr);
+        cpu.set_reg(dest_register(), loaded_value);
       }
     } else {
       const u32 stored_value = cpu.reg(dest_register());
@@ -1237,10 +1234,10 @@ class HalfwordDataTransfer : public SingleDataTransfer {
 
   [[nodiscard]] constexpr u32 offset_value(const Cpu& cpu) const {
     if (immediate_offset()) {
-      return ((value & 0xf00) >> 4) | (value & 0xf);
+      return ((m_value & 0xf00) >> 4) | (m_value & 0xf);
     }
 
-    const auto offset_reg = static_cast<Register>(value & 0xf);
+    const auto offset_reg = static_cast<Register>(m_value & 0xf);
     return cpu.reg(offset_reg);
   }
 
@@ -1261,7 +1258,7 @@ class HalfwordDataTransfer : public SingleDataTransfer {
     const u32 base_value = cpu.reg(operand_register());
     const u32 addr = select_addr(cpu, base_value, offset);
 
-    const auto transfer_type = static_cast<TransferType>((value & 0x60) >> 5);
+    const auto transfer_type = static_cast<TransferType>((m_value & 0x60) >> 5);
 
     const Register src_or_dest_reg = dest_register();
 
@@ -1421,7 +1418,7 @@ class SingleDataSwap : public Instruction {
   [[nodiscard]] bool swap_byte() const { return test_bit(22); }
 
   [[nodiscard]] Register source_register() const {
-    return static_cast<Register>(value & 0xf);
+    return static_cast<Register>(m_value & 0xf);
   }
 
   template <typename T>

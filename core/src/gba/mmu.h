@@ -1,5 +1,7 @@
 #pragma once
 #include <vector>
+#include "gba/hardware.h"
+#include "gba/input.h"
 #include "gba/lcd.h"
 #include "types.h"
 #include "utils.h"
@@ -40,23 +42,23 @@ class Waitcnt : public Integer<u32> {
  public:
   using Integer::Integer;
   [[nodiscard]] u32 sram_wait_control() const {
-    return decode_cycles(value & 0b11);
+    return decode_cycles(m_value & 0b11);
   }
 
   [[nodiscard]] u32 wait_zero_nonsequential() const {
-    return decode_cycles((value >> 2) & 0b11);
+    return decode_cycles((m_value >> 2) & 0b11);
   }
 
   [[nodiscard]] u32 wait_zero_sequential() const { return test_bit(4) ? 1 : 2; }
 
   [[nodiscard]] u32 wait_one_nonsequential() const {
-    return decode_cycles((value >> 5) & 0b11);
+    return decode_cycles((m_value >> 5) & 0b11);
   }
 
   [[nodiscard]] u32 wait_one_sequential() const { return test_bit(7) ? 1 : 4; }
 
   [[nodiscard]] u32 wait_two_nonsequential() const {
-    return decode_cycles((value >> 8) & 0b11);
+    return decode_cycles((m_value >> 8) & 0b11);
   }
 
   [[nodiscard]] u32 wait_two_sequential() const { return test_bit(10) ? 1 : 8; }
@@ -78,13 +80,6 @@ class Waitcnt : public Integer<u32> {
         throw std::runtime_error("expected 0, 1, 2, or 3 for decode_cycles");
     }
   }
-};
-
-class Lcd;
-class Cpu;
-struct Hardware {
-  Cpu* cpu = nullptr;
-  Lcd* lcd = nullptr;
 };
 
 struct Mmu {
@@ -123,6 +118,9 @@ struct Mmu {
 
   static constexpr u32 Dispcnt = 0x04000000;
   static constexpr u32 DispStatAddr = 0x04000004;
+  static constexpr u32 WaitcntAddr = 0x04000204;
+
+  static constexpr u32 KeyInputAddr = 0x04000130;
 
   std::vector<u8> ewram;
   std::vector<u8> iwram;
@@ -156,9 +154,11 @@ struct Mmu {
       case Dispcnt:
         dispcnt = value;
         return;
+      case WaitcntAddr:
+        waitcnt = Waitcnt{value};
+        return;
       case DispStatAddr:
         hardware.lcd->dispstat = DispStat{static_cast<u32>(value)};
-        // hardware.lcd->dispstat.
         return;
       case Ime:
         ime = value;
@@ -179,6 +179,10 @@ struct Mmu {
         return dispcnt;
       case DispStatAddr:
         return hardware.lcd->dispstat.data();
+      case WaitcntAddr:
+        return waitcnt.data();
+      case KeyInputAddr:
+        return hardware.input->data();
       case Ime:
         return ime;
     }

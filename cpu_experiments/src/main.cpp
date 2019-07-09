@@ -1,7 +1,12 @@
 #include <GL/glew.h>
 #include <SDL2/SDL.h>
+#include <folly/executors/CPUThreadPoolExecutor.h>
+#include <folly/futures/Future.h>
+#include <folly/init/Init.h>
+#include <chrono>
 #include <iostream>
 #include <string>
+#include <vector>
 #define DOCTEST_CONFIG_IMPLEMENT
 #include <doctest/doctest.h>
 // clang-format off
@@ -14,11 +19,20 @@
 #include "gba/cpu.h"
 #include "memory.h"
 #include "color.h"
-#include "assembler.h"
+#include "gba/assembler.h"
 #include "gba/lcd.h"
+#include "gba/input.h"
+#include "debugger/disassembly_view.h"
+#include "debugger/hardware_thread.h"
 #include "imgui_memory_editor.h"
 
+namespace gb::advance {
+
 static const char* FILE_NAME = "program.s";
+
+static const char* bool_to_string(bool value) {
+  return value ? "true" : "false";
+}
 
 static std::string read_stored_data() {
   std::ifstream file{FILE_NAME};
@@ -49,36 +63,14 @@ static std::vector<gb::u8> load_file(const std::string_view file_name) {
   return data;
 }
 
-static void execute_hardware(gb::advance::Hardware hardware) {
-  constexpr gb::u32 DrawCycles = 280896;
-
-  gb::u32 total_cycles = 0;
-  while (total_cycles < DrawCycles) {
-    gb::u32 cycles = hardware.cpu->execute();
-    total_cycles += cycles;
-
-    hardware.lcd->update(cycles);
-  }
-}
-
-int main(int argc, char** argv) {
-  doctest::Context context;
-
-  context.setOption("abort-after", 5);
-  context.applyCommandLine(argc, argv);
-
-  context.setOption("no-breaks", true);
-
-  int res = context.run();
-
-  if (context.shouldExit()) {
-    return res;
-  }
-
+void run_emulator_and_debugger() {
   if (SDL_Init(SDL_INIT_VIDEO) != 0) {
     std::cerr << SDL_GetError() << '\n';
-    return 1;
+    return;
   }
+  folly::CPUThreadPoolExecutor executor{8};
+
+  SDL_SetHint(SDL_HINT_VIDEO_X11_NET_WM_BYPASS_COMPOSITOR, "0");
 
   SDL_GL_SetAttribute(SDL_GL_CONTEXT_FLAGS, 0);
   SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_CORE);
@@ -110,26 +102,51 @@ int main(int argc, char** argv) {
 
   auto bytes = experiments::assemble("mov r5, #12");
 
-  gb::advance::Mmu mmu;
+  Mmu mmu;
 
-  mmu.rom = load_file("/home/jack/Downloads/armwrestler.gba");
+  mmu.rom =
+      load_file("/home/jack/Downloads/Super Dodge Ball Advance (USA).gba");
 
-  auto disassembly = experiments::disassemble(mmu.rom);
-  gb::advance::Cpu cpu{mmu};
+  DisassemblyInfo disassembly;
+  DisassemblyInfo thumb_disassembly;
 
-  gb::advance::Lcd lcd;
+  {
+    const auto make_handler_for = [](DisassemblyInfo& disassembly_info) {
+      return [&disassembly_info](auto&& res) {
+        disassembly_info.disassembly = std::move(res);
 
-  gb::advance::Hardware hardware{&cpu, &lcd};
+        for (int i = 0; i < disassembly_info.disassembly.size(); ++i) {
+          const auto& entry = disassembly_info.disassembly[i];
+          disassembly_info.addr_to_index[entry.loc] = i;
+        }
+      };
+    };
+
+    folly::via(&executor, [&mmu]() {
+      return experiments::disassemble(mmu.rom);
+    }).thenValue(make_handler_for(disassembly));
+
+    folly::via(&executor, [&mmu]() {
+      return experiments::disassemble(mmu.rom, "thumb");
+    }).thenValue(make_handler_for(thumb_disassembly));
+  }
+
+  Cpu cpu{mmu};
+
+  Lcd lcd;
+  Input input;
+
+  Hardware hardware{&cpu, &lcd, &input, &mmu};
 
   mmu.hardware = hardware;
 
-  cpu.set_reg(gb::advance::Register::R0, 10);
-  cpu.set_reg(gb::advance::Register::R15, 0x080002f0);
-  cpu.set_reg(gb::advance::Register::R13, gb::advance::Mmu::EWramEnd - 0x100);
-  // cpu.set_reg(gb::advance::Register::R15, 0x08000000);
+  cpu.set_reg(Register::R0, 10);
+  cpu.set_reg(Register::R15, 0x08000000);
+  cpu.set_reg(Register::R13, gb::advance::Mmu::IWramEnd - 0x100);
+
+  HardwareThread hardware_thread{hardware};
 
   bool running = true;
-  bool execute = false;
 
   std::string reg_string{"R"};
 
@@ -147,23 +164,56 @@ int main(int argc, char** argv) {
 
   while (running) {
     SDL_Event event;
-    while (SDL_PollEvent(&event)) {
+    while (SDL_PollEvent(&event) != 0) {
       ImGui_ImplSDL2_ProcessEvent(&event);
 
       switch (event.type) {
         case SDL_QUIT:
           running = false;
+          hardware_thread.push_event(Quit{});
           break;
-      }
-    }
 
-    if (execute) {
-      try {
-        execute_hardware(hardware);
-        // cpu.execute();
-      } catch (const std::exception& e) {
-        std::cerr << e.what() << '\n';
-        execute = false;
+        case SDL_KEYDOWN:
+        case SDL_KEYUP: {
+          bool set = event.type == SDL_KEYDOWN;
+
+          switch (event.key.keysym.sym) {
+            case SDLK_UP:
+              input.set_up(set);
+              break;
+            case SDLK_DOWN:
+              input.set_down(set);
+              break;
+            case SDLK_LEFT:
+              input.set_left(set);
+              break;
+            case SDLK_RIGHT:
+              input.set_right(set);
+              break;
+            case SDLK_z:
+              input.set_b(set);
+              break;
+            case SDLK_x:
+              input.set_a(set);
+              break;
+            case SDLK_a:
+              input.set_l(set);
+              break;
+            case SDLK_s:
+              input.set_r(set);
+              break;
+            case SDLK_RETURN:
+              input.set_start(set);
+              break;
+            case SDLK_RSHIFT:
+              input.set_select(set);
+              break;
+            default:
+              break;
+          }
+
+          break;
+        }
       }
     }
 
@@ -178,14 +228,38 @@ int main(int argc, char** argv) {
       ImGui::Begin("Cpu");
 
       for (gb::u32 i = 0; i < 16; ++i) {
-        auto reg = static_cast<gb::advance::Register>(i);
+        auto reg = static_cast<Register>(i);
+        auto value = cpu.reg(reg);
         ImGui::LabelText((reg_string + std::to_string(i)).c_str(), "%d / %08x",
-                         cpu.reg(reg));
+                         value, value);
       }
-      ImGui::LabelText("Zero", "%s",
-                       cpu.program_status().zero() ? "true" : "false");
 
-      ImGui::Checkbox("Execute", &execute);
+      ImGui::LabelText("Negative", "%s",
+                       bool_to_string(cpu.program_status().negative()));
+      ImGui::LabelText("Zero", "%s",
+                       bool_to_string(cpu.program_status().zero()));
+      ImGui::LabelText("Overflow", "%s",
+                       bool_to_string(cpu.program_status().overflow()));
+      ImGui::LabelText("Thumb", "%s",
+                       bool_to_string(cpu.program_status().thumb_mode()));
+
+      if (ImGui::Button("Execute")) {
+        hardware_thread.push_event(SetExecute{true});
+      }
+
+      {
+        static std::string breakpoint_string;
+        ImGui::InputText("Breakpoint", &breakpoint_string);
+        ImGui::SameLine();
+        if (ImGui::Button("Set")) {
+          try {
+            gb::u32 breakpoint_addr = std::stoi(breakpoint_string, nullptr, 16);
+            hardware_thread.push_event(SetBreakpoint{breakpoint_addr});
+          } catch (std::exception& e) {
+            std::cerr << e.what() << '\n';
+          }
+        }
+      }
 
       if (ImGui::Button("Step")) {
         try {
@@ -208,8 +282,7 @@ int main(int argc, char** argv) {
         write_stored_data(assembler_string);
         bytes = experiments::assemble(assembler_string);
         if (!bytes.empty()) {
-          cpu = gb::advance::Cpu{mmu};
-          execute = true;
+          cpu = Cpu{mmu};
           cpu.execute();
         }
       }
@@ -226,22 +299,14 @@ int main(int argc, char** argv) {
       ImGui::EndChild();
 
       ImGui::End();
-      ImGui::Begin("Disassembly");
-      const gb::u32 offset = (cpu.reg(gb::advance::Register::R15) - 4 -
-                              gb::advance::Mmu::RomRegion0Begin);
-      for (const auto& line : disassembly) {
-        const std::string& text = std::get<0>(line);
-        const gb::u32 loc = std::get<1>(line);
-        if (loc == offset) {
-          ImGui::Text("-> %08x %s", loc + gb::advance::Mmu::RomRegion0Begin,
-                      text.c_str());
-          ImGui::SetScrollHereY();
-        } else {
-          ImGui::Text("%08x %s", loc + gb::advance::Mmu::RomRegion0Begin,
-                      text.c_str());
-        }
-      }
-      ImGui::End();
+    }
+    {
+      static DisassemblyView arm_disassembly_view{"ARM Disassembly", 4};
+      static DisassemblyView thumb_disassembly_view{"Thumb Disassembly", 2};
+      arm_disassembly_view.render(gb::advance::Mmu::RomRegion0Begin, cpu,
+                                  disassembly);
+      thumb_disassembly_view.render(gb::advance::Mmu::RomRegion0Begin, cpu,
+                                    thumb_disassembly);
     }
     {
       ImGui::Begin("VRAM");
@@ -250,23 +315,26 @@ int main(int argc, char** argv) {
       ImGui::End();
     }
     {
+      ImGui::Begin("IWRam");
+      static MemoryEditor memory_editor;
+      memory_editor.DrawContents(mmu.iwram.data(), mmu.iwram.size());
+      ImGui::End();
+    }
+    {
       nonstd::span<gb::u16> pixels{
           reinterpret_cast<gb::u16*>(mmu.vram.data()),
           static_cast<long>(mmu.vram.size() / sizeof(gb::u16))};
 
       for (int i = 0; i < 240 * 160; ++i) {
-        gb::u8 color_index = mmu.vram[i];
-        gb::u16 color = mmu.palette_ram[color_index * 2];
+        u8 color_index = mmu.vram[i];
+        u16 color = mmu.palette_ram[color_index * 2];
 
         framebuffer[i] = {
-            static_cast<gb::u8>(gb::convert_space<32, 255>(color & 0x1f)),
-            static_cast<gb::u8>(
-                gb::convert_space<32, 255>((color >> 5) & 0x1f)),
-            static_cast<gb::u8>(
-                gb::convert_space<32, 255>((color >> 10) & 0x1f)),
-            255};
+            static_cast<u8>(convert_space<32, 255>(color & 0x1f)),
+            static_cast<u8>(convert_space<32, 255>((color >> 5) & 0x1f)),
+            static_cast<u8>(convert_space<32, 255>((color >> 10) & 0x1f)), 255};
       }
-      framebuffer[344] = {255, 255, 255, 255};
+
       glBindTexture(GL_TEXTURE_2D, texture);
       glPixelStorei(GL_UNPACK_ROW_LENGTH, 0);
       glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, 240, 160, 0, GL_RGBA,
@@ -299,6 +367,22 @@ int main(int argc, char** argv) {
   SDL_GL_DeleteContext(gl_context);
   SDL_DestroyWindow(window);
   SDL_Quit();
+}
+}  // namespace gb::advance
 
-  return 0;
+int main(int argc, char** argv) {
+  folly::init(&argc, &argv);
+  doctest::Context context;
+
+  context.setOption("abort-after", 5);
+  context.applyCommandLine(argc, argv);
+
+  context.setOption("no-breaks", true);
+
+  int res = context.run();
+
+  if (context.shouldExit()) {
+    return res;
+  }
+  gb::advance::run_emulator_and_debugger();
 }

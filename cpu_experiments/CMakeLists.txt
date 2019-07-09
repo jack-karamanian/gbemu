@@ -8,11 +8,16 @@ find_package(SDL2 CONFIG REQUIRED)
 find_package(doctest CONFIG REQUIRED)
 find_package(LLVM CONFIG REQUIRED)
 find_package(fmt CONFIG REQUIRED)
+find_package(folly CONFIG REQUIRED)
 
 add_subdirectory(../core ./gbemu_core_build)
 
 set(SRCS
   src/main.cpp
+  src/debugger/disassembly_view.h
+  src/debugger/disassembly_view.cpp
+  src/debugger/hardware_thread.h
+  src/debugger/hardware_thread.cpp
   src/imgui/examples/imgui_impl_sdl.h
   src/imgui/examples/imgui_impl_sdl.cpp
   src/imgui/examples/imgui_impl_opengl3.cpp
@@ -35,6 +40,8 @@ target_link_libraries(cpu_experiments PRIVATE
   gbemu_core
   fmt::fmt
   fmt::fmt-header-only
+  Folly::folly
+  Folly::folly_deps
 )
 
 target_include_directories(cpu_experiments 

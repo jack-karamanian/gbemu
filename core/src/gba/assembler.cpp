@@ -1,3 +1,4 @@
+#include <fmt/printf.h>
 #include <llvm/ADT/Triple.h>
 #include <llvm/MC/MCAsmBackend.h>
 #include <llvm/MC/MCAsmInfo.h>
@@ -36,7 +37,7 @@ static llvm::SmallVector<char, 64> assemble_elf(const std::string& src) {
   const llvm::Target* target =
       llvm::TargetRegistry::lookupTarget("arm", triple, error);
   if (!target) {
-    printf("Error %s\n", error.c_str());
+    fmt::printf("Error %s\n", error.c_str());
   }
 
   llvm::SourceMgr src_mgr;
@@ -60,7 +61,7 @@ static llvm::SmallVector<char, 64> assemble_elf(const std::string& src) {
   std::unique_ptr<llvm::MCInstrInfo> instr_info{target->createMCInstrInfo()};
 
   std::unique_ptr<llvm::MCSubtargetInfo> subtarget_info{
-      target->createMCSubtargetInfo(triple_name, "arm7tdmi", "armv4t")};
+      target->createMCSubtargetInfo(triple.getTriple(), "arm7tdmi", "armv4t")};
 
   llvm::SmallVector<char, 64> elf_bytes;
   llvm::raw_svector_ostream ostream{elf_bytes};
@@ -104,33 +105,34 @@ std::vector<gb::u8> assemble(const std::string& src) {
   return std::vector<gb::u8>(contents->begin(), contents->end());
 }
 
-std::vector<std::tuple<std::string, gb::u32>> disassemble(
-    nonstd::span<gb::u8> bytes) {
+std::vector<DisassemblyEntry> disassemble(nonstd::span<gb::u8> bytes,
+                                          std::string_view arch) {
   llvm::InitializeAllTargetInfos();
   llvm::InitializeAllTargetMCs();
   llvm::InitializeAllAsmParsers();
   llvm::InitializeAllDisassemblers();
 
-  llvm::SmallString<64> asm_string;
+  llvm::SmallString<128> asm_string;
   llvm::raw_svector_ostream ostream{asm_string};
   std::string error;
 
   llvm::Triple triple(llvm::Triple::normalize(triple_name));
 
   const llvm::Target* target =
-      llvm::TargetRegistry::lookupTarget("arm", triple, error);
+      llvm::TargetRegistry::lookupTarget(arch.data(), triple, error);
 
-  if (!target) {
-    printf("Error %s\n", error.c_str());
+  if (target == nullptr) {
+    fmt::printf("Error %s\n", error.c_str());
+    return {};
   }
 
   llvm::SourceMgr src_mgr;
 
   std::unique_ptr<llvm::MCRegisterInfo> register_info{
-      target->createMCRegInfo(triple_name)};
+      target->createMCRegInfo(triple.getTriple())};
 
   std::unique_ptr<llvm::MCAsmInfo> asm_info{
-      target->createMCAsmInfo(*register_info, triple_name)};
+      target->createMCAsmInfo(*register_info, triple.getTriple())};
 
   llvm::MCObjectFileInfo object_file_info;
 
@@ -146,7 +148,7 @@ std::vector<std::tuple<std::string, gb::u32>> disassemble(
       target->createMCCodeEmitter(*instr_info, *register_info, mc_context)};
 
   std::unique_ptr<llvm::MCSubtargetInfo> subtarget_info{
-      target->createMCSubtargetInfo(triple_name, "arm7tdmi", "armv4t")};
+      target->createMCSubtargetInfo(triple.getTriple(), "arm7tdmi", "armv4t")};
 
   llvm::MCAsmBackend* asm_backend = target->createMCAsmBackend(
       *subtarget_info, *register_info, llvm::MCTargetOptions{});
@@ -167,23 +169,37 @@ std::vector<std::tuple<std::string, gb::u32>> disassemble(
   llvm::SmallString<64> line_string;
   llvm::raw_svector_ostream line_stream{line_string};
 
-  std::vector<std::tuple<std::string, gb::u32>> asm_lines;
-  for (uint64_t i = 0; i < bytes.size(); i += size) {
+  std::vector<DisassemblyEntry> asm_lines;
+
+  const gb::u32 instruction_size = [arch] {
+    if (arch == "arm") {
+      return 4;
+    }
+    if (arch == "thumb") {
+      return 2;
+    }
+
+    return 1;
+  }();
+
+  for (uint64_t i = 0; i < bytes_ref.size(); i += size) {
     llvm::MCInst inst;
     auto status = disassembler->getInstruction(inst, size, bytes_ref.slice(i),
                                                i, llvm::nulls(), llvm::nulls());
 
     switch (status) {
+      case llvm::MCDisassembler::SoftFail:
+        break;
       case llvm::MCDisassembler::Fail:
         if (size == 0) {
-          size = 1;
+          size = instruction_size;
         }
+
         break;
       case llvm::MCDisassembler::Success:
 
         stream->AddComment(std::string{"Offset: "} + std::to_string(i));
         stream->EmitInstruction(inst, *subtarget_info);
-        std::cout << asm_string.c_str() << '\n';
         asm_lines.emplace_back(
             std::string(asm_string.begin(), asm_string.end()), i);
         asm_string.clear();
