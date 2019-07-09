@@ -30,7 +30,6 @@ void Lcd::update(u32 cycles) {
       }
       break;
     case Mode::VBlank:
-      printf("VBLANK\n");
       if (m_cycles >= 1232) {
         m_cycles = 0;
         ++vcount;
