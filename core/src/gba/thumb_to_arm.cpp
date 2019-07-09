@@ -28,6 +28,10 @@ enum class ThumbInstructionType {
 
 using ThumbLookupEntry = InstructionLookupEntry<u16, ThumbInstructionType>;
 
+[[nodiscard]] static u32 move_bit_forward(u32 value, u32 bit, u32 dest_bit) {
+  return (value & (1 << bit)) << (dest_bit - bit);
+}
+
 [[nodiscard]] static constexpr u32 make_data_processing(
     Opcode opcode,
     bool immediate_operand,
@@ -36,6 +40,19 @@ using ThumbLookupEntry = InstructionLookupEntry<u16, ThumbInstructionType>;
          (immediate_operand ? 1 << 25 : 0) | (static_cast<u32>(opcode) << 21) |
          (set_condition_code ? 1 << 20 : 0);
 }
+
+[[nodiscard]] static constexpr u32 make_single_data_transfer(
+    bool register_offset,
+    bool preindex,
+    bool add,
+    bool byte,
+    bool write_back,
+    bool load) {
+  return 0b1110'01'0'0'0'0'0'0'0000'0000'000000000000 |
+         (register_offset ? 1 << 25 : 0) | (preindex ? 1 << 24 : 0) |
+         (add ? 1 << 23 : 0) | (byte ? 1 << 22 : 0) |
+         (write_back ? 1 << 21 : 0) | (load ? 1 << 20 : 0);
+};
 
 [[nodiscard]] static u32 with_registers(u32 instruction,
                                         u32 dest,
@@ -92,7 +109,7 @@ constexpr std::array<ThumbLookupEntry, 19> generate_thumb_lookup_table() {
           .expect_bits(10, 12, 13, 15),
       ThumbLookupEntry{ThumbInstructionType::MultipleLoadStore}
           .mask_bit_range(12, 15)
-          .expect_bits(13, 15),
+          .expect_bits(14, 15),
       ThumbLookupEntry{ThumbInstructionType::ConditionalBranch}
           .mask_bit_range(12, 15)
           .expect_bits(12, 14, 15),
@@ -309,7 +326,6 @@ u32 convert_thumb_to_arm(u16 instruction) {
                                 adjusted_operand);
         }
 
-        break;
         case HiRegisterOperationOpcode::Mov: {
           constexpr u32 base_instruction =
               make_data_processing(Opcode::Mov, false, false);
@@ -335,15 +351,6 @@ u32 convert_thumb_to_arm(u16 instruction) {
     }
 
     case ThumbInstructionType::LoadStoreRegisterOffset: {
-      constexpr auto make_single_data_transfer =
-          [](bool register_offset, bool preindex, bool add, bool byte,
-             bool write_back, bool load) {
-            return 0b1110'01'0'0'0'0'0'0'0000'0000'000000000000 |
-                   (register_offset ? 1 << 25 : 0) | (preindex ? 1 << 24 : 0) |
-                   (add ? 1 << 23 : 0) | (byte ? 1 << 22 : 0) |
-                   (write_back ? 1 << 21 : 0) | (load ? 1 << 20 : 0);
-          };
-
       const u32 load = (instruction & (1 << 11)) << 9;
 
       const u32 byte = (instruction & (1 << 10)) << 12;
@@ -361,6 +368,7 @@ u32 convert_thumb_to_arm(u16 instruction) {
     case ThumbInstructionType::LoadStoreSignExtendedByteHalfword: {
       constexpr auto make_halfword_data_transfer = []() {};
 
+      // Reverse the H and S bits to form the opcode
       const u32 opcode = (((instruction & (1 << 10)) >> 9) |
                           ((instruction & (1 << 11)) >> 11)) &
                          0b11;
@@ -383,6 +391,112 @@ u32 convert_thumb_to_arm(u16 instruction) {
       return with_registers(base_instruction, dest_reg, operand_reg,
                             (instruction >> 6) & 0b111) |
              converted_opcode;
+    }
+    case ThumbInstructionType::LoadStoreImmOffset: {
+      constexpr u32 base_instruction =
+          make_single_data_transfer(false, true, true, false, false, false);
+
+      const u32 load = move_bit_forward(instruction, 11, 20);
+      const u32 byte = move_bit_forward(instruction, 12, 22);
+
+      const u32 offset = ((instruction >> 6) & 0b11111) << (byte == 0 ? 2 : 0);
+
+      return with_registers(base_instruction, dest_reg, operand_reg, 0) | load |
+             byte | offset;
+    }
+    case ThumbInstructionType::LoadStoreHalfword: {
+      const u32 base_instruction{
+          0b1110'000'1'1'1'0'0'0000'0000'0000'1'0'1'1'0000};
+
+      const u32 load = move_bit_forward(instruction, 11, 20);
+
+      const u32 offset = ((instruction >> 6) & 0b11111) << 1;
+
+      const u32 offset_high = (offset & 0b11'0000) << 4;
+      const u32 offset_low = (offset & 0b1111);
+
+      return with_registers(base_instruction, dest_reg, operand_reg, 0) | load |
+             offset_high | offset_low;
+    }
+    case ThumbInstructionType::SpRelativeLoadStore: {
+      constexpr u32 base_instruction =
+          make_single_data_transfer(false, true, true, false, false, false);
+
+      const u32 offset = (instruction & 0xff) << 2;
+      const u32 dest_reg_override = (instruction >> 8) & 0b111;
+
+      const u32 load = move_bit_forward(instruction, 11, 20);
+
+      return with_registers(base_instruction, dest_reg_override,
+                            static_cast<u32>(Register::R13), 0) |
+             load | offset;
+    }
+    case ThumbInstructionType::LoadAddress: {
+      constexpr u32 base_instruction =
+          make_data_processing(Opcode::Add, true, false);
+
+      const u32 offset = (instruction & 0xff) << 2;
+      const u32 dest_reg_override = (instruction >> 8) & 0b111;
+      const Register lhs_register =
+          test_bit(instruction, 11) ? Register::R13 : Register::R15;
+
+      return with_registers(base_instruction, dest_reg_override,
+                            static_cast<u32>(lhs_register), 0) |
+             offset;
+    }
+    case ThumbInstructionType::AddOffsetToStackPointer: {
+      const u32 base_instruction = make_data_processing(
+          test_bit(instruction, 7) ? Opcode::Sub : Opcode::Add, true, false);
+
+      const u32 offset = (instruction & 0b1111111) << 2;
+
+      constexpr u32 sp = static_cast<u32>(Register::R13);
+
+      return with_registers(base_instruction, sp, sp, 0) | offset;
+    }
+    case ThumbInstructionType::PushPopRegisters: {
+      constexpr u32 base_instruction{0b1110'100'00000'0000'0000000000000000};
+      // STMDB
+      constexpr u32 store_flags = 0b10010;
+      // LDMIA
+      constexpr u32 load_flags = 0b01011;
+
+      const bool load = test_bit(instruction, 11);
+
+      const u32 transfer_lr = move_bit_forward(instruction, 8, load ? 15 : 14);
+      const u32 register_list = instruction & 0xff;
+
+      return with_registers(base_instruction, 0,
+                            static_cast<u32>(Register::R13), 0) |
+             ((load ? load_flags : store_flags) << 20) | transfer_lr |
+             register_list;
+    }
+    case ThumbInstructionType::MultipleLoadStore: {
+      const u32 load = move_bit_forward(instruction, 11, 20);
+      constexpr u32 base_instruction{
+          0b1110'100'0'1'0'1'0'0000'0000000000000000};
+
+      const u32 base_register = (instruction >> 8) & 0b111;
+      const u32 register_list = instruction & 0xff;
+
+      return with_registers(base_instruction, 0, base_register, 0) | load |
+             register_list;
+    }
+    case ThumbInstructionType::ConditionalBranch: {
+      constexpr u32 base_instruction = 0b0000'101'0 << 24;
+      const u32 offset =
+          ((static_cast<s32>(static_cast<s8>(instruction & 0xff)) << 1) &
+           0x00ffffff);
+      const u32 condition = (instruction & (0xf << 8)) << 20;
+
+      return base_instruction | condition | offset;
+    }
+    case ThumbInstructionType::SoftwareInterrupt:
+      return (0b1110'1111 << 24) | (instruction & 0xff);
+    case ThumbInstructionType::UnconditionalBranch: {
+      const u32 offset = ((instruction & 0x7ff) << 1);
+      return (0b1110'1010 << 24) | (offset >> 0) |
+             (test_bit(offset, 11) ? 0xfffc00 : 0);
     }
   }
 
@@ -510,6 +624,80 @@ TEST_CASE(
   check_thumb_equivalent("ldrh r3, [r4,r5]", "ldrh r3, [r4,r5]");
   check_thumb_equivalent("ldrsb r3, [r4,r5]", "ldrsb r3, [r4,r5]");
   check_thumb_equivalent("ldrsh r3, [r4,r5]", "ldrsh r3, [r4,r5]");
+}
+
+TEST_CASE("load/store with immediate offset should be correctly translated") {
+  check_thumb_equivalent("str r3,[r5, #32]", "str r3,[r5, #32]");
+  check_thumb_equivalent("ldr r3,[r5, #32]", "ldr r3,[r5, #32]");
+
+  check_thumb_equivalent("strb r3,[r5, #16]", "strb r3,[r5, #16]");
+  check_thumb_equivalent("ldrb r3,[r5, #16]", "ldrb r3,[r5, #16]");
+}
+
+TEST_CASE("load/store halfword should be correctly translated") {
+  check_thumb_equivalent("strh r3,[r5, #32]", "strh r3,[r5, #32]");
+  check_thumb_equivalent("ldrh r3,[r5, #32]", "ldrh r3,[r5, #32]");
+}
+
+TEST_CASE("SP-relative load/stores should be correctly translated") {
+  check_thumb_equivalent("str r3, [sp, #128]", "str r3, [r13, #128]");
+  check_thumb_equivalent("ldr r3, [sp, #128]", "ldr r3, [r13, #128]");
+}
+
+TEST_CASE("load addresses should be correctly translated") {
+  // LLVM won't recognize these instructions
+
+  // "add r3, pc, #128" == "add r3, r15, #128"
+  CHECK(convert_thumb_to_arm(0xa320) == 0xe28f3080);
+
+  // "add r3, sp, #128" == "add r3, r13, #128"
+  CHECK(convert_thumb_to_arm(0xab20) == 0xe28d3080);
+}
+
+TEST_CASE("add offset to stack pointers should be correctly translated") {
+  check_thumb_equivalent("add sp, #100", "add r13, r13, #100");
+  check_thumb_equivalent("add sp, #-100", "sub r13, r13, #100");
+}
+
+TEST_CASE("push/pop registers should be correctly translated") {
+  check_thumb_equivalent("push {r1,r2,r3,r4,r5,r7}",
+                         "stmdb r13!, {r1,r2,r3,r4,r5,r7}");
+  check_thumb_equivalent("push {r1,r2,r3,r4,r5,r7,lr}",
+                         "stmdb r13!, {r1,r2,r3,r4,r5,r7,r14}");
+  check_thumb_equivalent("pop {r1,r2,r3,r4,r5,r7}",
+                         "ldmia r13!, {r1,r2,r3,r4,r5,r7}");
+  check_thumb_equivalent("pop {r1,r2,r3,r4,r5,r7,pc}",
+                         "ldmia r13!, {r1,r2,r3,r4,r5,r7,r15}");
+}
+
+TEST_CASE("multiple load/stores should be correctly translated") {
+  check_thumb_equivalent("stmia r3!, {r1,r2,r4,r5,r7}",
+                         "stmia r3!, {r1,r2,r4,r5,r7}");
+  check_thumb_equivalent("ldmia r3!, {r1,r2,r4,r5,r7}",
+                         "ldmia r3!, {r1,r2,r4,r5,r7}");
+}
+
+TEST_CASE("conditional branches should be correctly translated") {
+  using namespace std::literals;
+  const std::vector<std::string> conditions{"eq", "ne", "cs", "cc", "mi",
+                                            "pl", "vs", "vc", "hi", "ls",
+                                            "ge", "lt", "gt", "le"};
+  for (const auto& condition : conditions) {
+    check_thumb_equivalent("b"s + condition + " #100",
+                           "b"s + condition + " #100");
+    check_thumb_equivalent("b"s + condition + " #-128",
+                           "b"s + condition + " #-128");
+  }
+}
+
+TEST_CASE("software interrupt should be correctly translated") {
+  check_thumb_equivalent("swi 18", "swi 18");
+}
+
+TEST_CASE("unconditional branches should be correctly translated") {
+  check_thumb_equivalent("b 24", "b 24");
+  // check_thumb_equivalent("b -24", "b -24");
+  CHECK(convert_thumb_to_arm(0xe7fe) == 0xeafffffe);
 }
 
 }  // namespace gb::advance
