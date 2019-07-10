@@ -167,9 +167,8 @@ struct Mmu {
 
     auto [selected_span, resolved_addr] = select_storage(addr);
     const auto converted = to_bytes(value);
-    for (std::size_t i = 0; i < sizeof(T); ++i) {
-      selected_span[resolved_addr + i] = converted[i];
-    }
+    auto subspan = selected_span.subspan(resolved_addr);
+    std::copy(converted.begin(), converted.end(), subspan.begin());
   }
 
   template <typename T>
