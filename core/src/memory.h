@@ -210,19 +210,17 @@ class Memory {
     memory[Registers::InterruptRequest::Address] = val;
   }
 
-  nonstd::span<const SpriteAttribute> get_sprite_attributes() {
+  nonstd::span<const u8> get_sprite_attributes() {
     const u8* sprite_attrib_begin = &memory[0xfe00];
     const u8* sprite_attrib_end = &memory[0xfea0];
 
-    return {reinterpret_cast<const SpriteAttribute*>(sprite_attrib_begin),
-            reinterpret_cast<const SpriteAttribute*>(sprite_attrib_end)};
+    return {sprite_attrib_begin, sprite_attrib_end};
   }
 
-  [[nodiscard]] nonstd::span<const BgAttribute> get_tile_atributes(
-      u16 addr) const {
+  [[nodiscard]] nonstd::span<const u8> get_tile_atributes(u16 addr) const {
     const u8* begin = &vram_bank1[addr - 0x8000];
 
-    return {reinterpret_cast<const BgAttribute*>(begin), 1024};
+    return {begin, 1024};
   }
 
   [[nodiscard]] nonstd::span<const u8> get_vram(int bank = 0) {

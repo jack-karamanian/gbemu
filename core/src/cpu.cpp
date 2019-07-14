@@ -103,7 +103,7 @@ void Cpu::debug_write() {
             << std::endl;
 }
 
-void Cpu::set_half_carry_subtract(const u8& a, const u8& b) {
+void Cpu::set_half_carry_subtract(const u8 a, const u8 b) {
   bool half_carry = (b & 0x0f) > (a & 0x0f);
 
   if (half_carry) {
@@ -142,7 +142,7 @@ void Cpu::invalid() const {
   throw std::runtime_error(s.str());
 }
 
-void Cpu::carried_add(u8& dest, const u8& a, const u8& b) {
+void Cpu::carried_add(u8& dest, const u8 a, const u8 b) {
   const u8 carry = get_flag(FLAG_CARRY) ? 1 : 0;
   const u8 res = (a + b) + carry;
 
@@ -163,7 +163,7 @@ void Cpu::carried_add(u8& dest, const u8& a, const u8& b) {
   clear_flag(FLAG_SUBTRACT);
 }
 
-void Cpu::add(u8& dest, const u8& a, const u8& b) {
+void Cpu::add(u8& dest, const u8 a, const u8 b) {
   const u8 res = a + b;
 
   set_carry(a, b);
@@ -195,7 +195,7 @@ void Cpu::add_carry_a_d8() {
 // ADC A,r8
 void Cpu::add_carry_a_r8(Register reg) {
   u8& a = regs[Register::A];
-  const u8& val = regs[reg];
+  const u8 val = regs[reg];
 
   carried_add(a, a, val);
 }
@@ -227,8 +227,8 @@ void Cpu::add_a_d8() {
 
 // ADD HL,r16
 void Cpu::add_hl_r16(Register reg) {
-  u16& hl = get_r16(Register::HL);
-  u16& r16 = get_r16(reg);
+  const u16 hl = get_r16(Register::HL);
+  const u16 r16 = get_r16(reg);
 
   const u16 res = hl + r16;
 
@@ -242,19 +242,20 @@ void Cpu::add_hl_r16(Register reg) {
   set_carry(hl, r16);
   clear_flag(FLAG_SUBTRACT);
 
-  hl = res;
+  // hl = res;
+  set_r16(Register::HL, res);
 }
 
 // ADD HL,SP
 void Cpu::add_hl_sp() {
-  u16& hl = get_r16(Register::HL);
+  const u16 hl = get_r16(Register::HL);
   u16 res = hl + sp;
 
   set_half_carry(hl, sp);
   set_carry(hl, sp);
   clear_flag(FLAG_SUBTRACT);
 
-  hl = res;
+  set_r16(Register::HL, res);
 }
 
 // ADD SP,s8
@@ -276,7 +277,7 @@ void Cpu::add_sp_s8() {
   sp = res;
 }
 
-void Cpu::and_a(const u8& val) {
+void Cpu::and_a(const u8 val) {
   u8& a = regs[Register::A];
 
   a &= val;
@@ -296,7 +297,7 @@ void Cpu::and_a_r8(Register reg) {
 
 // AND A,[HL]
 void Cpu::and_a_hl() {
-  const u16& addr = get_r16(Register::HL);
+  const u16 addr = get_r16(Register::HL);
   const u8 val = memory->at(addr);
 
   and_a(val);
@@ -309,7 +310,7 @@ void Cpu::and_a_d8() {
   and_a(val);
 }
 
-void Cpu::bit(const u8& bit_num, const u8& val) {
+void Cpu::bit(const u8 bit_num, const u8 val) {
   bool bit_set = (val & (0x01 << bit_num)) != 0;
 
   if (bit_set) {
@@ -330,7 +331,7 @@ void Cpu::bit_r8(u8 bit_num, Register reg) {
 
 // BIT u3,[HL]
 void Cpu::bit_hl(u8 bit_num) {
-  u16& addr = get_r16(Register::HL);
+  const u16 addr = get_r16(Register::HL);
   const u8 val = memory->at(addr);
   bit(bit_num, val);
 }
@@ -394,8 +395,8 @@ void Cpu::ccf() {
   clear_flag(FLAG_HALF_CARRY);
 }
 
-void Cpu::compare_a(const u8& val) {
-  const u8& a = regs[Register::A];
+void Cpu::compare_a(const u8 val) {
+  const u8 a = regs[Register::A];
 
   const u8 res = a - val;
 
@@ -489,8 +490,8 @@ void Cpu::dec_hl() {
 
 // DEC r16
 void Cpu::dec_r16(Register reg) {
-  u16& val = get_r16(reg);
-  val--;
+  const u16 val = get_r16(reg);
+  set_r16(reg, val - 1);
 }
 
 // DEC SP
@@ -536,8 +537,8 @@ void Cpu::inc_hl() {
 
 // INC r16
 void Cpu::inc_r16(Register reg) {
-  u16& r16 = get_r16(reg);
-  r16++;
+  const u16 val = get_r16(reg);
+  set_r16(reg, val + 1);
 }
 
 // INC SP
@@ -545,7 +546,7 @@ void Cpu::inc_sp() {
   sp++;
 }
 
-void Cpu::jump(const u16& addr) {
+void Cpu::jump(const u16 addr) {
   pc = addr;
 }
 
@@ -555,7 +556,7 @@ void Cpu::jp_d16() {
   jump(addr);
 }
 
-bool Cpu::can_jump(const u8& opcode, int offset) {
+bool Cpu::can_jump(const u8 opcode, int offset) {
   int index = ((opcode & 0x38) >> 3) - offset;
 
   return ((index == JumpCondition::NZ && !get_flag(FLAG_ZERO)) ||
@@ -564,7 +565,7 @@ bool Cpu::can_jump(const u8& opcode, int offset) {
           (index == JumpCondition::C && get_flag(FLAG_CARRY)));
 }
 
-void Cpu::jump_conditional(const u16& addr, int index_offset) {
+void Cpu::jump_conditional(const u16 addr, int index_offset) {
   if (can_jump(current_opcode, index_offset)) {
     jump(addr);
   } else {
@@ -603,21 +604,21 @@ void Cpu::ld_r8_r8(Register dst, Register src) {
 
 // LD r8,n8
 void Cpu::ld_r8_d8(Register dst) {
-  const u8& val = read_operand();
+  const u8 val = read_operand();
   regs[dst] = val;
 }
 
 // LD r16,n16
 void Cpu::ld_r16_d16(Register dst) {
-  u16& r16 = get_r16(dst);
-  const u16& val = read_operand<u16>();
+  const u16 val = read_operand<u16>();
 
-  r16 = val;
+  // r16 = val;
+  set_r16(dst, val);
 }
 
 // LD [HL],r8
 void Cpu::ld_hl_r8(Register reg) {
-  const u16& hl = get_r16(Register::HL);
+  const u16 hl = get_r16(Register::HL);
   // u8* val = memory->at(hl);
   //*val = regs[reg];
   memory->set(hl, regs[reg]);
@@ -625,7 +626,7 @@ void Cpu::ld_hl_r8(Register reg) {
 
 // LD [HL],n8
 void Cpu::ld_hl_d8() {
-  const u16& hl = get_r16(Register::HL);
+  const u16 hl = get_r16(Register::HL);
   // u8* val = memory->at(hl);
   //*val = read_operand();
   memory->set(hl, read_operand());
@@ -633,7 +634,7 @@ void Cpu::ld_hl_d8() {
 
 // LD r8,[HL]
 void Cpu::ld_r8_hl(Register reg) {
-  const u16& hl = get_r16(Register::HL);
+  const u16 hl = get_r16(Register::HL);
   const u8 val = memory->at(hl);
   regs[reg] = val;
 }
@@ -647,19 +648,19 @@ void Cpu::ld_r16_a(Register reg) {
 
 // LD [n16],A
 void Cpu::ld_d16_a() {
-  const u16& addr = read_operand<u16>();
+  const u16 addr = read_operand<u16>();
   // u8* val = memory->at(addr);
   //*val = regs[Register::A];
   memory->set(addr, regs[Register::A]);
 }
 
-void Cpu::load_offset(const u8& offset, const u8& val) {
+void Cpu::load_offset(const u8 offset, const u8 val) {
   memory->set(0xff00 + offset, val);
 }
 
 // LD [$FF00 + n8],A
 void Cpu::ld_offset_a() {
-  const u8& offset = read_operand();
+  const u8 offset = read_operand();
   load_offset(offset, regs[Register::A]);
 }
 
@@ -670,25 +671,25 @@ void Cpu::ld_offset_c_a() {
 
 // LD A,[r16]
 void Cpu::ld_a_r16(Register reg) {
-  const u8& val = value_at_r16(reg);
+  const u8 val = value_at_r16(reg);
   regs[Register::A] = val;
 }
 
 // LD A,[n16]
 void Cpu::ld_a_d16() {
-  const u16& addr = read_operand<u16>();
+  const u16 addr = read_operand<u16>();
   const u8 val = memory->at(addr);
   regs[Register::A] = val;
 }
 
-void Cpu::read_offset_from_memory(const u8& offset, u8& dest) {
+void Cpu::read_offset_from_memory(const u8 offset, u8& dest) {
   const u8 val = memory->at(0xff00 + offset);
   dest = val;
 }
 
 // LD A,[$FF00 + n8]
 void Cpu::ld_read_offset_d8() {
-  const u8& offset = read_operand();
+  const u8 offset = read_operand();
   read_offset_from_memory(offset, regs[Register::A]);
 }
 
@@ -699,7 +700,7 @@ void Cpu::ld_read_offset_c() {
 
 // TODO: fix this
 void Cpu::load_hl_a() {
-  const u16& hl = get_r16(Register::HL);
+  const u16 hl = get_r16(Register::HL);
   memory->set(hl, regs[Register::A]);
 }
 
@@ -748,8 +749,6 @@ void Cpu::ld_d16_sp() {
 
 // LD HL,SP+e8
 void Cpu::ld_hl_sp_s8() {
-  u16& hl = get_r16(Register::HL);
-
   const s8 val = read_operand();
   int res = sp + val;
   if (res & 0xffff0000) {
@@ -763,7 +762,7 @@ void Cpu::ld_hl_sp_s8() {
   clear_flag(FLAG_ZERO);
   clear_flag(FLAG_SUBTRACT);
 
-  hl = res;
+  set_r16(Register::HL, res);
 }
 
 // LD SP,HL
@@ -772,7 +771,7 @@ void Cpu::ld_sp_hl() {
   sp = hl;
 }
 
-void Cpu::or_a(const u8& val) {
+void Cpu::or_a(const u8 val) {
   regs[Register::A] |= val;
   set_zero(regs[Register::A]);
   clear_flag(FLAG_SUBTRACT);
@@ -805,17 +804,20 @@ void Cpu::pop(u16& reg) {
 
 // POP AF
 void Cpu::pop_af() {
-  u16& af = get_r16(Register::F);
-  pop(af);
+  u16 value = 0;
+  pop(value);
+  set_r16(Register::F, value);
   regs[Register::F] &= 0xf0;
 }
 
 // POP r16
 void Cpu::pop_r16(Register reg) {
-  pop(get_r16(reg));
+  u16 value = 0;
+  pop(value);
+  set_r16(reg, value);
 }
 
-void Cpu::push(const u16& val) {
+void Cpu::push(const u16 val) {
   u8 low = (val & 0xff00) >> 8;
   u8 high = val & 0xff;
 
@@ -833,7 +835,7 @@ void Cpu::push_r16(Register reg) {
   push(get_r16(reg));
 }
 
-void Cpu::set_bit(u8& dest, const u8& bit, bool set) {
+void Cpu::set_bit(u8& dest, const u8 bit, bool set) {
   const u8 bit_mask = 0x1 << bit;
   if (set) {
     dest |= bit_mask;
@@ -913,8 +915,6 @@ void Cpu::rl_r8(Register reg) {
 
 // RL, [HL]
 void Cpu::rl_hl() {
-  // u8& val = value_at_r16(Register::HL);
-  // rotate_zero(val);
   mutate(Register::HL, &Cpu::rotate_zero, true);
 }
 
@@ -1023,7 +1023,7 @@ void Cpu::rst() {
   pc = addr;
 }
 
-void Cpu::carried_subtract(u8& dst, const u8& src) {
+void Cpu::carried_subtract(u8& dst, const u8 src) {
   const u8 carry = get_flag(FLAG_CARRY) ? 1 : 0;
   const u8 res = (dst - src) - carry;
 
@@ -1068,12 +1068,12 @@ void Cpu::scf() {
 }
 
 // SET u3,r8
-void Cpu::set_u3_r8(const u8& bit, Register reg) {
+void Cpu::set_u3_r8(const u8 bit, Register reg) {
   set_bit(regs[reg], bit, true);
 }
 
 // SET u3,[HL]
-void Cpu::set_u3_hl(const u8& bit) {
+void Cpu::set_u3_hl(const u8 bit) {
   u8 val = value_at_r16(Register::HL);
   set_bit(val, bit, true);
   memory->set(get_r16(Register::HL), val);
@@ -1166,7 +1166,7 @@ void Cpu::stop() {
   }
 }
 
-void Cpu::subtract(u8& dst, const u8& src) {
+void Cpu::subtract(u8& dst, const u8 src) {
   u8 res = dst - src;
 
   set_half_carry_subtract(dst, src);
@@ -1219,7 +1219,7 @@ void Cpu::swap_hl() {
 }
 
 // clang thinks xor is block related?
-void Cpu::exclusive_or(u8& dst, const u8& src) {
+void Cpu::exclusive_or(u8& dst, const u8 src) {
   dst ^= src;
   set_zero(dst);
   clear_flag(FLAG_SUBTRACT);
@@ -1242,22 +1242,22 @@ void Cpu::xor_a_d8() {
   exclusive_or(regs[Register::A], read_operand());
 }
 
-// void set_16(u8 &reg_high, u8 &reg_low, u16 val) {
-//  reg_high = (val & 0xFF00) >> 8;
-//  reg_low = (val & 0xFF);
-//}
-
 void Cpu::load_reg_to_addr(Register dst, Register src) {
-  u16 addr = regs[dst];
+  const u16 addr = regs[dst];
   memory->set(addr, src);
 }
 
-u16& Cpu::get_r16(Register reg) {
-  return reinterpret_cast<u16&>(*&regs[reg]);
+u16 Cpu::get_r16(Register reg) {
+  return (regs[reg + 1] << 8) | regs[reg];
+}
+
+void Cpu::set_r16(Register reg, u16 value) {
+  regs[reg] = value & 0xff;
+  regs[reg + 1] = (value >> 8) & 0xff;
 }
 
 u8 Cpu::value_at_r16(Register reg) {
-  u16& addr = get_r16(reg);
+  const u16 addr = get_r16(reg);
   return memory->at(addr);
 }
 

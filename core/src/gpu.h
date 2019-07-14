@@ -82,7 +82,7 @@ class Gpu {
   void render_background(int scanline,
                          u16 tile_map_base,
                          nonstd::span<const u8> tile_map_range,
-                         nonstd::span<const BgAttribute> tile_attribs,
+                         nonstd::span<const u8> tile_attribs,
                          u8 scx,
                          u8 scy,
                          int offset_x,
@@ -92,7 +92,7 @@ class Gpu {
 
   void render_background_pixels(int scanline,
                                 std::pair<u16, u16> tile_map,
-                                nonstd::span<const BgAttribute> tile_attribs,
+                                nonstd::span<const u8> tile_attribs,
                                 u8 scx,
                                 u8 scy,
                                 int offset_x,

@@ -63,9 +63,10 @@ void Gpu::render_sprites(int scanline) {
     }
   }();
 
-  for (const auto sprite_attrib :
-       sprite_attribs | boost::adaptors::transformed(std::ref(sprite_filter)) |
-           boost::adaptors::reversed) {
+  for (int i = sprite_attribs.size() - 4; i >= 0; i -= 4) {
+    const SpriteAttribute sprite_attrib = sprite_filter(
+        SpriteAttribute{sprite_attribs[i], sprite_attribs[i + 1],
+                        sprite_attribs[i + 2], sprite_attribs[i + 3]});
     const int adjusted_y = sprite_attrib.y - 16;
     if (sprite_attrib.x > 0 && sprite_attrib.x < 168 && sprite_attrib.y > 0 &&
         sprite_attrib.y < 160 && scanline >= adjusted_y &&
@@ -118,7 +119,7 @@ void Gpu::render_background(
     int scanline,
     u16 tile_map_base,
     nonstd::span<const u8> tile_map_range,
-    nonstd::span<const BgAttribute> tile_attribs,
+    nonstd::span<const u8> tile_attribs,
     u8 scroll_x,
     u8 scroll_y,
     int offset_x,  // TODO: figure out what to do with this
@@ -160,7 +161,7 @@ void Gpu::render_background(
     assert(adjusted_tile_index < tile_map_range.size());
     const u8 tile_num = tile_map_range[adjusted_tile_index];
 
-    const auto tile_attrib = tile_attribs[adjusted_tile_index];
+    const auto tile_attrib = BgAttribute{tile_attribs[adjusted_tile_index]};
 
     // Calculate the address of the tile pixels, flipping vertically if
     // specified
@@ -221,7 +222,7 @@ std::array<Color, 4> Gpu::generate_colors(Palette palette, bool is_sprite) {
 
 void Gpu::render_background_pixels(int scanline,
                                    std::pair<u16, u16> tile_map,
-                                   nonstd::span<const BgAttribute> tile_attribs,
+                                   nonstd::span<const u8> tile_attribs,
                                    u8 scroll_x,
                                    u8 scroll_y,
                                    int offset_x,

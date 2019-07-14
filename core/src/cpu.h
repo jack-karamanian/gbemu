@@ -184,7 +184,7 @@ class Cpu {
     }
   }
 
-  void set_half_carry_subtract(const u8& a, const u8& b);
+  void set_half_carry_subtract(const u8 a, const u8 b);
 
   template <typename T, typename U = T>
   void set_carry(const T& a, const U& b) {
@@ -197,9 +197,9 @@ class Cpu {
     }
   }
 
-  void carried_add(u8& dest, const u8& a, const u8& b);
+  void carried_add(u8& dest, const u8 a, const u8 b);
 
-  void add(u8& dest, const u8& a, const u8& b);
+  void add(u8& dest, const u8 a, const u8 b);
 
   // ADC A,[HL]
   void add_carry_a_hl();
@@ -228,7 +228,7 @@ class Cpu {
   // ADD SP,s8
   void add_sp_s8();
 
-  void and_a(const u8& val);
+  void and_a(const u8 val);
 
   // AND A,r8
   void and_a_r8(Register reg);
@@ -239,7 +239,7 @@ class Cpu {
   // AND A,n8
   void and_a_d8();
 
-  void bit(const u8& bit_num, const u8& val);
+  void bit(const u8 bit_num, const u8 val);
 
   // BIT u8,r8
   void bit_r8(u8 bit_num, Register reg);
@@ -265,7 +265,7 @@ class Cpu {
   // CCF
   void ccf();
 
-  void compare_a(const u8& val);
+  void compare_a(const u8 val);
 
   void cp_a_r8(Register reg);
 
@@ -319,14 +319,14 @@ class Cpu {
   // INC SP
   void inc_sp();
 
-  void jump(const u16& addr);
+  void jump(const u16 addr);
 
   // JP n16
   void jp_d16();
 
-  bool can_jump(const u8& opcode, int offset);
+  bool can_jump(const u8 opcode, int offset);
 
-  void jump_conditional(const u16& addr, int index_offset = 0);
+  void jump_conditional(const u16 addr, int index_offset = 0);
 
   // JP cc,n16
   void jp_cc_n16();
@@ -364,7 +364,7 @@ class Cpu {
   // LD [n16],A
   void ld_d16_a();
 
-  void load_offset(const u8& offset, const u8& val);
+  void load_offset(const u8 offset, const u8 val);
 
   // LD [$FF00 + n8],A
   void ld_offset_a();
@@ -378,7 +378,7 @@ class Cpu {
   // LD A,[n16]
   void ld_a_d16();
 
-  void read_offset_from_memory(const u8& offset, u8& dest);
+  void read_offset_from_memory(const u8 offset, u8& dest);
 
   // LD A,[$FF00 + n8]
   void ld_read_offset_d8();
@@ -415,7 +415,7 @@ class Cpu {
   // LD SP,HL
   void ld_sp_hl();
 
-  void or_a(const u8& val);
+  void or_a(const u8 val);
 
   // OR A,r8
   void or_a_r8(Register reg);
@@ -434,7 +434,7 @@ class Cpu {
   // POP r16
   void pop_r16(Register reg);
 
-  void push(const u16& val);
+  void push(const u16 val);
 
   // PUSH AF
   void push_af();
@@ -442,7 +442,7 @@ class Cpu {
   // PUSH r16
   void push_r16(Register reg);
 
-  void set_bit(u8& dest, const u8& bit, bool set);
+  void set_bit(u8& dest, const u8 bit, bool set);
 
   // RES u3,r8
   void res_u3_r8(const u8 bit, Register reg);
@@ -505,7 +505,7 @@ class Cpu {
   // RST vec
   void rst();
 
-  void carried_subtract(u8& dst, const u8& src);
+  void carried_subtract(u8& dst, const u8 src);
 
   // SBC A,r8
   void sbc_a_r8(Register reg);
@@ -520,10 +520,10 @@ class Cpu {
   void scf();
 
   // SET u3,r8
-  void set_u3_r8(const u8& bit, Register reg);
+  void set_u3_r8(const u8 bit, Register reg);
 
   // SET u3,[HL]
-  void set_u3_hl(const u8& bit);
+  void set_u3_hl(const u8 bit);
 
   void shift_arithmetic(u8& val, bool left = true);
 
@@ -550,7 +550,7 @@ class Cpu {
   // STOP
   void stop();
 
-  void subtract(u8& dst, const u8& src);
+  void subtract(u8& dst, const u8 src);
 
   // SUB A,r8
   void sub_a_r8(Register reg);
@@ -570,7 +570,7 @@ class Cpu {
   void swap_hl();
 
   // clang thinks xor is block related?
-  void exclusive_or(u8& dst, const u8& src);
+  void exclusive_or(u8& dst, const u8 src);
 
   // XOR A,r8
   void xor_a_r8(Register reg);
@@ -588,7 +588,9 @@ class Cpu {
 
   void load_reg_to_addr(Register dst, Register src);
 
-  u16& get_r16(Register reg);
+  u16 get_r16(Register reg);
+
+  void set_r16(Register reg, u16 value);
 
   u8 value_at_r16(Register reg);
   template <typename F, typename... Args>
