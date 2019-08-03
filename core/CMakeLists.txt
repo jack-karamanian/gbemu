@@ -66,7 +66,10 @@ set(SRCS
   src/task.h
   src/rom_loader.h
   src/rom_loader.cpp
+  src/error_handling.h
+  src/error_handling.cpp
   src/gba/cpu.h
+  src/gba/cpu.cpp
   src/gba/mmu.h
   src/gba/mmu.cpp
   src/gba/lcd.h
@@ -79,6 +82,15 @@ set(SRCS
   src/gba/hardware.h
   src/gba/emulator.h
   src/gba/emulator.cpp
+  src/gba/dma.h
+  src/gba/dma.cpp
+  src/gba/io_registers.h
+  src/gba/io_registers.cpp
+  src/gba/timer.h
+  src/gba/timer.cpp
+
+
+
   tests/gba/cpu.cpp
 )
 

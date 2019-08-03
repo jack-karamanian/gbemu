@@ -1,8 +1,15 @@
 #pragma once
+#include <fmt/format.h>
+#include <fmt/printf.h>
+#include <functional>
+#include <variant>
 #include <vector>
+#include "error_handling.h"
+#include "gba/dma.h"
 #include "gba/hardware.h"
 #include "gba/input.h"
 #include "gba/lcd.h"
+#include "io_registers.h"
 #include "types.h"
 #include "utils.h"
 
@@ -24,7 +31,6 @@ struct Cycles {
 inline constexpr Cycles operator"" _seq(unsigned long long int cycles) {
   return {static_cast<u32>(cycles)};
 }
-
 inline constexpr Cycles operator"" _nonseq(unsigned long long int cycles) {
   return {0, static_cast<u32>(cycles)};
 }
@@ -67,7 +73,7 @@ class Waitcnt : public Integer<u32> {
 
  private:
   static u32 decode_cycles(u32 value) {
-    switch (value) {
+    switch (value & 0b11) {
       case 0:
         return 4;
       case 1:
@@ -77,12 +83,13 @@ class Waitcnt : public Integer<u32> {
       case 3:
         return 8;
       default:
-        throw std::runtime_error("expected 0, 1, 2, or 3 for decode_cycles");
+        GB_UNREACHABLE();
     }
   }
 };
 
-struct Mmu {
+class Mmu {
+ public:
   static constexpr u32 BiosBegin = 0x00000000;
   static constexpr u32 BiosEnd = 0x00003fff;
 
@@ -100,6 +107,9 @@ struct Mmu {
 
   static constexpr u32 VramBegin = 0x06000000;
   static constexpr u32 VramEnd = 0x06017fff;
+
+  static constexpr u32 OamBegin = 0x07000000;
+  static constexpr u32 OamEnd = 0x070003ff;
 
   static constexpr u32 RomRegion0Begin = 0x08000000;
   static constexpr u32 RomRegion0End = 0x09ffffff;
@@ -122,12 +132,15 @@ struct Mmu {
 
   static constexpr u32 KeyInputAddr = 0x04000130;
 
+  std::vector<u8> bios;
   std::vector<u8> ewram;
   std::vector<u8> iwram;
   std::vector<u8> palette_ram;
   std::vector<u8> vram;
   std::vector<u8> oam_ram;
   std::vector<u8> rom;
+
+  std::vector<u8> io_registers;
 
   u32 dispcnt = 0;
   u32 dispstat = 0;
@@ -138,58 +151,98 @@ struct Mmu {
   Hardware hardware;
 
   Mmu()
-      : ewram(256_kb, 0),
+      : bios(16_kb, 0),
+        ewram(256_kb, 0),
         iwram(32_kb, 0),
         palette_ram(1_kb, 0),
         vram(96_kb, 0),
-        oam_ram(1_kb, 0) {}
+        oam_ram(1_kb, 0),
+        io_registers(522, 0) {}
 
   [[nodiscard]] u32 wait_cycles(u32 addr, Cycles cycles);
 
-  std::tuple<nonstd::span<u8>, u32> select_storage(u32 addr);
+  template <typename T>
+  T handle_pre_write_side_effects(u32 addr, T value) {}
 
   template <typename T>
   void set(u32 addr, T value) {
-    switch (addr) {
-      case Dispcnt:
-        dispcnt = value;
-        return;
-      case WaitcntAddr:
-        waitcnt = Waitcnt{value};
-        return;
-      case DispStatAddr:
-        hardware.lcd->dispstat = DispStat{static_cast<u32>(value)};
-        return;
-      case Ime:
-        ime = value;
-        return;
+    const auto converted = to_bytes(value);
+    set_bytes(addr, converted);
+  }
+
+  void set_bytes(u32 addr, nonstd::span<const u8> bytes) {
+    auto [selected_span, resolved_addr] =
+        select_storage(addr, DataOperation::Write);
+    auto subspan = selected_span.subspan(resolved_addr);
+
+    const bool is_overrunning = bytes.size() > selected_span.size();
+    const long difference = bytes.size() - subspan.size();
+
+    const std::size_t copy_size = is_overrunning ? difference : bytes.size();
+    // std::copy(converted.begin(), converted.end(), subspan.begin());
+
+    for (std::size_t i = 0; i < copy_size; ++i) {
+      if (addr >= hardware::IF && addr < hardware::IF + 2) {
+        subspan[i] ^= bytes[i];
+      } else {
+        subspan[i] = bytes[i];
+      }
     }
 
-    auto [selected_span, resolved_addr] = select_storage(addr);
-    const auto converted = to_bytes(value);
-    auto subspan = selected_span.subspan(resolved_addr);
-    std::copy(converted.begin(), converted.end(), subspan.begin());
+    handle_write_side_effects(addr);
+
+    if (is_overrunning) {
+      set_bytes(addr + difference, bytes.subspan(difference));
+    }
+
+    if (m_write_handler) {
+      m_write_handler(addr, 0);
+    }
   }
 
   template <typename T>
   T at(u32 addr) {
-    switch (addr) {
-      case Dispcnt:
-        return dispcnt;
-      case DispStatAddr:
-        return hardware.lcd->dispstat.data();
-      case WaitcntAddr:
-        return waitcnt.data();
-      case KeyInputAddr:
-        return hardware.input->data();
-      case Ime:
-        return ime;
-    }
-
-    auto [selected_span, resolved_addr] = select_storage(addr);
-    return convert_bytes_endian<T>(
-        {&selected_span.at(resolved_addr), sizeof(T)});
+    const auto [selected_span, resolved_addr] =
+        select_storage(addr, DataOperation::Read);
+    return convert_bytes_endian<T>(nonstd::span<const u8, sizeof(T)>{
+        &selected_span.at(resolved_addr), sizeof(T)});
   }
+
+  enum class AddrOp {
+    Increment,
+    Decrement,
+    Fixed,
+  };
+
+  struct AddrParam {
+    u32 addr;
+    AddrOp op;
+  };
+
+  void copy_memory(AddrParam source, AddrParam dest, u32 count, u32 type_size);
+
+  enum class DataOperation {
+    Read,
+    Write,
+  };
+
+  [[nodiscard]] std::tuple<nonstd::span<u8>, u32> select_storage(
+      u32 addr,
+      DataOperation op);
+
+  template <typename Func>
+  void set_write_handler(Func func) {
+    m_write_handler = func;
+  }
+
+ private:
+  void handle_write_side_effects(u32 addr);
+
+  [[nodiscard]] std::tuple<nonstd::span<u8>, u32> select_hardware(
+      u32 addr,
+      DataOperation op);
+
+  std::function<void(u32, u32)> m_write_handler;
 };
 
 }  // namespace gb::advance

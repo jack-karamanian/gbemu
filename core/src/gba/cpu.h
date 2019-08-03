@@ -8,6 +8,8 @@
 #include <nonstd/span.hpp>
 #include <optional>
 #include <tuple>
+#include "error_handling.h"
+#include "interrupts.h"
 #include "mmu.h"
 #include "thumb_to_arm.h"
 #include "types.h"
@@ -164,6 +166,9 @@ class ProgramStatus : public Integer<u32> {
 
   [[nodiscard]] constexpr bool thumb_mode() const { return test_bit(5); }
   constexpr void set_thumb_mode(bool set) { set_bit(5, set); }
+
+  [[nodiscard]] constexpr bool irq_enabled() const { return !test_bit(7); }
+  constexpr void set_irq_enabled(bool set) { set_bit(7, !set); }
 };
 
 class Instruction : public Integer<u32> {
@@ -322,12 +327,12 @@ constexpr auto decode_instruction_type(u32 instruction) {
 
 class Cpu {
  public:
-  std::array<u32, 16> m_regs = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
-
   Cpu() = default;
   Cpu(Mmu& mmu) : m_mmu{&mmu} {}
 
-  constexpr u32 prefetch_offset() const { return m_prefetch_offset; }
+  constexpr u32 prefetch_offset() const {
+    return m_current_program_status.thumb_mode() ? 2 : 4;
+  }
 
   [[nodiscard]] constexpr u32 reg(Register reg_selected) const {
     const u32 index = static_cast<u32>(reg_selected);
@@ -369,7 +374,7 @@ class Cpu {
     }
   }
 
-  constexpr void change_mode(Mode next_mode) {
+  void change_mode(Mode next_mode) {
     const Mode current_mode = m_current_program_status.mode();
     const auto select_mode_storage = [this](Mode mode_) -> nonstd::span<u32> {
       switch (mode_) {
@@ -391,6 +396,7 @@ class Cpu {
       }
     };
 
+    // Find range of registers to store
     const auto select_mode_range = [](Mode mode) -> std::pair<u32, u32> {
       switch (mode) {
         case Mode::FIQ:
@@ -432,18 +438,30 @@ class Cpu {
 
   [[nodiscard]] constexpr ProgramStatus saved_program_status() const {
     assert_in_user_mode();
-    return m_saved_program_status[index_from_mode()];
+    return m_saved_program_status[index_from_mode(
+        m_current_program_status.mode())];
   }
 
   constexpr void set_saved_program_status(ProgramStatus program_status) {
     assert_in_user_mode();
-    m_saved_program_status[index_from_mode()] = program_status;
+    m_saved_program_status[index_from_mode(m_current_program_status.mode())] =
+        program_status;
+  }
+
+  constexpr void set_saved_program_status_for_mode(
+      Mode mode,
+      ProgramStatus program_status) {
+    m_saved_program_status[index_from_mode(mode)] = program_status;
   }
 
   constexpr void move_spsr_to_cpsr() {
-    if (m_mode != Mode::User) {
-      m_current_program_status =
-          m_saved_program_status[static_cast<u32>(m_mode) - 1];
+    const Mode mode = m_current_program_status.mode();
+    if (mode != Mode::User && mode != Mode::System) {
+      ProgramStatus saved_program_status =
+          m_saved_program_status[static_cast<u32>(mode) - 1];
+      set_program_status(saved_program_status);
+    } else {
+      abort();
     }
   }
 
@@ -466,6 +484,10 @@ class Cpu {
     get_current_program_status().set_thumb_mode(set);
   }
 
+  InterruptBucket interrupts_enabled{0};
+  InterruptBucket interrupts_requested{0};
+  u32 ime = 0;
+
   template <typename T>
   constexpr u32 run_instruction(T instruction) {
     if (instruction.should_execute(program_status())) {
@@ -475,12 +497,14 @@ class Cpu {
   }
 
   inline u32 execute();
+  u32 handle_interrupts();
 
   friend class DataProcessing;
   friend class SingleDataTransfer;
   friend class HalfwordDataTransfer;
   friend class BlockDataTransfer;
   friend class SingleDataSwap;
+  friend class SoftwareInterrupt;
 
  private:
   struct SavedRegisters {
@@ -498,15 +522,18 @@ class Cpu {
     return m_current_program_status;
   }
   constexpr void assert_in_user_mode() const {
-    if (m_mode == Mode::User) {
+    const Mode mode = m_current_program_status.mode();
+    if (mode == Mode::User || mode == Mode::System) {
       throw std::runtime_error(
           "saved program status can not be accessed in user mode");
     }
   }
 
-  [[nodiscard]] constexpr u32 index_from_mode() const {
-    return static_cast<u32>(m_mode) - 1;
+  [[nodiscard]] constexpr u32 index_from_mode(Mode mode) const {
+    return static_cast<u32>(mode) - 1;
+    // return static_cast<u32>(m_current_program_status.mode()) - 1;
   }
+  std::array<u32, 16> m_regs = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
 
   Mmu* m_mmu = nullptr;
   Mode m_mode = Mode::User;
@@ -628,9 +655,8 @@ constexpr bool compute_carry(ShiftType shift_type,
       return gb::test_bit(shift_operand, shift_amount - 1);
     case ShiftType::RotateRight:
       return gb::test_bit(shift_operand, shift_amount - 1);
-    default:
-      throw std::runtime_error("invalid shift type");
   }
+  GB_UNREACHABLE();
 }
 
 constexpr u32 compute_result(ShiftType shift_type,
@@ -645,9 +671,8 @@ constexpr u32 compute_result(ShiftType shift_type,
       return arithmetic_shift_right(shift_operand, shift_amount);
     case ShiftType::RotateRight:
       return rotate_right(shift_operand, shift_amount);
-    default:
-      throw std::runtime_error("invalid shift type");
   }
+  GB_UNREACHABLE();
 }
 
 constexpr std::tuple<bool, u32> compute_shifted_operand(
@@ -683,19 +708,6 @@ class DataProcessing : public Instruction {
   [[nodiscard]] constexpr u8 immediate_shift() const {
     return static_cast<u8>((m_value >> 8) & 0xf);
   }
-
-#if 0
-  [[nodiscard]] constexpr u8 register_shift(const Cpu& cpu) const {
-    if (test_bit(4)) {
-      // Shift by bottom byte of register
-      const u32 reg = (value >> 8) & 0xf;
-      return reg == 15 ? 0 : static_cast<u8>(cpu.regs.at(reg) & 0xff);
-    }
-
-    // Shift by 5 bit number
-    return static_cast<u8>((value >> 7) & 0b0001'1111);
-  }
-#endif
 
   [[nodiscard]] constexpr ShiftResult shift_value(const Cpu& cpu) const {
     if (immediate_operand()) {
@@ -1374,7 +1386,6 @@ class BlockDataTransfer : public SingleDataTransfer {
       }
     }
 
-    u32 i = 0;
     for (const Register reg : registers_span) {
 #if 0
       if (write_back() && !load() && reg == operand_register() && i > 0) {
@@ -1395,8 +1406,6 @@ class BlockDataTransfer : public SingleDataTransfer {
       if (!preindex()) {
         offset = change_offset(offset);
       }
-
-      ++i;
     }
 
     if (!load() && write_back()) {
@@ -1452,12 +1461,23 @@ class SingleDataSwap : public Instruction {
   }
 };
 
+class SoftwareInterrupt : public Instruction {
+ public:
+  using Instruction::Instruction;
+
+  u32 execute(Cpu& cpu);
+
+ private:
+  void cpu_set(Cpu& cpu);
+};
+
 inline u32 Cpu::execute() {
   const u32 instruction = [this] {
     if (m_current_program_status.thumb_mode()) {
       static constexpr u32 nop = 0b1110'00'0'1101'0'0000'0000'000000000000;
       const u32 pc = reg(Register::R15) - 2;
       const u16 instruction = m_mmu->at<u16>(pc);
+      // fmt::printf("%08x\n", pc);
 
       // Long branch with link
       if ((instruction & 0xf000) == 0xf000) {
@@ -1476,6 +1496,7 @@ inline u32 Cpu::execute() {
         return nop;
       }
       set_reg(Register::R15, pc + 2);
+      // fmt::printf("next pc %08x\n", reg(Register::R15) - 2);
       return convert_thumb_to_arm(instruction);
     }
 
@@ -1512,6 +1533,8 @@ inline u32 Cpu::execute() {
       return run_instruction(BlockDataTransfer{instruction});
     case InstructionType::SingleDataSwap:
       return run_instruction(SingleDataSwap{instruction});
+    case InstructionType::SoftwareInterrupt:
+      return run_instruction(SoftwareInterrupt{instruction});
 
     default:
       printf("found instruction %08x, type %d\n", instruction, type);

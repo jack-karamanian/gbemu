@@ -2,6 +2,9 @@
 #include "utils.h"
 
 namespace gb::advance {
+class Cpu;
+class Mmu;
+class Dmas;
 class DispStat : public Integer<u32> {
  public:
   using Integer::Integer;
@@ -16,6 +19,9 @@ class Lcd {
  public:
   enum class Mode { Draw, HBlank, VBlank };
 
+  Lcd(Cpu& cpu, Mmu& mmu, Dmas& dmas)
+      : m_cpu{&cpu}, m_mmu{&mmu}, m_dmas{&dmas} {}
+
   DispStat dispstat{0};
   u32 vcount = 0;
 
@@ -24,5 +30,8 @@ class Lcd {
  private:
   int m_cycles = 0;
   Mode m_mode = Mode::Draw;
+  Cpu* m_cpu;
+  Mmu* m_mmu;
+  Dmas* m_dmas;
 };
 }  // namespace gb::advance

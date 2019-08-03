@@ -1,27 +1,38 @@
 #include <iostream>
 #include "gba/cpu.h"
 #include "gba/emulator.h"
+#include "gba/mmu.h"
 #include "hardware_thread.h"
 
 namespace gb::advance {
 void HardwareThread::run() {
-  gb::u32 breakpoint_addr = 0;
+  u32 breakpoint_addr = 0;
+  u32 watchpoint_addr = 0;
+
   bool execute = false;
 
   bool run = true;
+  m_hardware.mmu->set_write_handler(
+      [&watchpoint_addr, &execute](u32 addr, [[maybe_unused]] u32 value) {
+        if (addr == watchpoint_addr) {
+          execute = false;
+        }
+      });
   while (run) {
     {
       std::lock_guard<std::mutex> lock{m_events_mutex};
 
       for (const Event& event : m_events) {
         std::visit(
-            [&execute, &breakpoint_addr, &run](auto&& e) {
+            [&](auto&& e) {
               using T = std::decay_t<decltype(e)>;
 
               if constexpr (std::is_same_v<T, SetExecute>) {
                 execute = e.value;
               } else if constexpr (std::is_same_v<T, SetBreakpoint>) {
                 breakpoint_addr = e.addr;
+              } else if constexpr (std::is_same_v<T, SetWatchpoint>) {
+                watchpoint_addr = e.addr;
               } else if constexpr (std::is_same_v<T, Quit>) {
                 run = false;
               }
