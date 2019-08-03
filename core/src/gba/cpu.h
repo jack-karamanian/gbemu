@@ -1111,9 +1111,11 @@ class BranchAndExchange : public Instruction {
   u32 execute(Cpu& cpu) {
     const auto next_pc_reg = static_cast<Register>(m_value & 0xf);
     const u32 reg_value = cpu.reg(next_pc_reg);
-    cpu.set_reg(Register::R15, reg_value);
+
     const bool thumb_mode = gb::test_bit(reg_value, 0);
     cpu.set_thumb(thumb_mode);
+
+    cpu.set_reg(Register::R15, reg_value);
 
     return (2_seq + 1_nonseq).sum();
   }
