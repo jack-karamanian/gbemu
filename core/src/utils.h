@@ -160,20 +160,52 @@ class Integer {
     return Integer<T>{convert_bytes_endian<T>(bytes)};
   }
 
-  constexpr explicit Integer(T value_) : value{value_} {}
+  constexpr explicit Integer(T value_) : m_value{value_} {}
 
-  [[nodiscard]] constexpr T data() const { return value; }
+  [[nodiscard]] constexpr u8 read_byte(unsigned int byte) const {
+    const u32 shift = byte * 8;
+    return (m_value & (0xff << shift)) >> shift;
+  }
+
+  constexpr void write_byte(unsigned int byte, u8 value) {
+    const u32 shift = byte * 8;
+    m_value = (m_value & ~(0xff << shift)) | (value << shift);
+  }
+
+  [[nodiscard]] constexpr std::size_t size_bytes() const { return sizeof(T); }
+
+  [[nodiscard]] constexpr T data() const { return m_value; }
+
+  constexpr void set_data(T value) { m_value = value; }
+
+  [[nodiscard]] nonstd::span<u8> byte_span() {
+    return {reinterpret_cast<u8*>(&m_value), sizeof(T)};
+  }
+
   [[nodiscard]] constexpr bool test_bit(unsigned int bit) const {
-    return gb::test_bit(value, bit);
+    return gb::test_bit(m_value, bit);
   }
 
   constexpr void set_bit(unsigned int bit, bool set) {
-    const T mask = 1 << bit;
-    value = (value & ~mask) | (set ? 0 : mask);
+    const T mask = static_cast<T>(1) << bit;
+    m_value = (m_value & ~mask) | (set ? mask : 0);
   }
 
  protected:
-  T value;
+  T m_value;
+};
+template <typename Itr, typename Func>
+constexpr void constexpr_sort(Itr begin, Itr end, Func func) {
+  constexpr auto swap = [](auto a, auto b) {
+    auto tmp = *a;
+    *a = *b;
+    *b = tmp;
+  };
+
+  for (auto i = begin; i != end; ++i) {
+    swap(i, std::min_element(i, end, func));
+  }
+}
 };
 
 }  // namespace gb
