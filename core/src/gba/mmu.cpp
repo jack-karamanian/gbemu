@@ -106,10 +106,6 @@ std::tuple<nonstd::span<u8>, u32> Mmu::select_storage(u32 addr,
     return {vram, addr - VramBegin};
   }
 
-  if (addr >= RomRegion1Begin && addr <= RomRegion1End) {
-    return {rom, addr - RomRegion1Begin};
-  }
-
   if (addr >= PaletteBegin && addr <= PaletteEnd) {
     return {palette_ram, addr - PaletteBegin};
   }
@@ -121,6 +117,10 @@ std::tuple<nonstd::span<u8>, u32> Mmu::select_storage(u32 addr,
   if (addr >= 0x03ffff00 && addr < 0x04000000) {
     const u32 offset = addr & 0xff;
     return {iwram, 0x7f00 + offset};
+  }
+
+  if (addr >= SramBegin && addr <= SramEnd) {
+    return {sram, addr - SramBegin};
   }
 
   for (const auto [begin, end] : rom_regions) {
@@ -167,10 +167,6 @@ struct IntegerBox {
   IntegerBox(u16& num) : bytes{to_bytes(num)} {}
 
   nonstd::span<u8> bytes;
-
-  u8 read_byte(std::size_t index) const {}
-
- private:
 };
 
 std::tuple<nonstd::span<u8>, u32> Mmu::select_hardware(u32 addr,
@@ -188,7 +184,7 @@ std::tuple<nonstd::span<u8>, u32> Mmu::select_hardware(u32 addr,
       case hardware::KEYINPUT:
         return *hardware.input;
       case hardware::IME:
-        return ime;
+        return hardware.cpu->ime;
       case hardware::TM0COUNTER:
         return hardware.timers->timer0.select_counter_register(op);
       case hardware::TM0CONTROL:
@@ -350,7 +346,6 @@ std::tuple<nonstd::span<u8>, u32> Mmu::select_hardware(u32 addr,
         case Dma::AddressType::Count:
           return dma.count;
         case Dma::AddressType::Control:
-          fmt::print("DMA CONTROL\n");
           return dma.control();
       }
     }

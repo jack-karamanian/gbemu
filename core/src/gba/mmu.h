@@ -119,6 +119,9 @@ class Mmu {
 
   static constexpr u32 RomRegion2Begin = 0x0c000000;
 
+  static constexpr u32 SramBegin = 0x0e000000;
+  static constexpr u32 SramEnd = 0x0e00ffff;
+
   static constexpr std::array<std::pair<u32, u32>, 3> rom_regions{
       {{RomRegion0Begin, RomRegion0End},
        {RomRegion1Begin, RomRegion1End},
@@ -139,12 +142,12 @@ class Mmu {
   std::vector<u8> vram;
   std::vector<u8> oam_ram;
   std::vector<u8> rom;
+  std::vector<u8> sram;
 
   std::vector<u8> io_registers;
 
   u32 dispcnt = 0;
   u32 dispstat = 0;
-  u32 ime = 0;
 
   Waitcnt waitcnt{0};
 
@@ -157,6 +160,7 @@ class Mmu {
         palette_ram(1_kb, 0),
         vram(96_kb, 0),
         oam_ram(1_kb, 0),
+        sram(64_kb, 0),
         io_registers(522, 0) {}
 
   [[nodiscard]] u32 wait_cycles(u32 addr, Cycles cycles);
