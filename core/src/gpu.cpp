@@ -1,7 +1,5 @@
 #include <doctest/doctest.h>
-#include <boost/range/adaptor/reversed.hpp>
-#include <boost/range/adaptor/transformed.hpp>
-#include <boost/range/irange.hpp>
+#include <range/v3/all.hpp>
 #include "constants.h"
 #include "gpu.h"
 #include "memory.h"
@@ -63,7 +61,7 @@ void Gpu::render_sprites(int scanline) {
     }
   }();
 
-  for (int i = sprite_attribs.size() - 4; i >= 0; i -= 4) {
+  for (int i = static_cast<int>(sprite_attribs.size()) - 4; i >= 0; i -= 4) {
     const SpriteAttribute sprite_attrib = sprite_filter(
         SpriteAttribute{sprite_attribs[i], sprite_attribs[i + 1],
                         sprite_attribs[i + 2], sprite_attribs[i + 3]});
@@ -91,10 +89,10 @@ void Gpu::render_sprites(int scanline) {
           sprite_palette.colors_for_palette(sprite_palette_number);
 
       for (int pixel_x :
-           boost::irange(x < 0 ? -x : 0,
-                         x + TILE_SIZE >= SCREEN_WIDTH
-                             ? TILE_SIZE - ((x + TILE_SIZE) - SCREEN_WIDTH)
-                             : TILE_SIZE)) {
+           ranges::view::ints(x < 0 ? -x : 0,
+                              x + TILE_SIZE >= SCREEN_WIDTH
+                                  ? TILE_SIZE - ((x + TILE_SIZE) - SCREEN_WIDTH)
+                                  : TILE_SIZE)) {
         const int flipped_pixel_x =
             sprite_attrib.flip_x() ? 7 - pixel_x : pixel_x;
         const int screen_x = x + pixel_x;
@@ -145,7 +143,7 @@ void Gpu::render_background(
 
   // HACK: The real hardware renders 20-22 tiles depending on scroll_x
   // but let's just always render 21 tiles
-  for (int tile : boost::irange(0, 21)) {
+  for (int tile : ranges::view::ints(0, 21)) {
     // Add which tile to be displayed to the last 5 bits of tile_base
     const u16 tile_num_addr =
         (tile_base & ~0x1f) | (((tile_base & 0x1f) + tile) & 0x1f);
@@ -192,7 +190,7 @@ void Gpu::render_background(
                           ? tile_scroll_x
                           : TILE_SIZE;  // Make sure x is < 160
 
-    for (int pixel_x : boost::irange(x_begin, x_end)) {
+    for (int pixel_x : ranges::view::ints(x_begin, x_end)) {
       const u16 x = tile_x + pixel_x - tile_scroll_x + offset_x;
 
       const u8 color_index = render_pixel(

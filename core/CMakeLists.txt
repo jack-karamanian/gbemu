@@ -5,9 +5,13 @@ project(gbemu_core)
 
 include(CTest)
 
-find_package(SDL2 CONFIG REQUIRED)
-find_package(doctest CONFIG REQUIRED)
-find_package(fmt CONFIG REQUIRED)
+if (NOT EMSCRIPTEN)
+find_package(SDL2  CONFIG REQUIRED)
+  find_package(doctest CONFIG REQUIRED)
+  find_package(range-v3 CONFIG REQUIRED)
+  find_package(fmt CONFIG REQUIRED)
+  find_package(benchmark CONFIG REQUIRED)
+endif()
 
 set(SRCS
   include/emulator.h
@@ -116,6 +120,7 @@ target_link_libraries(${PROJECT_NAME}
   doctest::doctest
   fmt::fmt
   fmt::fmt-header-only
+  range-v3
   ${GBEMU_CORE_EXTRA_LIBS}
 )
 
