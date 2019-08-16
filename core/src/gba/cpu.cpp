@@ -1,4 +1,4 @@
-#include "cpu.h"
+#include "gba/cpu.h"
 
 namespace gb::advance {
 enum class ShiftType : u32 {
@@ -551,8 +551,7 @@ class Branch : public Instruction {
     const bool thumb_mode = cpu.program_status().thumb_mode();
     // Convert 24 bit signed to 32 bit signed
     const s32 offset =
-        ((m_value & 0b0111'1111'1111'1111'1111'1111)
-         << (cpu.program_status().thumb_mode() ? 0 : 2)) |
+        ((m_value & 0b0111'1111'1111'1111'1111'1111) << (thumb_mode ? 0 : 2)) |
         (negative ? (thumb_mode ? 0xff800000 : (0xfe << 24)) : 0);
 
     const u32 next_pc = cpu.reg(Register::R15) + offset;
@@ -668,20 +667,23 @@ class SingleDataTransfer : public Instruction {
       run_write_back(cpu, writeback_addr);
     }
 
+    const bool word_transfer = word();
+    const auto dest = dest_register();
+
     if (load()) {
-      if (word()) {
+      if (word_transfer) {
         // Load a word
         const u32 loaded_value =
             rotate_right(mmu.at<u32>(aligned_addr & ~0b11), rotate_amount);
-        cpu.set_reg(dest_register(), loaded_value);
+        cpu.set_reg(dest, loaded_value);
       } else {
         // Load a byte
         const u8 loaded_value = mmu.at<u8>(raw_addr);
-        cpu.set_reg(dest_register(), loaded_value);
+        cpu.set_reg(dest, loaded_value);
       }
     } else {
       const u32 stored_value = cpu.reg(dest_register());
-      if (word()) {
+      if (word_transfer) {
         // Store a word
         mmu.set(aligned_addr, stored_value);
       } else {
@@ -1054,7 +1056,8 @@ u32 Cpu::execute() {
       return run_instruction(SoftwareInterrupt{instruction});
 
     default:
-      fmt::printf("found instruction %08x, type %d\n", instruction, type);
+      fmt::printf("found instruction %08x, type %d\n", instruction,
+                  static_cast<u32>(type));
       throw std::runtime_error("unknown instruction type ");
   }
 }
