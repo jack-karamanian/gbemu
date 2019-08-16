@@ -230,8 +230,6 @@ class DataProcessing : public Instruction {
 
     const auto run_arithmetic = [&](u64 op1, u64 op2, bool write, auto impl,
                                     bool invert_carry = false) {
-      const u32 dest_value = cpu.reg(dest_register());
-
       const u64 result = impl(op1, op2);
 
       const u32 result_32 = static_cast<u32>(result & 0xffffffff);
@@ -815,7 +813,8 @@ class BlockDataTransfer : public SingleDataTransfer {
     if (load_psr_and_user_mode()) {
       cpu.change_mode(Mode::User);
     }
-    u32 offset = cpu.reg(operand_register());
+    const auto operand_reg = operand_register();
+    u32 offset = cpu.reg(operand_reg);
 
     const auto change_offset = add_offset_to_base()
                                    ? [](u32 val) { return val + 4; }
@@ -830,22 +829,22 @@ class BlockDataTransfer : public SingleDataTransfer {
                                                   : (offset - absolute_offset);
 
     const bool regs_has_base =
-        std::find(registers_span.begin(), registers_span.end(),
-                  operand_register()) != registers_span.end();
+        std::find(registers_span.begin(), registers_span.end(), operand_reg) !=
+        registers_span.end();
 
     const bool load_register = load();
     const bool write_back_base = write_back();
     const bool preindex_base = preindex();
+    const bool add_offset = add_offset_to_base();
 
     if (write_back_base) {
       if (load_register) {
         cpu.set_reg(operand_register(), final_offset);
       } else if (regs_has_base &&
-                 ((!add_offset_to_base() &&
-                   registers[registers_end - 1] != operand_register()) ||
-                  (add_offset_to_base() &&
-                   registers[0] != operand_register()))) {
-        cpu.set_reg(operand_register(), final_offset);
+                 ((!add_offset &&
+                   registers[registers_end - 1] != operand_reg) ||
+                  (add_offset && registers[0] != operand_reg))) {
+        cpu.set_reg(operand_reg, final_offset);
       }
     }
 
