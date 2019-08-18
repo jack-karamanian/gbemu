@@ -208,4 +208,18 @@ constexpr void constexpr_sort(Itr begin, Itr end, Func func) {
 }
 };
 
+template <typename Container, typename Func>
+constexpr void constexpr_for_each(Container& container, Func&& func) {
+  for (auto& element : container) {
+    func(element);
+  }
+}
+
+template <typename Container, typename T>
+constexpr void constexpr_fill(Container& container, const T& value) {
+  for (auto& element : container) {
+    element = value;
+  }
+}
+
 }  // namespace gb
