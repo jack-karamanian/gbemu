@@ -1,5 +1,6 @@
 #include "gba/cpu.h"
 #include "gba/dma.h"
+#include "gba/gpu.h"
 #include "gba/mmu.h"
 #include "lcd.h"
 
@@ -27,6 +28,7 @@ void Lcd::update(u32 cycles) {
       break;
     case Mode::HBlank:
       if (m_cycles >= 272) {
+        m_gpu->render_scanline(vcount);
         m_cycles = 0;
         ++vcount;
 

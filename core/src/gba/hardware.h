@@ -7,6 +7,7 @@ class Input;
 class Mmu;
 struct Timers;
 struct Dmas;
+class Gpu;
 
 struct Hardware {
   Cpu* cpu = nullptr;
@@ -15,5 +16,6 @@ struct Hardware {
   Mmu* mmu = nullptr;
   Timers* timers = nullptr;
   Dmas* dmas = nullptr;
+  Gpu* gpu = nullptr;
 };
 }  // namespace gb::advance

@@ -92,10 +92,8 @@ set(SRCS
   src/gba/io_registers.cpp
   src/gba/timer.h
   src/gba/timer.cpp
-
-
-
-  tests/gba/cpu.cpp
+  src/gba/gpu.h
+  src/gba/gpu.cpp
 )
 
 
