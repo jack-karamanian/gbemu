@@ -6,6 +6,8 @@ namespace gb::advance {
 namespace hardware {
 // LCD Control
 constexpr u32 DISPCNT = 0x4000000;
+// Green Swap
+constexpr u32 GREENSWAP = 0x4000002;
 // General LCD Status (STAT,LYC)
 constexpr u32 DISPSTAT = 0x4000004;
 // Vertical Counter (LY)

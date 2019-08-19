@@ -32,10 +32,8 @@ static Interrupt dma_number_to_interrupt(Dma::DmaNumber dma_number) {
 }
 
 void Dma::run() {
-  fmt::print("RUN DMA\n");
   const u32 masked_source = source & m_source_mask;
   const u32 masked_dest = m_internal_dest & m_dest_mask;
-  fmt::printf("source %08x\n dest %08x\n", masked_source, masked_dest);
 
   const auto source_op = select_addr_op(m_control.source_addr_control());
   const auto dest_op = select_addr_op(m_control.dest_addr_control());

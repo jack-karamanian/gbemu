@@ -14,9 +14,6 @@
 #include "utils.h"
 
 namespace gb::advance {
-inline std::size_t operator"" _kb(unsigned long long int kilobytes) {
-  return kilobytes * 1024;
-}
 
 struct Cycles {
   u32 sequential = 0;
@@ -88,6 +85,10 @@ class Waitcnt : public Integer<u32> {
   }
 };
 
+inline bool is_hardware_addr(u32 addr) {
+  return (addr & 0xff000000) == 0x04000000;
+}
+
 class Mmu {
  public:
   static constexpr u32 BiosBegin = 0x00000000;
@@ -135,87 +136,73 @@ class Mmu {
 
   static constexpr u32 KeyInputAddr = 0x04000130;
 
-  std::vector<u8> bios;
-  std::vector<u8> ewram;
-  std::vector<u8> iwram;
-  std::vector<u8> palette_ram;
-  std::vector<u8> vram;
-  std::vector<u8> oam_ram;
-  std::vector<u8> rom;
-  std::vector<u8> sram;
-
-  std::vector<u8> io_registers;
-
-  u32 dispcnt = 0;
-  u32 dispstat = 0;
-
   Waitcnt waitcnt{0};
 
   Hardware hardware;
 
   Mmu()
-      : bios(16_kb, 0),
-        ewram(256_kb, 0),
-        iwram(32_kb, 0),
-        palette_ram(1_kb, 0),
-        vram(96_kb, 0),
-        oam_ram(1_kb, 0),
-        sram(64_kb, 0),
-        io_registers(522, 0) {}
+      : m_bios(16_kb, 0),
+        m_ewram(256_kb, 0),
+        m_iwram(32_kb, 0),
+        m_palette_ram(1_kb, 0),
+        m_vram(96_kb, 0),
+        m_oam_ram(1_kb, 0),
+        m_sram(64_kb, 0) {}
 
   [[nodiscard]] u32 wait_cycles(u32 addr, Cycles cycles);
 
-  template <typename T>
-  T handle_pre_write_side_effects(u32 addr, T value) {}
+  void load_rom(std::vector<u8>&& data) { m_rom = std::move(data); }
+
+  nonstd::span<u8> bios() { return m_bios; }
+
+  nonstd::span<u8> ewram() { return m_ewram; }
+
+  nonstd::span<u8> iwram() { return m_iwram; }
+
+  nonstd::span<u8> palette_ram() { return m_palette_ram; }
+
+  nonstd::span<u8> vram() { return m_vram; }
+
+  nonstd::span<u8> oam_ram() { return m_oam_ram; }
+
+  nonstd::span<u8> sram() { return m_sram; }
+
+  nonstd::span<u8> rom() { return m_rom; }
 
   template <typename T>
   void set(u32 addr, T value) {
     const auto converted = to_bytes(value);
-    set_bytes(addr, converted);
-  }
-
-  void set_bytes(u32 addr, nonstd::span<const u8> bytes) {
-    auto [selected_span, resolved_addr] =
-        select_storage(addr, DataOperation::Write);
-    auto subspan = selected_span.subspan(resolved_addr);
-
-    const bool is_overrunning = bytes.size() > selected_span.size();
-    const long difference = bytes.size() - subspan.size();
-
-    const std::size_t copy_size = is_overrunning ? difference : bytes.size();
-    // std::copy(converted.begin(), converted.end(), subspan.begin());
-
-    for (std::size_t i = 0; i < copy_size; ++i) {
-      if (addr >= hardware::IF && addr < hardware::IF + 2) {
-        subspan[i] ^= bytes[i];
-      } else {
-        subspan[i] = bytes[i];
-      }
-    }
-
-    handle_write_side_effects(addr);
-
-    if (is_overrunning) {
-      set_bytes(addr + difference, bytes.subspan(difference));
-    }
-
-    if (m_write_handler) {
-      m_write_handler(addr, 0);
+    if (is_hardware_addr(addr)) {
+      set_hardware_bytes(addr, converted);
+    } else {
+      set_bytes(addr, converted);
     }
   }
+
+  void set_bytes(u32 addr, nonstd::span<const u8> bytes);
+  void set_hardware_bytes(u32 addr, nonstd::span<const u8> bytes);
 
   template <typename T>
   T at(u32 addr) {
-    const auto [selected_span, resolved_addr] =
-        select_storage(addr, DataOperation::Read);
-    return convert_bytes_endian<T>(nonstd::span<const u8, sizeof(T)>{
-        &selected_span.at(resolved_addr), sizeof(T)});
+    const auto selected_span = [addr, this] {
+      if (is_hardware_addr(addr)) {
+        const auto [io_addr, resolved_addr] = select_io_register(addr);
+        const auto selected_hardware =
+            select_hardware(io_addr, DataOperation::Read);
+        return selected_hardware.byte_span().subspan(resolved_addr);
+      }
+      const auto [span, resolved_addr] =
+          select_storage(addr, DataOperation::Read);
+      return span.subspan(resolved_addr);
+    }();
+    return convert_bytes_endian<T>(
+        nonstd::span<const u8, sizeof(T)>{selected_span.data(), sizeof(T)});
   }
 
-  enum class AddrOp {
-    Increment,
-    Decrement,
-    Fixed,
+  enum class AddrOp : int {
+    Increment = 1,
+    Decrement = -1,
+    Fixed = 0,
   };
 
   struct AddrParam {
@@ -240,11 +227,16 @@ class Mmu {
   }
 
  private:
-  void handle_write_side_effects(u32 addr);
+  std::vector<u8> m_bios;
+  std::vector<u8> m_ewram;
+  std::vector<u8> m_iwram;
+  std::vector<u8> m_palette_ram;
+  std::vector<u8> m_vram;
+  std::vector<u8> m_oam_ram;
+  std::vector<u8> m_rom;
+  std::vector<u8> m_sram;
 
-  [[nodiscard]] std::tuple<nonstd::span<u8>, u32> select_hardware(
-      u32 addr,
-      DataOperation op);
+  [[nodiscard]] IntegerRef select_hardware(u32 addr, DataOperation op);
 
   std::function<void(u32, u32)> m_write_handler;
 };

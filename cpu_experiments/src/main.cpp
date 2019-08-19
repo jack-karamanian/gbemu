@@ -5,6 +5,8 @@
 #include <folly/init/Init.h>
 #include <chrono>
 #include <iostream>
+#include <numeric>
+#include <range/v3/all.hpp>
 #include <string>
 #include <vector>
 #define DOCTEST_CONFIG_IMPLEMENT
@@ -17,41 +19,79 @@
 #include "imgui/examples/imgui_impl_opengl3.h"
 // clang-format on
 #include "gba/cpu.h"
-#include "memory.h"
 #include "color.h"
 #include "gba/assembler.h"
 #include "gba/lcd.h"
 #include "gba/input.h"
+#include "gba/timer.h"
+#include "gba/emulator.h"
+#include "gba/dma.h"
+#include "gba/gpu.h"
 #include "debugger/disassembly_view.h"
 #include "debugger/hardware_thread.h"
 #include "imgui_memory_editor.h"
 
 namespace gb::advance {
 
-static const char* FILE_NAME = "program.s";
-
 static const char* bool_to_string(bool value) {
   return value ? "true" : "false";
 }
 
-static std::string read_stored_data() {
-  std::ifstream file{FILE_NAME};
+class NumberInput {
+ public:
+  explicit NumberInput(const char* name)
+      : m_name{name}, m_button_id{std::string{name} + "-button"} {};
 
-  if (!file.good()) {
-    return "";
+  template <typename Func>
+  void render(Func callback) {
+    ImGui::InputText(m_name, &m_value);
+    ImGui::SameLine();
+    ImGui::PushID(m_button_id.c_str());
+    if (ImGui::Button("Set")) {
+      try {
+        const u32 number_value = std::stoi(m_value, nullptr, 16);
+        callback(number_value);
+      } catch (std::exception& e) {
+        std::cerr << e.what() << '\n';
+      }
+    }
+    ImGui::PopID();
   }
 
-  std::istreambuf_iterator<char> iterator{file};
+ private:
+  const char* m_name;
+  std::string m_value;
+  std::string m_button_id;
+};
 
-  return std::string(iterator, std::istreambuf_iterator<char>{});
+static void DispntDisplay(Dispcnt dispcnt) {
+  ImGui::LabelText("Mode", "%d", static_cast<u32>(dispcnt.bg_mode()));
+  ImGui::LabelText(
+      "BG0 Enabled", "%s",
+      bool_to_string(dispcnt.layer_enabled(Dispcnt::BackgroundLayer::Zero)));
+  ImGui::LabelText(
+      "BG1 Enabled", "%s",
+      bool_to_string(dispcnt.layer_enabled(Dispcnt::BackgroundLayer::One)));
+  ImGui::LabelText(
+      "BG2 Enabled", "%s",
+      bool_to_string(dispcnt.layer_enabled(Dispcnt::BackgroundLayer::Two)));
+  ImGui::LabelText(
+      "BG3 Enabled", "%s",
+      bool_to_string(dispcnt.layer_enabled(Dispcnt::BackgroundLayer::Three)));
 }
 
-static void write_stored_data(const std::string& assembler) {
-  std::ofstream file{FILE_NAME, std::ios::out | std::ios::trunc};
-
-  if (file.good()) {
-    file << assembler;
-  }
+static void BackgroundDisplay(Background background) {
+  const auto [control, scroll] = background;
+  ImGui::LabelText("Bits per Pixel", "%d", control.bits_per_pixel());
+  ImGui::LabelText("Tile Map Base Block", "%08x", control.tilemap_base_block());
+  ImGui::LabelText("Character Base Block", "%08x",
+                   control.character_base_block());
+  ImGui::LabelText("Priority", "%d", control.priority());
+  const auto screen_size = control.screen_size().screen_size;
+  ImGui::LabelText("Tile Map Width", "%d", screen_size.width);
+  ImGui::LabelText("Tile Map Height", "%d", screen_size.height);
+  ImGui::LabelText("X", "%d", scroll.x);
+  ImGui::LabelText("Y", "%d", scroll.y);
 }
 
 static std::vector<gb::u8> load_file(const std::string_view file_name) {
@@ -68,7 +108,7 @@ void run_emulator_and_debugger() {
     std::cerr << SDL_GetError() << '\n';
     return;
   }
-  folly::CPUThreadPoolExecutor executor{8};
+  folly::CPUThreadPoolExecutor executor{std::thread::hardware_concurrency()};
 
   SDL_SetHint(SDL_HINT_VIDEO_X11_NET_WM_BYPASS_COMPOSITOR, "0");
 
@@ -97,70 +137,116 @@ void run_emulator_and_debugger() {
   ImGui_ImplSDL2_InitForOpenGL(window, gl_context);
   ImGui_ImplOpenGL3_Init("#version 410 core");
 
-  std::vector<gb::u8> vram(0x18000, 0);
-  std::vector<gb::Color> framebuffer(160 * 240);
-
   auto bytes = experiments::assemble("mov r5, #12");
 
   Mmu mmu;
 
-  mmu.rom =
-      load_file("/home/jack/Downloads/Super Dodge Ball Advance (USA).gba");
+  mmu.load_rom(
+      load_file("/home/jack/Downloads/Super Dodge Ball Advance (USA).gba"));
 
   DisassemblyInfo disassembly;
   DisassemblyInfo thumb_disassembly;
+  DisassemblyInfo iwram_disassembly;
+
+  const auto make_handler_for = [](DisassemblyInfo& disassembly_info) {
+    return [&disassembly_info](auto&& res) {
+      auto& addr_to_index = disassembly_info.addr_to_index;
+
+      std::transform(res.begin(), res.end(),
+                     std::inserter(addr_to_index, addr_to_index.begin()),
+                     [i = 0](auto& entry) mutable -> std::pair<u32, u32> {
+                       return {entry.loc, i++};
+                     });
+      disassembly_info.disassembly = std::move(res);
+    };
+  };
+
+  folly::via(&executor, [&mmu]() {
+    return experiments::disassemble(mmu.rom());
+  }).thenValue(make_handler_for(disassembly));
 
   {
-    const auto make_handler_for = [](DisassemblyInfo& disassembly_info) {
-      return [&disassembly_info](auto&& res) {
-        disassembly_info.disassembly = std::move(res);
+    nonstd::span rom_span = mmu.rom();
+    const auto num_threads = std::thread::hardware_concurrency();
+    const auto slice_size = rom_span.size() / num_threads;
 
-        for (int i = 0; i < disassembly_info.disassembly.size(); ++i) {
-          const auto& entry = disassembly_info.disassembly[i];
-          disassembly_info.addr_to_index[entry.loc] = i;
-        }
-      };
-    };
+    std::vector<folly::Future<std::vector<experiments::DisassemblyEntry>>>
+        futures;
 
-    folly::via(&executor, [&mmu]() {
-      return experiments::disassemble(mmu.rom);
-    }).thenValue(make_handler_for(disassembly));
+    fmt::print("{} {}", num_threads, rom_span.size());
 
-    folly::via(&executor, [&mmu]() {
-      return experiments::disassemble(mmu.rom, "thumb");
-    }).thenValue(make_handler_for(thumb_disassembly));
+    auto range = ranges::view::ints(0u, num_threads);
+    std::transform(
+        range.begin(), range.end(), std::back_inserter(futures),
+        [slice_size, rom_span, &executor](unsigned int i) {
+          auto fut = folly::via(&executor, [rom_span, i, slice_size]() {
+            const u32 offset_begin = i * slice_size;
+
+            auto subspan = rom_span.subspan(offset_begin, slice_size);
+            auto entries = experiments::disassemble(subspan, "thumb");
+
+            for (auto& entry : entries) {
+              entry.loc += offset_begin;
+            }
+            return entries;
+          });
+          return fut;
+        });
+
+    folly::collectAll(futures)
+        .then(&executor,
+              [rom_span](auto&& final_futures) {
+                std::vector<experiments::DisassemblyEntry> all_entries;
+                all_entries.reserve(rom_span.size());
+                fmt::print("{} {}\n", final_futures.size(),
+                           std::this_thread::get_id());
+                for (auto& entries_try : final_futures) {
+                  auto& entries = entries_try.value();
+                  std::move(entries.begin(), entries.end(),
+                            std::back_inserter(all_entries));
+                }
+                return all_entries;
+              })
+        .thenValue(make_handler_for(thumb_disassembly));
   }
 
   Cpu cpu{mmu};
+  ProgramStatus program_status = cpu.program_status();
+  program_status.set_irq_enabled(true);
+  cpu.set_program_status(program_status);
 
-  Lcd lcd;
+  Gpu gpu{mmu};
+  Dmas dmas{mmu, cpu};
+
+  Lcd lcd{cpu, mmu, dmas, gpu};
   Input input;
 
-  Hardware hardware{&cpu, &lcd, &input, &mmu};
+  Timers timers{cpu};
+
+  Hardware hardware{&cpu, &lcd, &input, &mmu, &timers, &dmas, &gpu};
 
   mmu.hardware = hardware;
 
   cpu.set_reg(Register::R0, 10);
   cpu.set_reg(Register::R15, 0x08000000);
-  cpu.set_reg(Register::R13, gb::advance::Mmu::IWramEnd - 0x100);
+  // cpu.set_reg(Register::R13, gb::advance::Mmu::IWramEnd - 0x100);
 
   HardwareThread hardware_thread{hardware};
 
   bool running = true;
 
-  std::string reg_string{"R"};
-
-  std::string assembler_string = read_stored_data();
+  std::string assembler_string = "";
 
   GLuint texture;
   glGenTextures(1, &texture);
   glBindTexture(GL_TEXTURE_2D, texture);
-  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
   glPixelStorei(GL_UNPACK_ROW_LENGTH, 0);
 
   glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, 240, 160, 0, GL_RGBA,
-               GL_UNSIGNED_BYTE, static_cast<void*>(framebuffer.data()));
+               GL_UNSIGNED_BYTE,
+               static_cast<const void*>(gpu.framebuffer().data()));
 
   while (running) {
     SDL_Event event;
@@ -228,10 +314,11 @@ void run_emulator_and_debugger() {
       ImGui::Begin("Cpu");
 
       for (gb::u32 i = 0; i < 16; ++i) {
+        using namespace std::literals;
         auto reg = static_cast<Register>(i);
         auto value = cpu.reg(reg);
-        ImGui::LabelText((reg_string + std::to_string(i)).c_str(), "%d / %08x",
-                         value, value);
+        ImGui::LabelText(("R"s + std::to_string(i)).c_str(), "%d / %08x", value,
+                         value);
       }
 
       ImGui::LabelText("Negative", "%s",
@@ -240,31 +327,36 @@ void run_emulator_and_debugger() {
                        bool_to_string(cpu.program_status().zero()));
       ImGui::LabelText("Overflow", "%s",
                        bool_to_string(cpu.program_status().overflow()));
+      ImGui::LabelText("Carry", "%s",
+                       bool_to_string(cpu.program_status().carry()));
       ImGui::LabelText("Thumb", "%s",
                        bool_to_string(cpu.program_status().thumb_mode()));
 
+      ImGui::LabelText("Interrupts Enabled", "%04x",
+                       cpu.interrupts_enabled.data());
+      ImGui::LabelText("Interrupts Requested", "%04x",
+                       cpu.interrupts_requested.data());
       if (ImGui::Button("Execute")) {
         hardware_thread.push_event(SetExecute{true});
       }
 
       {
-        static std::string breakpoint_string;
-        ImGui::InputText("Breakpoint", &breakpoint_string);
-        ImGui::SameLine();
-        if (ImGui::Button("Set")) {
-          try {
-            gb::u32 breakpoint_addr = std::stoi(breakpoint_string, nullptr, 16);
-            hardware_thread.push_event(SetBreakpoint{breakpoint_addr});
-          } catch (std::exception& e) {
-            std::cerr << e.what() << '\n';
-          }
-        }
+        static NumberInput breakpoint_input{"Breakpoint"};
+        breakpoint_input.render([&](u32 value) {
+          hardware_thread.push_event(SetBreakpoint{value});
+        });
+      }
+      {
+        static NumberInput watchpoint_input{"Watchpoint"};
+        watchpoint_input.render([&](u32 value) {
+          hardware_thread.push_event(SetWatchpoint{value});
+        });
       }
 
       if (ImGui::Button("Step")) {
         try {
-          // execute_hardware(hardware);
-          cpu.execute();
+          gb::advance::execute_hardware(hardware);
+          // cpu.execute();
         } catch (const std::exception& e) {
           std::cerr << e.what() << '\n';
         }
@@ -279,12 +371,14 @@ void run_emulator_and_debugger() {
                                 ImGuiInputTextFlags_AllowTabInput);
 
       if (ImGui::Button("Assemble")) {
+#if 0
         write_stored_data(assembler_string);
         bytes = experiments::assemble(assembler_string);
         if (!bytes.empty()) {
           cpu = Cpu{mmu};
           cpu.execute();
         }
+#endif
       }
       ImGui::End();
     }
@@ -295,7 +389,8 @@ void run_emulator_and_debugger() {
 
       memory_editor.Cols = 4;
       ImGui::BeginChild("#rom_bytes");
-      memory_editor.DrawContents(mmu.rom.data(), mmu.rom.size());
+      auto rom = mmu.rom();
+      memory_editor.DrawContents(rom.data(), rom.size());
       ImGui::EndChild();
 
       ImGui::End();
@@ -303,24 +398,67 @@ void run_emulator_and_debugger() {
     {
       static DisassemblyView arm_disassembly_view{"ARM Disassembly", 4};
       static DisassemblyView thumb_disassembly_view{"Thumb Disassembly", 2};
+      static DisassemblyView iwram_disassembly_view{"IWRam Disassembly", 4};
       arm_disassembly_view.render(gb::advance::Mmu::RomRegion0Begin, cpu,
                                   disassembly);
       thumb_disassembly_view.render(gb::advance::Mmu::RomRegion0Begin, cpu,
                                     thumb_disassembly);
+      iwram_disassembly_view.render(gb::advance::Mmu::IWramBegin, cpu,
+                                    iwram_disassembly);
     }
     {
       ImGui::Begin("VRAM");
       static MemoryEditor vram_memory_editor;
-      vram_memory_editor.DrawContents(mmu.vram.data(), mmu.vram.size());
+      auto vram = mmu.vram();
+      vram_memory_editor.DrawContents(vram.data(), vram.size());
       ImGui::End();
     }
     {
       ImGui::Begin("IWRam");
+      if (ImGui::Button("Disassemble")) {
+        folly::via(&executor, [&mmu]() {
+          return experiments::disassemble(mmu.iwram(), "thumb");
+        }).thenValue(make_handler_for(iwram_disassembly));
+      }
       static MemoryEditor memory_editor;
-      memory_editor.DrawContents(mmu.iwram.data(), mmu.iwram.size());
+      auto iwram = mmu.iwram();
+      memory_editor.DrawContents(iwram.data(), iwram.size());
       ImGui::End();
     }
     {
+      ImGui::Begin("DMA");
+
+      for (const Dma& dma : dmas.span()) {
+        ImGui::Text("DMA %d", static_cast<u32>(dma.number()));
+        ImGui::LabelText("Source", "%08x", dma.source);
+        ImGui::LabelText("Dest", "%08x", dma.dest);
+        ImGui::LabelText("Count", "%08x", dma.count);
+        ImGui::LabelText("Control", "%08x", dma.control().data());
+      }
+      ImGui::End();
+    }
+    {
+      ImGui::Begin("Dispcnt");
+      DispntDisplay(gpu.dispcnt);
+      ImGui::End();
+    }
+    {
+      ImGui::Begin("Background");
+      ImGui::Text("BG0");
+      BackgroundDisplay(gpu.bg0);
+
+      ImGui::Text("BG1");
+      BackgroundDisplay(gpu.bg1);
+
+      ImGui::Text("BG2");
+      BackgroundDisplay(gpu.bg2);
+
+      ImGui::Text("BG3");
+      BackgroundDisplay(gpu.bg3);
+      ImGui::End();
+    }
+    {
+#if 0
       nonstd::span<gb::u16> pixels{
           reinterpret_cast<gb::u16*>(mmu.vram.data()),
           static_cast<long>(mmu.vram.size() / sizeof(gb::u16))};
@@ -334,11 +472,13 @@ void run_emulator_and_debugger() {
             static_cast<u8>(convert_space<32, 255>((color >> 5) & 0x1f)),
             static_cast<u8>(convert_space<32, 255>((color >> 10) & 0x1f)), 255};
       }
+#endif
 
       glBindTexture(GL_TEXTURE_2D, texture);
       glPixelStorei(GL_UNPACK_ROW_LENGTH, 0);
       glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, 240, 160, 0, GL_RGBA,
-                   GL_UNSIGNED_BYTE, static_cast<void*>(framebuffer.data()));
+                   GL_UNSIGNED_BYTE,
+                   reinterpret_cast<const void*>(gpu.framebuffer().data()));
       auto error = glGetError();
 
       if (error != GL_NO_ERROR) {

@@ -34,7 +34,10 @@ class Dma {
 
   class Control : public Integer<u16> {
    public:
-    using Integer::Integer;
+    Control(u16 value, Dma& dma) : Integer::Integer(value), m_dma{&dma} {}
+
+    void on_after_write() const { m_dma->handle_side_effects(); }
+
     enum class AddrControl : u32 {
       Increment = 0,
       Decrement = 1,
@@ -72,6 +75,9 @@ class Dma {
     [[nodiscard]] bool enabled() const { return test_bit(15); }
 
     void set_enabled(bool set) { set_bit(15, set); }
+
+   private:
+    Dma* m_dma;
   };
 
   u32 source = 0;
@@ -105,11 +111,11 @@ class Dma {
  private:
   Mmu* m_mmu;
   Cpu* m_cpu;
+  Control m_control{0, *this};
   DmaNumber m_dma_number;
   u32 m_source_mask;
   u32 m_dest_mask;
   u32 m_internal_dest = 0;
-  Control m_control{0};
 };
 
 class Dmas {

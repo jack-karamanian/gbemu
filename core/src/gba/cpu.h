@@ -485,7 +485,7 @@ class Cpu {
   }
 
   InterruptBucket interrupts_enabled{0};
-  InterruptBucket interrupts_requested{0};
+  InterruptsRequested interrupts_requested{0};
   InterruptBucket interrupts_waiting{0};
   u32 ime = 0;
 

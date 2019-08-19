@@ -51,6 +51,7 @@ class Timer {
       case Mmu::DataOperation::Write:
         return reload_value;
     }
+    GB_UNREACHABLE();
   }
 
  private:

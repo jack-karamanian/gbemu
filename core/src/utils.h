@@ -54,15 +54,8 @@ template <typename T>
 }
 
 template <typename T>
-[[nodiscard]] constexpr std::array<u8, sizeof(T)> to_bytes(T val) {
-  std::array<u8, sizeof(T)> res;
-
-  for (std::size_t i = 0; i < sizeof(T); ++i) {
-    const std::size_t shift = i * 8;
-    res[i] = (val & (0xff << shift)) >> shift;
-  }
-
-  return res;
+[[nodiscard]] nonstd::span<u8> to_bytes(T& val) {
+  return {reinterpret_cast<u8*>(&val), sizeof(T)};
 }
 
 template <typename Func, std::size_t... I>
@@ -91,6 +84,17 @@ struct Vec2 {
   T y;
 };
 
+template <typename T>
+struct Rect {
+  T width;
+  T height;
+
+  template <typename Rhs>
+  [[nodiscard]] constexpr Rect operator/(Rhs rhs) const {
+    return Rect{width / rhs, height / rhs};
+  }
+};
+
 template <typename T, typename Func>
 void visit_optional(std::optional<T>& value, Func&& func) {
   if (value) {
@@ -107,7 +111,8 @@ void visit_optional(const std::optional<T>& value, Func&& func) {
 
 template <typename T>
 [[nodiscard]] constexpr bool test_bit(T value, unsigned int bit) {
-  return (value & (1 << bit)) != 0;
+  const T mask = static_cast<T>(1) << bit;
+  return (value & mask) != 0;
 }
 
 template <typename T, typename U>
@@ -151,14 +156,18 @@ template <int from, int to, typename T>
 }
 
 template <typename T>
+T write_byte(T value, unsigned int byte, u8 byte_value) {
+  const unsigned int shift = byte * 8;
+  return (value & ~(0xff << shift)) | (byte_value << shift);
+}
+
+template <typename T>
 class Integer {
   static_assert(std::is_integral_v<T>);
 
  public:
-  static constexpr Integer<T> from_bytes(
-      nonstd::span<const u8, sizeof(T)> bytes) {
-    return Integer<T>{convert_bytes_endian<T>(bytes)};
-  }
+  using Type = T;
+  static constexpr std::size_t Size = sizeof(T);
 
   constexpr explicit Integer(T value_) : m_value{value_} {}
 
@@ -168,9 +177,11 @@ class Integer {
   }
 
   constexpr void write_byte(unsigned int byte, u8 value) {
-    const u32 shift = byte * 8;
-    m_value = (m_value & ~(0xff << shift)) | (value << shift);
+    // m_value = (m_value & ~(0xff << shift)) | (value << shift);
+    m_value = gb::write_byte(m_value, byte, value);
   }
+
+  constexpr void on_after_write() const {}
 
   [[nodiscard]] constexpr std::size_t size_bytes() const { return sizeof(T); }
 
@@ -206,6 +217,67 @@ constexpr void constexpr_sort(Itr begin, Itr end, Func func) {
     swap(i, std::min_element(i, end, func));
   }
 }
+[[nodiscard]] inline constexpr unsigned long long int operator"" _kb(
+    unsigned long long int kilobytes) noexcept {
+  return kilobytes * 1024;
+}
+class IntegerRef {
+ public:
+  template <
+      typename T,
+      typename = std::enable_if_t<!std::is_same_v<IntegerRef, std::decay_t<T>>>>
+  IntegerRef(T& integer) noexcept : m_ptr{static_cast<void*>(&integer)} {
+    using DecayedT = std::decay_t<T>;
+    using IsIntegerT = typename std::disjunction<
+        std::is_convertible<DecayedT*, Integer<u32>*>,
+        std::is_convertible<DecayedT*, Integer<u16>*>>;
+
+    if constexpr (IsIntegerT::value) {
+      m_byte_span = integer.byte_span();
+      m_size_bytes = integer.size_bytes();
+    } else {
+      m_byte_span = to_bytes(integer);
+      m_size_bytes = sizeof(DecayedT);
+    }
+
+    m_write_byte = [](void* ptr, unsigned int offset,
+                      nonstd::span<const u8> bytes) {
+      constexpr bool is_integer = IsIntegerT::value;
+      auto* integer_ptr = reinterpret_cast<DecayedT*>(ptr);
+
+      const auto size = bytes.size() & 0x7;
+
+      for (auto i = offset; i < size; ++i) {
+        if constexpr (is_integer) {
+          integer_ptr->write_byte(i, bytes[i]);
+        } else {
+          static_assert(std::is_integral_v<DecayedT>);
+          static_assert(!std::is_pointer_v<DecayedT>);
+          *integer_ptr = gb::write_byte(*integer_ptr, i, bytes[i]);
+        }
+      }
+      if constexpr (is_integer) {
+        integer_ptr->on_after_write();
+      }
+    };
+  }
+
+  void write_byte(unsigned int offset, nonstd::span<const u8> bytes) const {
+    m_write_byte(m_ptr, offset, bytes);
+  }
+
+  [[nodiscard]] nonstd::span<u8> byte_span() const noexcept {
+    return m_byte_span;
+  }
+
+  [[nodiscard]] std::size_t size_bytes() const noexcept { return m_size_bytes; }
+
+ private:
+  using WriteBytePtr = void (*)(void*, unsigned int, nonstd::span<const u8>);
+  WriteBytePtr m_write_byte;
+  void* m_ptr;
+  std::size_t m_size_bytes;
+  nonstd::span<u8> m_byte_span;
 };
 
 template <typename Container, typename Func>

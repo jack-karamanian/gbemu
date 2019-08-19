@@ -31,4 +31,13 @@ class InterruptBucket : public Integer<u16> {
     set_bit(static_cast<u32>(interrrupt), set);
   }
 };
+
+class InterruptsRequested : public InterruptBucket {
+ public:
+  using InterruptBucket::InterruptBucket;
+  constexpr void write_byte(unsigned int byte, u8 value) {
+    const u32 shift = byte * 8;
+    m_value = (m_value) ^ (value << shift);
+  }
+};
 }  // namespace gb::advance
