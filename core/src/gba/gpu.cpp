@@ -8,7 +8,7 @@ struct TileMapEntry : public Integer<u16> {
  public:
   using Integer::Integer;
 
-  [[nodiscard]] u32 tile_id() const { return m_value & 0b1'1111'1111; }
+  [[nodiscard]] u32 tile_id() const { return m_value & 0b11'1111'1111; }
   [[nodiscard]] u32 palette_bank() const { return (m_value >> 12) & 0xf; }
 };
 void Gpu::render() {}
