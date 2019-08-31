@@ -537,7 +537,6 @@ class Cpu {
   std::array<u32, 16> m_regs = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
 
   Mmu* m_mmu = nullptr;
-  Mode m_mode = Mode::User;
   ProgramStatus m_current_program_status{};
   std::array<ProgramStatus, 5> m_saved_program_status{};
   SavedRegisters m_saved_registers;
