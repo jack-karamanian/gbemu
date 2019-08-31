@@ -67,10 +67,8 @@ void Mmu::copy_memory(AddrParam source,
   const int dest_stride =
       static_cast<int>(dest_op) * static_cast<int>(type_size);
 
-  auto [source_storage, resolved_source_addr] =
-      select_storage(source_addr, Mmu::DataOperation::Read);
-  auto [dest_storage, resolved_dest_addr] =
-      select_storage(dest_addr, Mmu::DataOperation::Write);
+  auto [source_storage, resolved_source_addr] = select_storage(source_addr);
+  auto [dest_storage, resolved_dest_addr] = select_storage(dest_addr);
 
   for (u32 i = 0; i < count; ++i) {
     for (u32 j = 0; j < type_size; ++j) {
@@ -83,8 +81,7 @@ void Mmu::copy_memory(AddrParam source,
 }
 
 void Mmu::set_bytes(u32 addr, nonstd::span<const u8> bytes) {
-  auto [selected_span, resolved_addr] =
-      select_storage(addr, DataOperation::Write);
+  auto [selected_span, resolved_addr] = select_storage(addr);
   auto subspan = selected_span.subspan(resolved_addr);
 
   const bool is_overrunning = bytes.size() > selected_span.size();
@@ -123,8 +120,7 @@ void Mmu::set_hardware_bytes(u32 addr, nonstd::span<const u8> bytes) {
 #endif
 }
 
-std::tuple<nonstd::span<u8>, u32> Mmu::select_storage(u32 addr,
-                                                      DataOperation op) {
+std::tuple<nonstd::span<u8>, u32> Mmu::select_storage(u32 addr) {
   if (addr >= IWramBegin && addr <= IWramEnd) {
     return {m_iwram, addr - IWramBegin};
   }

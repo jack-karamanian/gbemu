@@ -191,8 +191,7 @@ class Mmu {
             select_hardware(io_addr, DataOperation::Read);
         return selected_hardware.byte_span().subspan(resolved_addr);
       }
-      const auto [span, resolved_addr] =
-          select_storage(addr, DataOperation::Read);
+      const auto [span, resolved_addr] = select_storage(addr);
       return span.subspan(resolved_addr);
     }();
     return convert_bytes_endian<T>(
@@ -217,9 +216,7 @@ class Mmu {
     Write,
   };
 
-  [[nodiscard]] std::tuple<nonstd::span<u8>, u32> select_storage(
-      u32 addr,
-      DataOperation op);
+  [[nodiscard]] std::tuple<nonstd::span<u8>, u32> select_storage(u32 addr);
 
   template <typename Func>
   void set_write_handler(Func func) {
