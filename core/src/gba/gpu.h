@@ -7,9 +7,14 @@
 namespace gb::advance {
 constexpr u32 TileSize = 8;
 enum class BgMode : u32 { Zero = 0, One, Two, Three, Four, Five };
+
+class Gpu;
+
 class Dispcnt : public Integer<u16> {
  public:
-  using Integer::Integer;
+  Dispcnt(Gpu& gpu) : Integer::Integer{0}, m_gpu{&gpu} {}
+
+  void on_after_write() const;
 
   [[nodiscard]] BgMode bg_mode() const {
     return static_cast<BgMode>(m_value & 0b111);
@@ -45,11 +50,18 @@ class Dispcnt : public Integer<u16> {
   [[nodiscard]] bool layer_enabled(BackgroundLayer layer) const {
     return (static_cast<u16>(layer) & m_value) != 0;
   }
+
+ private:
+  Gpu* m_gpu;
 };
 
 class Bgcnt : public Integer<u16> {
  public:
   using Integer::Integer;
+
+  Bgcnt(Gpu& gpu) : Integer::Integer{0}, m_gpu{&gpu} {}
+
+  void on_after_write() const;
 
   [[nodiscard]] u32 priority() const { return m_value & 0b11; }
 
@@ -59,16 +71,7 @@ class Bgcnt : public Integer<u16> {
 
   [[nodiscard]] bool mosaic() const { return test_bit(6); }
 
-  struct ColorsAndPalettes {
-    u32 colors;
-    u32 palettes;
-  };
-
   [[nodiscard]] u32 bits_per_pixel() const { return test_bit(7) ? 8 : 4; }
-
-  [[nodiscard]] ColorsAndPalettes colors_and_palettes() const {
-    return test_bit(7) ? ColorsAndPalettes{256, 1} : ColorsAndPalettes{16, 16};
-  }
 
   [[nodiscard]] u32 tilemap_base_block() const {
     return ((m_value >> 8) & 0b11111) * 2_kb;
@@ -85,8 +88,8 @@ class Bgcnt : public Integer<u16> {
   }
 
   struct ScreenSize {
-    Rect<u32> screen_size;
-    Rect<u32> rotation_scaling_size;
+    Rect<unsigned int> screen_size;
+    Rect<unsigned int> rotation_scaling_size;
 
     [[nodiscard]] ScreenSize as_tiles() const {
       return {screen_size / TileSize, rotation_scaling_size / TileSize};
@@ -94,25 +97,26 @@ class Bgcnt : public Integer<u16> {
   };
 
   [[nodiscard]] ScreenSize screen_size() const {
-    return [this]() -> ScreenSize {
-      switch ((m_value >> 14) & 0b11) {
-        case 0b00:
-          return {{256, 256}, {128, 128}};
-        case 0b01:
-          return {{512, 256}, {256, 256}};
-        case 0b10:
-          return {{256, 512}, {512, 512}};
-        case 0b11:
-          return {{512, 512}, {1024, 1024}};
-      }
-      GB_UNREACHABLE();
-    }();
+    switch ((m_value >> 14) & 0b11) {
+      case 0b00:
+        return {{256, 256}, {128, 128}};
+      case 0b01:
+        return {{512, 256}, {256, 256}};
+      case 0b10:
+        return {{256, 512}, {512, 512}};
+      case 0b11:
+        return {{512, 512}, {1024, 1024}};
+    }
+    GB_UNREACHABLE();
   }
+
+ private:
+  Gpu* m_gpu;
 };
 
-struct Background {
-  Bgcnt control{0};
-  Vec2<u16> scroll{0, 0};
+class Bldcnt : public Integer<u16> {
+ public:
+  using Integer::Integer;
 };
 
 class Gpu {
@@ -120,20 +124,33 @@ class Gpu {
   static constexpr u32 ScreenWidth = 240;
   static constexpr u32 ScreenHeight = 160;
 
+  struct Background {
+    Bgcnt control{0};
+    Dispcnt::BackgroundLayer layer;
+    Vec2<u16> scroll{0, 0};
+  };
+
   Gpu(Mmu& mmu)
       : m_vram{mmu.vram()},
         m_palette_ram{mmu.palette_ram()},
+        m_oam_ram{mmu.oam_ram()},
         m_framebuffer(ScreenWidth * ScreenHeight) {}
 
-  Dispcnt dispcnt{0};
-  Background bg0;
-  Background bg1;
-  Background bg2;
-  Background bg3;
+  Dispcnt dispcnt{*this};
+
+  Background bg0{*this, Dispcnt::BackgroundLayer::Zero};
+  Background bg1{*this, Dispcnt::BackgroundLayer::One};
+  Background bg2{*this, Dispcnt::BackgroundLayer::Two};
+  Background bg3{*this, Dispcnt::BackgroundLayer::Three};
+  u16 bldcnt = 0;
+
+  void sort_backgrounds();
+
+  void clear() {
+    std::fill(m_framebuffer.begin(), m_framebuffer.end(), Color{0, 0, 0, 255});
+  }
 
   void render_scanline(int scanline);
-
-  void render();
 
   [[nodiscard]] nonstd::span<const Color> framebuffer() const {
     return {m_framebuffer};
@@ -141,8 +158,15 @@ class Gpu {
 
  private:
   void render_background(Background background, int scanline);
+  void render_sprites(int scanline);
+
+  std::array<Background*, 4> m_backgrounds{&bg0, &bg1, &bg2, &bg3};
+  std::array<Background*, 4>::iterator m_backgrounds_end =
+      m_backgrounds.begin();
+
   nonstd::span<u8> m_vram;
   nonstd::span<u8> m_palette_ram;
+  nonstd::span<u8> m_oam_ram;
   std::vector<Color> m_framebuffer;
 };
 }  // namespace gb::advance
