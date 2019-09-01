@@ -496,7 +496,7 @@ u32 convert_thumb_to_arm(u16 instruction) {
     case ThumbInstructionType::UnconditionalBranch: {
       const u32 offset = ((instruction & 0x7ff) << 1);
       return (0b1110'1010 << 24) | (offset >> 0) |
-             (test_bit(offset, 11) ? 0xfffc00 : 0);
+             (test_bit(offset, 11) ? 0xfff800 : 0);
     }
   }
 
