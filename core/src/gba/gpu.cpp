@@ -193,7 +193,7 @@ void Gpu::render_background(Background background, int scanline) {
 
   const auto base_block_offset =
       control.tilemap_base_block() +
-      (tile_screen_size.screen_size.width * tile_y + tile_x +
+      ((tile_screen_size.screen_size.width * tile_y + tile_x) * 2 +
        (tile_screen_size.screen_size.width * 2 * tile_scanline));
   const nonstd::span<const u8> vram = m_vram.subspan(base_block_offset);
 
