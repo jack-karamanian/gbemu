@@ -183,8 +183,8 @@ static void render_tile_row_4bpp(nonstd::span<Color> framebuffer,
 
 void Gpu::render_background(Background background, int scanline) {
   const u32 tile_scanline = scanline / TileSize;
-  const u16 tile_x = background.scroll.x / TileSize;
-  const u16 tile_y = background.scroll.y / TileSize;
+  const u16 tile_x = (background.scroll.x & 0b1'1111'1111) / TileSize;
+  const u16 tile_y = (background.scroll.y & 0b1'1111'1111) / TileSize;
 
   const Bgcnt control = background.control;
 
