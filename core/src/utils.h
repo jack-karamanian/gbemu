@@ -146,8 +146,7 @@ template <typename Itr, typename Func>
 }
 
 [[nodiscard]] constexpr u32 arithmetic_shift_right(u32 val, u32 amount) {
-  constexpr std::size_t end_shift = sizeof(val) * 8 - 1;
-  return (val & (1 << end_shift)) | (val >> amount);
+  return static_cast<s32>(val) >> amount;
 }
 
 template <int from, int to, typename T>
