@@ -56,7 +56,7 @@ void Lcd::update(u32 cycles) {
         m_cycles = 0;
         ++vcount;
 
-        if (vcount >= 168) {
+        if (vcount > 227) {
           dispstat.set_hblank(false);
           dispstat.set_vblank(false);
           m_mode = Mode::Draw;
