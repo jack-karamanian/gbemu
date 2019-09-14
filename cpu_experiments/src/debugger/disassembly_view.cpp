@@ -16,7 +16,8 @@ void DisassemblyView::render(gb::u32 base,
     target_addr = address;
   };
 
-  ImGui::InputTextWithHint("", "Address", m_number_buffer.data(), 9);
+  ImGui::InputTextWithHint("", "Address", m_number_buffer.data(),
+                           m_number_buffer.size());
   ImGui::SameLine();
   if (ImGui::Button("Goto")) {
     char* end = nullptr;
