@@ -8,12 +8,13 @@ namespace gb::advance {
 void DisassemblyView::render(gb::u32 base,
                              const Cpu& cpu,
                              const DisassemblyInfo& disassembly_info) {
-  static std::array<char, 9> m_number_buffer;
   ImGui::Begin(m_name);
 
   std::optional<u32> target_addr;
 
-  const auto go_to_address = [&](u32 address) { target_addr = address; };
+  const auto go_to_address = [&target_addr](u32 address) {
+    target_addr = address;
+  };
 
   ImGui::InputTextWithHint("", "Address", m_number_buffer.data(), 9);
   ImGui::SameLine();
@@ -42,7 +43,6 @@ void DisassemblyView::render(gb::u32 base,
           index->second * (ImGui::GetTextLineHeightWithSpacing());
       ImGui::SetScrollFromPosY(adjusted_offset);
     }
-    target_addr = {};
   }
 
   while (clipper.Step()) {
