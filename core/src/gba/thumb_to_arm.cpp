@@ -514,16 +514,17 @@ static void check_thumb_equivalent(const std::string& thumb_assembly,
   const auto thumb_code = experiments::assemble(final_thumb_assembly);
   const auto arm_code = experiments::assemble(final_arm_assembly);
 
-  const u16 thumb_instruction =
-      *reinterpret_cast<const u16*>(thumb_code.data());
+  const u16 thumb_instruction = (thumb_code[1] << 8) | thumb_code[0];
+
+  const u32 arm_instruction = (arm_code[3] << 24) | (arm_code[2] << 16) |
+                              (arm_code[1] << 8) | arm_code[0];
 
   CAPTURE(thumb_instruction);
   CAPTURE(thumb_assembly);
   CAPTURE(arm_assembly);
   CHECK(thumb_code.size() == 2);
   CHECK(arm_code.size() == 4);
-  CHECK(convert_thumb_to_arm(thumb_instruction) ==
-        *reinterpret_cast<const u32*>(arm_code.data()));
+  CHECK(convert_thumb_to_arm(thumb_instruction) == arm_instruction);
 }
 
 // Based on "ARM equivalent" tables from ARM7TDMI.pdf
