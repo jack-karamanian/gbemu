@@ -5,6 +5,7 @@ namespace gb::advance {
 class Input : public Integer<u16> {
  public:
   Input() : Integer::Integer{0x03ff} {}
+
   void write_byte([[maybe_unused]] unsigned int byte,
                   [[maybe_unused]] u8 value) const {}
 
