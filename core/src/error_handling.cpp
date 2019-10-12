@@ -1,6 +1,6 @@
 #include <iostream>
 #include "error_handling.h"
-#include "fmt/printf.h"
+#include <fmt/printf.h>
 
 namespace gb {
 void handle_unreachable(int line, const char* file, const char* msg) {
