@@ -1,11 +1,9 @@
 #include <GL/glew.h>
 #include <SDL2/SDL.h>
+#include <fmt/ostream.h>
 #include <folly/executors/CPUThreadPoolExecutor.h>
 #include <folly/futures/Future.h>
 #include <folly/init/Init.h>
-#include <chrono>
-#include <iostream>
-#include <numeric>
 #include <range/v3/all.hpp>
 #include <string>
 #include <vector>
@@ -66,6 +64,11 @@ class NumberInput {
 
 static void DispntDisplay(Dispcnt dispcnt) {
   ImGui::LabelText("Mode", "%d", static_cast<u32>(dispcnt.bg_mode()));
+  const char* vram_mapping =
+      dispcnt.obj_vram_mapping() == Dispcnt::ObjVramMapping::TwoDimensional
+          ? "Two Dimensional"
+          : "One Dimensional";
+  ImGui::LabelText("OBJ VRAM Mapping", "%s", vram_mapping);
   ImGui::LabelText(
       "BG0 Enabled", "%s",
       bool_to_string(dispcnt.layer_enabled(Dispcnt::BackgroundLayer::Zero)));
@@ -80,13 +83,21 @@ static void DispntDisplay(Dispcnt dispcnt) {
       bool_to_string(dispcnt.layer_enabled(Dispcnt::BackgroundLayer::Three)));
 }
 
-static void BackgroundDisplay(Background background) {
-  const auto [control, scroll] = background;
+static void BackgroundDisplay(Gpu::Background background) {
+  const auto [control, _, scroll] = background;
   ImGui::LabelText("Bits per Pixel", "%d", control.bits_per_pixel());
   ImGui::LabelText("Tile Map Base Block", "%08x", control.tilemap_base_block());
   ImGui::LabelText("Character Base Block", "%08x",
                    control.character_base_block());
   ImGui::LabelText("Priority", "%d", control.priority());
+  ImGui::LabelText("Overflow", "%s", [background] {
+    switch (background.control.display_overflow()) {
+      case Bgcnt::DisplayOverflow::Transparent:
+        return "Transparent";
+      case Bgcnt::DisplayOverflow::Wraparound:
+        return "Wraparound";
+    }
+  }());
   const auto screen_size = control.screen_size().screen_size;
   ImGui::LabelText("Tile Map Width", "%d", screen_size.width);
   ImGui::LabelText("Tile Map Height", "%d", screen_size.height);
@@ -103,7 +114,7 @@ static std::vector<gb::u8> load_file(const std::string_view file_name) {
   return data;
 }
 
-void run_emulator_and_debugger() {
+void run_emulator_and_debugger(std::string_view rom_path) {
   if (SDL_Init(SDL_INIT_VIDEO) != 0) {
     std::cerr << SDL_GetError() << '\n';
     return;
@@ -141,8 +152,8 @@ void run_emulator_and_debugger() {
 
   Mmu mmu;
 
-  mmu.load_rom(
-      load_file("/home/jack/Downloads/Super Dodge Ball Advance (USA).gba"));
+  // mmu.load_rom(load_file("/home/jack/Downloads/CPUTest.gba"));
+  mmu.load_rom(load_file(rom_path));
 
   DisassemblyInfo disassembly;
   DisassemblyInfo thumb_disassembly;
@@ -165,6 +176,19 @@ void run_emulator_and_debugger() {
     return experiments::disassemble(mmu.rom());
   }).thenValue(make_handler_for(disassembly));
 
+  folly::via(&executor, [&mmu]() {
+    auto res = experiments::disassemble(mmu.rom(), "thumb");
+#if 1
+    std::ofstream file{"disasm.asm"};
+
+    for (auto& entry : res) {
+      fmt::print(file, "{} {}\n", entry.loc, entry.text.c_str());
+    }
+#endif
+    return res;
+  }).thenValue(make_handler_for(thumb_disassembly));
+
+#if 0
   {
     nonstd::span rom_span = mmu.rom();
     const auto num_threads = std::thread::hardware_concurrency();
@@ -173,7 +197,7 @@ void run_emulator_and_debugger() {
     std::vector<folly::Future<std::vector<experiments::DisassemblyEntry>>>
         futures;
 
-    fmt::print("{} {}", num_threads, rom_span.size());
+    fmt::print("{} {}\n", num_threads, rom_span.size());
 
     auto range = ranges::view::ints(0u, num_threads);
     std::transform(
@@ -209,6 +233,7 @@ void run_emulator_and_debugger() {
               })
         .thenValue(make_handler_for(thumb_disassembly));
   }
+#endif
 
   Cpu cpu{mmu};
   ProgramStatus program_status = cpu.program_status();
@@ -227,7 +252,6 @@ void run_emulator_and_debugger() {
 
   mmu.hardware = hardware;
 
-  cpu.set_reg(Register::R0, 10);
   cpu.set_reg(Register::R15, 0x08000000);
   // cpu.set_reg(Register::R13, gb::advance::Mmu::IWramEnd - 0x100);
 
@@ -256,6 +280,7 @@ void run_emulator_and_debugger() {
       switch (event.type) {
         case SDL_QUIT:
           running = false;
+          hardware_thread.signal_vsync();
           hardware_thread.push_event(Quit{});
           break;
 
@@ -414,15 +439,31 @@ void run_emulator_and_debugger() {
       ImGui::End();
     }
     {
+      using namespace std::literals;
+      static constexpr std::array<std::string_view, 2> arches = {"arm"sv,
+                                                                 "thumb"sv};
+      static int arch_index = 0;
+
       ImGui::Begin("IWRam");
+      ImGui::RadioButton("ARM", &arch_index, 0);
+      ImGui::RadioButton("Thumb", &arch_index, 1);
+
       if (ImGui::Button("Disassemble")) {
         folly::via(&executor, [&mmu]() {
-          return experiments::disassemble(mmu.iwram(), "thumb");
+          return experiments::disassemble(mmu.iwram(), arches[arch_index]);
         }).thenValue(make_handler_for(iwram_disassembly));
       }
+
       static MemoryEditor memory_editor;
       auto iwram = mmu.iwram();
       memory_editor.DrawContents(iwram.data(), iwram.size());
+      ImGui::End();
+    }
+    {
+      ImGui::Begin("EWram");
+      static MemoryEditor memory_editor;
+      auto ewram = mmu.ewram();
+      memory_editor.DrawContents(ewram.data(), ewram.size());
       ImGui::End();
     }
     {
@@ -440,6 +481,7 @@ void run_emulator_and_debugger() {
     {
       ImGui::Begin("Dispcnt");
       DispntDisplay(gpu.dispcnt);
+      ImGui::LabelText("Bldcnt", "%04x", gpu.bldcnt);
       ImGui::End();
     }
     {
@@ -487,7 +529,7 @@ void run_emulator_and_debugger() {
       }
       ImGui::Begin("Screen");
       ImGui::Image(reinterpret_cast<void*>(static_cast<intptr_t>(texture)),
-                   ImVec2{240, 160});
+                   ImVec2{240 * 2, 160 * 2});
       ImGui::End();
     }
     ImGui::Render();
@@ -498,6 +540,7 @@ void run_emulator_and_debugger() {
 
     ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
     SDL_GL_SwapWindow(window);
+    hardware_thread.signal_vsync();
   }
 
   ImGui_ImplOpenGL3_Shutdown();
@@ -515,6 +558,7 @@ int main(int argc, char** argv) {
   doctest::Context context;
 
   context.setOption("abort-after", 5);
+  // context.setOption("no-run", 1);
   context.applyCommandLine(argc, argv);
 
   context.setOption("no-breaks", true);
@@ -524,5 +568,5 @@ int main(int argc, char** argv) {
   if (context.shouldExit()) {
     return res;
   }
-  gb::advance::run_emulator_and_debugger();
+  gb::advance::run_emulator_and_debugger(argv[1]);
 }

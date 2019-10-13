@@ -6,15 +6,26 @@ class Cpu;
 class Mmu;
 class Dmas;
 class Gpu;
-class DispStat : public Integer<u32> {
+
+class DispStat : public Integer<u16> {
  public:
   using Integer::Integer;
+
+  void write_byte(unsigned int byte, u8 value) {
+    // Don't allow the first 3 bits to be written
+    Integer::write_byte(
+        byte, byte == 0 ? ((value & ~0b111) | (m_value & 0b111)) : value);
+  }
 
   [[nodiscard]] bool vblank() const { return test_bit(0); }
 
   void set_vblank(bool set) { set_bit(0, set); }
 
   void set_hblank(bool set) { set_bit(1, set); }
+
+  [[nodiscard]] bool enable_vblank_interrupt() const { return test_bit(3); }
+
+  [[nodiscard]] bool enable_hblank_interrupt() const { return test_bit(4); }
 };
 class Lcd {
  public:
@@ -26,7 +37,7 @@ class Lcd {
   DispStat dispstat{0};
   u32 vcount = 0;
 
-  void update(u32 cycles);
+  bool update(u32 cycles);
 
  private:
   int m_cycles = 0;

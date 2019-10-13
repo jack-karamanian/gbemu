@@ -94,6 +94,8 @@ set(SRCS
   src/gba/timer.cpp
   src/gba/gpu.h
   src/gba/gpu.cpp
+  src/gba/hle.h
+  src/gba/hle.cpp
 )
 
 

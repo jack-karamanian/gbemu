@@ -37,7 +37,7 @@ class InterruptsRequested : public InterruptBucket {
   using InterruptBucket::InterruptBucket;
   constexpr void write_byte(unsigned int byte, u8 value) {
     const u32 shift = byte * 8;
-    m_value = (m_value) ^ (value << shift);
+    m_value = (m_value) & ~(value << shift);
   }
 };
 }  // namespace gb::advance

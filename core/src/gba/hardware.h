@@ -6,7 +6,7 @@ class Cpu;
 class Input;
 class Mmu;
 struct Timers;
-struct Dmas;
+class Dmas;
 class Gpu;
 
 struct Hardware {

@@ -1,8 +1,8 @@
+#include "gba/mmu.h"
 #include <fmt/printf.h>
 #include <chrono>
 #include "gba/cpu.h"
 #include "gba/gpu.h"
-#include "gba/mmu.h"
 #include "timer.h"
 #include "utils.h"
 
@@ -62,21 +62,30 @@ void Mmu::copy_memory(AddrParam source,
   const auto [source_addr, source_op] = source;
   const auto [dest_addr, dest_op] = dest;
 
-  const int source_stride =
-      static_cast<int>(source_op) * static_cast<int>(type_size);
-  const int dest_stride =
-      static_cast<int>(dest_op) * static_cast<int>(type_size);
-
-  auto [source_storage, resolved_source_addr] = select_storage(source_addr);
-  auto [dest_storage, resolved_dest_addr] = select_storage(dest_addr);
-
-  for (u32 i = 0; i < count; ++i) {
-    for (u32 j = 0; j < type_size; ++j) {
-      dest_storage[resolved_dest_addr + j] =
-          source_storage[resolved_source_addr + j];
+  if (is_hardware_addr(source_addr) || is_hardware_addr(dest_addr)) {
+    for (u32 i = 0; i < count; ++i) {
+      for (u32 j = 0; j < type_size; ++j) {
+        const auto offset = count * type_size + i;
+        set<u8>(dest_addr + offset, at<u8>(source_addr + offset));
+      }
     }
-    resolved_source_addr += source_stride;
-    resolved_dest_addr += dest_stride;
+  } else {
+    const int source_stride =
+        static_cast<int>(source_op) * static_cast<int>(type_size);
+    const int dest_stride =
+        static_cast<int>(dest_op) * static_cast<int>(type_size);
+
+    auto [source_storage, resolved_source_addr] = select_storage(source_addr);
+    auto [dest_storage, resolved_dest_addr] = select_storage(dest_addr);
+
+    for (u32 i = 0; i < count; ++i) {
+      for (u32 j = 0; j < type_size; ++j) {
+        dest_storage[resolved_dest_addr + j] =
+            source_storage[resolved_source_addr + j];
+      }
+      resolved_source_addr += source_stride;
+      resolved_dest_addr += dest_stride;
+    }
   }
 }
 
@@ -84,16 +93,11 @@ void Mmu::set_bytes(u32 addr, nonstd::span<const u8> bytes) {
   auto [selected_span, resolved_addr] = select_storage(addr);
   auto subspan = selected_span.subspan(resolved_addr);
 
-  const bool is_overrunning = bytes.size() > selected_span.size();
-  const long difference = bytes.size() - subspan.size();
-
-  const std::size_t copy_size = is_overrunning ? difference : bytes.size();
-  // std::copy(converted.begin(), converted.end(), subspan.begin());
+  const std::size_t copy_size = bytes.size();
 
   for (std::size_t i = 0; i < copy_size; ++i) {
     subspan[i] = bytes[i];
   }
-
   if (m_write_handler) {
     m_write_handler(addr, 0);
   }
@@ -103,11 +107,14 @@ void Mmu::set_hardware_bytes(u32 addr, nonstd::span<const u8> bytes) {
   const auto [io_addr, resolved_addr] = select_io_register(addr);
   auto selected_hardware = select_hardware(io_addr, DataOperation::Write);
 
-  const bool is_overrunning = bytes.size() > selected_hardware.size_bytes();
-  const long difference =
-      bytes.size() - (selected_hardware.size_bytes() - resolved_addr);
+  const auto bytes_size = static_cast<std::size_t>(bytes.size());
 
-  selected_hardware.write_byte(resolved_addr, bytes);
+  const bool is_overrunning = bytes_size > selected_hardware.size_bytes();
+  const long difference =
+      bytes_size - (selected_hardware.size_bytes() - resolved_addr);
+
+  selected_hardware.write_byte(
+      resolved_addr, difference > 0 ? bytes.subspan(0, difference) : bytes);
 
   if (is_overrunning) {
     set_hardware_bytes(addr + difference, bytes.subspan(difference));
@@ -161,12 +168,36 @@ std::tuple<nonstd::span<u8>, u32> Mmu::select_storage(u32 addr) {
     return {bios_interrupt, addr - 0x128};
   }
 
+  if (addr >= BiosBegin && addr <= BiosEnd) {
+    fmt::printf(
+        "WARNING: BIOS memory access at %08x\n",
+        hardware.cpu->reg(Register::R15) - hardware.cpu->prefetch_offset());
+    return {m_bios, addr};
+  }
+
   printf("unimplemented select_storage addr %08x\n", addr);
   throw std::runtime_error("unimplemented select storage");
 }
 
+class MgbaDebugPrint : public Integer<u16> {
+ public:
+  MgbaDebugPrint() : Integer::Integer{0} {}
+
+  void write_byte([[maybe_unused]] u32 addr, u8 value) {
+    fmt::printf("%c", value);
+  }
+};
+
+static MgbaDebugPrint mgba_debug_print;
+
 IntegerRef Mmu::select_hardware(u32 addr, DataOperation op) {
   switch (addr) {
+    case hardware::mgba::DEBUG_ENABLE:
+      STUB_ADDR(mgba_debug_enable);
+    case hardware::mgba::DEBUG_FLAGS:
+      STUB_ADDR(mgba_debug_flags);
+    case hardware::mgba::DEBUG_STRING:
+      return mgba_debug_print;
     case hardware::GREENSWAP:
       STUB_ADDR(greenswap);
     case hardware::DISPCNT:
@@ -260,7 +291,7 @@ IntegerRef Mmu::select_hardware(u32 addr, DataOperation op) {
     case hardware::MOSAIC:
       STUB_ADDR(mosaic);
     case hardware::BLDCNT:
-      STUB_ADDR(bldcnt);
+      return hardware.gpu->bldcnt;
     case hardware::BLDALPHA:
       STUB_ADDR(bldalpha);
     case hardware::BLDY:
@@ -327,21 +358,40 @@ IntegerRef Mmu::select_hardware(u32 addr, DataOperation op) {
       return hardware.cpu->interrupts_requested;
     case hardware::POSTFLG:
       STUB_ADDR(postflg);
-  }
-
-  if (const auto [address_type, dma_number, found] = Dma::select_dma(addr);
-      found) {
-    Dma& dma = hardware.dmas->dma(dma_number);
-    switch (address_type) {
-      case Dma::AddressType::Source:
-        return dma.source;
-      case Dma::AddressType::Dest:
-        return dma.dest;
-      case Dma::AddressType::Count:
-        return dma.count;
-      case Dma::AddressType::Control:
-        return dma.control();
-    }
+    case hardware::DMA0SAD:
+      return hardware.dmas->dma(Dma::DmaNumber::Dma0).source;
+    case hardware::DMA1SAD:
+      return hardware.dmas->dma(Dma::DmaNumber::Dma1).source;
+    case hardware::DMA2SAD:
+      return hardware.dmas->dma(Dma::DmaNumber::Dma2).source;
+    case hardware::DMA3SAD:
+      return hardware.dmas->dma(Dma::DmaNumber::Dma3).source;
+    case hardware::DMA0DAD:
+      return hardware.dmas->dma(Dma::DmaNumber::Dma0).dest;
+    case hardware::DMA1DAD:
+      return hardware.dmas->dma(Dma::DmaNumber::Dma1).dest;
+    case hardware::DMA2DAD:
+      return hardware.dmas->dma(Dma::DmaNumber::Dma2).dest;
+    case hardware::DMA3DAD:
+      return hardware.dmas->dma(Dma::DmaNumber::Dma3).dest;
+    case hardware::DMA0CNT_L:
+      return hardware.dmas->dma(Dma::DmaNumber::Dma0).count;
+    case hardware::DMA1CNT_L:
+      return hardware.dmas->dma(Dma::DmaNumber::Dma1).count;
+    case hardware::DMA2CNT_L:
+      return hardware.dmas->dma(Dma::DmaNumber::Dma2).count;
+    case hardware::DMA3CNT_L:
+      return hardware.dmas->dma(Dma::DmaNumber::Dma3).count;
+    case hardware::DMA0CNT_H:
+      return hardware.dmas->dma(Dma::DmaNumber::Dma0).control();
+    case hardware::DMA1CNT_H:
+      return hardware.dmas->dma(Dma::DmaNumber::Dma1).control();
+    case hardware::DMA2CNT_H:
+      return hardware.dmas->dma(Dma::DmaNumber::Dma2).control();
+    case hardware::DMA3CNT_H:
+      return hardware.dmas->dma(Dma::DmaNumber::Dma3).control();
+    case hardware::WAVERAM:
+      STUB_ADDR(waveram);
   }
 
   fmt::printf("unimplemented io register %08x\n", addr);

@@ -336,6 +336,7 @@ class Cpu {
 
   [[nodiscard]] constexpr u32 reg(Register reg_selected) const {
     const u32 index = static_cast<u32>(reg_selected);
+    assert(index < m_regs.size());
 
     if (reg_selected == Register::R15) {
       const bool thumb_mode = program_status().thumb_mode();
@@ -484,6 +485,38 @@ class Cpu {
     get_current_program_status().set_thumb_mode(set);
   }
 
+  void soft_reset() {
+    change_mode(Mode::System);
+    for (u32 i = 0; i < 13; ++i) {
+      set_reg(static_cast<Register>(i), 0);
+    }
+    // R14 = 0
+    m_saved_registers.irq[6] = 0;
+    m_saved_registers.irq[5] = 0x03007fa0;
+
+    set_reg(Register::R13, 0x03007f00);
+
+    const auto iwram = m_mmu->iwram();
+
+    const u8 jump_flag = m_mmu->at<u8>(0x03007ffa);
+
+    std::fill(iwram.begin() + 0x7e00, iwram.end(), 0);
+
+    m_saved_program_status[index_from_mode(Mode::IRQ)] = ProgramStatus{0};
+
+    set_thumb(false);
+
+    set_reg(Register::R15, jump_flag == 0 ? 0x08000000 : 0x02000000);
+  }
+
+  struct Debugger {
+    std::function<void()> stop_execution;
+  };
+
+  void set_debugger(Debugger debugger) { m_debugger = std::move(debugger); }
+
+  [[nodiscard]] const Debugger& debugger() const { return m_debugger; }
+
   InterruptBucket interrupts_enabled{0};
   InterruptsRequested interrupts_requested{0};
   InterruptBucket interrupts_waiting{0};
@@ -499,6 +532,8 @@ class Cpu {
 
   [[nodiscard]] u32 execute();
   [[nodiscard]] u32 handle_interrupts();
+
+  bool halted = false;
 
   friend class DataProcessing;
   friend class SingleDataTransfer;
@@ -537,6 +572,7 @@ class Cpu {
   std::array<u32, 16> m_regs = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
 
   Mmu* m_mmu = nullptr;
+  Debugger m_debugger;
   ProgramStatus m_current_program_status{};
   std::array<ProgramStatus, 5> m_saved_program_status{};
   SavedRegisters m_saved_registers;
@@ -550,7 +586,6 @@ class SoftwareInterrupt : public Instruction {
   u32 execute(Cpu& cpu);
 
  private:
-  void cpu_set(Cpu& cpu);
 };
 
 }  // namespace gb::advance

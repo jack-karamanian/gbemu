@@ -7,7 +7,9 @@ class Input : public Integer<u16> {
   Input() : Integer::Integer{0x03ff} {}
 
   void write_byte([[maybe_unused]] unsigned int byte,
-                  [[maybe_unused]] u8 value) const {}
+                  [[maybe_unused]] u8 value) const {
+    // Disable writes
+  }
 
   void set_a(bool set) { set_bit(0, !set); }
 

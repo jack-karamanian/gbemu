@@ -1,5 +1,5 @@
-#include <doctest/doctest.h>
 #include "dma.h"
+#include <doctest/doctest.h>
 #include "gba/cpu.h"
 #include "gba/mmu.h"
 
@@ -29,34 +29,45 @@ static Interrupt dma_number_to_interrupt(Dma::DmaNumber dma_number) {
     case Dma::DmaNumber::Dma3:
       return Interrupt::Dma3;
   }
+  GB_UNREACHABLE();
 }
 
 void Dma::run() {
-  const u32 masked_source = source & m_source_mask;
-  const u32 masked_dest = m_internal_dest & m_dest_mask;
+  m_internal_dest = dest;
+  m_control.set_data(m_control.data() & ~0b1'1111);
 
   const auto source_op = select_addr_op(m_control.source_addr_control());
   const auto dest_op = select_addr_op(m_control.dest_addr_control());
 
   const u32 type_size = m_control.word_transfer() ? 4 : 2;
-  m_mmu->copy_memory({masked_source, source_op}, {masked_dest, dest_op}, count,
-                     type_size);
+
+  constexpr u32 byte_mask = 0x0ffffffe;
+
+  const u32 masked_source = (source & m_source_mask) & byte_mask;
+  const u32 masked_dest = (m_internal_dest & m_dest_mask) & byte_mask;
+
+  m_mmu->copy_memory(
+      {masked_source, source_op}, {masked_dest, dest_op},
+      count ? count : m_dma_number == DmaNumber::Dma3 ? 0x10000 : 0x4000,
+      type_size);
 
   if (m_control.dest_addr_control() !=
       Control::AddrControl::IncrementAndReload) {
-    const u32 transfer_size =
-        m_control.word_transfer() ? sizeof(u32) : sizeof(u16);
-    m_internal_dest = count * transfer_size;
+    // const u32 transfer_size =
+    //    m_control.word_transfer() ? sizeof(u32) : sizeof(u16);
+    m_internal_dest = count * type_size;
   }
 
   if (!m_control.repeat() &&
-      m_control.start_timing() != Control::StartTiming::Immediately) {
+      m_control.start_timing() == Control::StartTiming::Immediately) {
     m_control.set_enabled(false);
   }
   if (m_control.interrupt_at_end()) {
     m_cpu->interrupts_requested.set_interrupt(
         dma_number_to_interrupt(m_dma_number), true);
   }
+  // m_mmu->hardware.cpu->debugger().stop_execution();
+  // m_mmu->hardware.cpu->debugger().stop_execution();
 }
 
 template <typename T>

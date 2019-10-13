@@ -1,11 +1,12 @@
+#include "lcd.h"
 #include "gba/cpu.h"
 #include "gba/dma.h"
 #include "gba/gpu.h"
 #include "gba/mmu.h"
-#include "lcd.h"
 
 namespace gb::advance {
-void Lcd::update(u32 cycles) {
+bool Lcd::update(u32 cycles) {
+  bool draw_frame = false;
   m_cycles += cycles;
 
   switch (m_mode) {
@@ -14,7 +15,9 @@ void Lcd::update(u32 cycles) {
         m_mode = Mode::HBlank;
         m_cycles = 0;
 
-        m_cpu->interrupts_requested.set_interrupt(Interrupt::HBlank, true);
+        if (dispstat.enable_hblank_interrupt()) {
+          m_cpu->interrupts_requested.set_interrupt(Interrupt::HBlank, true);
+        }
         dispstat.set_hblank(true);
 
         for (Dma& dma : m_dmas->span()) {
@@ -28,14 +31,13 @@ void Lcd::update(u32 cycles) {
       break;
     case Mode::HBlank:
       if (m_cycles >= 272) {
-        m_gpu->render_scanline(vcount);
         m_cycles = 0;
         ++vcount;
 
         // m_mode = vcount > 160 ? Mode::VBlank : Mode::Draw;
 
         dispstat.set_hblank(false);
-        if (vcount > 160) {
+        if (vcount > 159) {
           for (Dma& dma : m_dmas->span()) {
             if (dma.control().start_timing() ==
                 Dma::Control::StartTiming::VBlank) {
@@ -45,8 +47,13 @@ void Lcd::update(u32 cycles) {
           }
           m_mode = Mode::VBlank;
           dispstat.set_vblank(true);
-          m_cpu->interrupts_requested.set_interrupt(Interrupt::VBlank, true);
+          if (dispstat.enable_vblank_interrupt()) {
+            m_cpu->interrupts_requested.set_interrupt(Interrupt::VBlank, true);
+          }
+          draw_frame = true;
+
         } else {
+          m_gpu->render_scanline(vcount);
           m_mode = Mode::Draw;
         }
       }
@@ -65,5 +72,6 @@ void Lcd::update(u32 cycles) {
       }
       break;
   }
+  return draw_frame;
 }
 }  // namespace gb::advance

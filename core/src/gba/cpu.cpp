@@ -1,4 +1,5 @@
 #include "gba/cpu.h"
+#include "gba/hle.h"
 
 namespace gb::advance {
 enum class ShiftType : u32 {
@@ -25,11 +26,12 @@ constexpr ShiftResult compute_shift_value(u32 value, const Cpu& cpu) {
   const u8 shift_amount = [&]() -> u8 {
     if (register_specified) {
       // Shift by bottom byte of register
-      const u32 reg = (value >> 8) & 0xf;
+      const u32 shift_reg = (value >> 8) & 0xf;
       const u8 amount =
-          reg == 15
+          shift_reg == 15
               ? 0
-              : static_cast<u8>(cpu.reg(static_cast<Register>(reg)) & 0xff);
+              : static_cast<u8>(cpu.reg(static_cast<Register>(shift_reg)) &
+                                0xff);
       return amount;
     }
 
@@ -38,6 +40,7 @@ constexpr ShiftResult compute_shift_value(u32 value, const Cpu& cpu) {
   }();
   const u32 reg_value =
       cpu.reg(reg) +
+      // TODO: Is this offset correct?
       (register_specified && reg == Register::R15 ? 4 : 0);  // Rm
 
   // TODO: Finish shift carry calculation
@@ -173,7 +176,7 @@ class DataProcessing : public Instruction {
               static_cast<u8>(((m_value >> 8) & 0xf) * 2),
               m_value & 0xff,
               {},
-              {}};
+              cpu.program_status().carry()};
     }
     return compute_shift_value(m_value, cpu);
   }
@@ -202,18 +205,25 @@ class DataProcessing : public Instruction {
     const bool shift_carry = std::get<0>(operand2_result);
     const u32 operand2 = std::get<1>(operand2_result);
     // const auto [shift_carry, operand2] = compute_operand2(cpu);
+    //
+    const Register dest_reg = dest_register();
 
-    const u32 operand1 = cpu.reg(operand_register());
+    const u32 operand1 =
+        cpu.reg(operand_register()) &
+        // Mask off bit 1 of R15 for thumb "adr #xx" instructions
+        ~(cpu.program_status().thumb_mode() &&
+                  operand_register() == Register::R15 &&
+                  dest_reg != Register::R15
+              ? 0b10
+              : 0);
 
     const u32 carry_value = cpu.carry();
 
-    const Register dest_reg = dest_register();
-
-    const auto write_result = [&cpu, this](Register dest_reg, u32 result) {
-      if (dest_reg == Register::R15 && set_condition_code()) {
+    const auto write_result = [&cpu, this](Register dest, u32 result) {
+      if (dest == Register::R15 && set_condition_code()) {
         cpu.move_spsr_to_cpsr();
       }
-      cpu.set_reg(dest_reg, result);
+      cpu.set_reg(dest, result);
     };
 
     const auto run_logical = [&](u32 result, bool write = true) {
@@ -228,91 +238,90 @@ class DataProcessing : public Instruction {
       }
     };
 
-    const auto run_arithmetic = [&](u64 op1, u64 op2, bool write, auto impl,
-                                    bool invert_carry = false) {
-      const u64 result = impl(op1, op2);
+    const auto run_arithmetic =
+        [&](u64 op1, u64 op2, bool write, auto impl, bool invert_carry,
+            bool carry_override = false, bool carry_override_value = false) {
+          const u64 result = impl(op1, op2);
 
-      const u32 result_32 = static_cast<u32>(result & 0xffffffff);
-      if (set_condition_code()) {
-        cpu.set_overflow((gb::test_bit(op1, 31) == gb::test_bit(op2, 31)) &&
-                         gb::test_bit(op1, 31) != gb::test_bit(result, 31)
+          const u32 result_32 = static_cast<u32>(result & 0xffffffff);
+          if (set_condition_code()) {
+            const bool overflow = invert_carry
+                                      ? (((op1 ^ op2) >> 31) & 0b1) &&
+                                            (((op1 ^ result_32) >> 31) & 0b1)
+                                      : (!(((op1 ^ op2) >> 31) & 0b1)) &&
+                                            (((op2 ^ result_32) >> 31) & 0b1);
+            cpu.set_overflow(overflow);
+            cpu.set_zero(result_32 == 0);
+            cpu.set_negative(gb::test_bit(result_32, 31));
+            if (carry_override) {
+              cpu.set_carry(carry_override_value);
+            } else {
+              cpu.set_carry(
+                  (invert_carry ? (op2 <= op1) : gb::test_bit(result, 32)));
+            }
+          }
 
-        );
-#if 0
-        cpu.set_overflow(
-            gb::test_bit(static_cast<u32>(result & 0xffffffff), 31) &&
-            gb::test_bit(dest_value, 31) !=
-                gb::test_bit(static_cast<u32>(result & 0xffffffff), 31));
-#endif
-        cpu.set_zero(result_32 == 0);
-        cpu.set_negative(gb::test_bit(result_32, 31));
-        cpu.set_carry(gb::test_bit(result, 32));
-#if 0
-        cpu.set_carry(invert_carry ? result <= std::numeric_limits<u32>::max()
-                                   : result > std::numeric_limits<u32>::max());
-#endif
-      }
-
-      if (write) {
-        write_result(dest_reg, result_32);
-      }
-    };
+          if (write) {
+            write_result(dest_reg, result_32);
+          }
+        };
 
     switch (opcode()) {
       // Arithmetic
       case Opcode::Sub:
-        run_arithmetic(operand1, -operand2, true,
-                       [](u64 op1, u64 op2) { return op1 + op2; });
+        run_arithmetic(
+            operand1, operand2, true,
+            [](u64 op1, u64 op2) { return op1 - op2; }, true);
         break;
       case Opcode::Rsb:
-        run_arithmetic(operand1, operand2, true,
-                       [](u64 op1, u64 op2) { return op2 - op1; });
+        // op2 - op1
+        run_arithmetic(
+            operand2, operand1, true,
+            [](u64 op1, u64 op2) { return op1 - op2; }, true);
         break;
       case Opcode::Add:
-        run_arithmetic(operand1, operand2, true,
-                       [](u64 op1, u64 op2) { return op1 + op2; });
+        run_arithmetic(
+            operand1, operand2, true,
+            [](u64 op1, u64 op2) { return op1 + op2; }, false);
         break;
-        // return op1 + op2;
       case Opcode::Adc:
-        run_arithmetic(operand1, operand2, true,
-                       [carry_value](u64 op1, u64 op2) {
-                         return op1 + op2 + carry_value;
-                       });
+        run_arithmetic(
+            operand1, operand2, true,
+            [carry_value](u64 op1, u64 op2) { return op1 + op2 + carry_value; },
+            false);
         break;
-        // return op1 + op2 + carry_value;
       case Opcode::Sbc:
         run_arithmetic(
             operand1, operand2, true,
             [carry_value](u64 op1, u64 op2) {
               return op1 - op2 + carry_value - 1;
             },
-            true);
+            true, true,
+            static_cast<u64>(operand2) + static_cast<u64>(carry_value) - 1 <=
+                operand1);
         break;
-        // return op1 - op2 + carry_value - 1;
       case Opcode::Rsc:
         run_arithmetic(
             operand1, operand2, true,
             [carry_value](u64 op1, u64 op2) {
-              // fmt::print("op1: {}, op2: {}\n", op1, op2);
-              // fmt::print("res {}\n", op2 - op1 + carry_value - 1);
               return op2 - op1 + carry_value - 1;
             },
-            true);
+            true, true,
+            static_cast<u64>(operand1) + static_cast<u64>(carry_value) - 1 <=
+                operand2);
         break;
-        // return op2 - op1 + carry_value - 1;
       case Opcode::Cmp:
         run_arithmetic(
-            operand1, -operand2, false,
-            [](u64 op1, u64 op2) { return op1 + op2; }, true);
+            operand1, operand2, false,
+            [](u64 op1, u64 op2) { return op1 - op2; }, true);
         break;
       case Opcode::Cmn:
-        run_arithmetic(operand1, operand2, false,
-                       [](u64 op1, u64 op2) { return op1 + op2; });
+        run_arithmetic(
+            operand1, operand2, false,
+            [](u64 op1, u64 op2) { return op1 + op2; }, false);
         break;
       // Logical
       case Opcode::And:
-        // fmt::printf("op1: %d, op2: %d\n", operand1, operand2);
-        // fmt::printf("res: %08x\n", operand1 & operand2);
         run_logical(operand1 & operand2);
         break;
       case Opcode::Eor:
@@ -656,8 +665,8 @@ class SingleDataTransfer : public Instruction {
     // The address to be used in the transfer
     const auto [aligned_addr, raw_addr,
                 rotate_amount] = [&]() -> std::tuple<u32, u32, u32> {
-      const u32 raw_addr = select_addr(cpu, base_value, offset);
-      return {raw_addr & ~0b11, raw_addr, (raw_addr & 0b11) * 8};
+      const u32 raw_address = select_addr(cpu, base_value, offset);
+      return {raw_address & ~0b11, raw_address, (raw_address & 0b11) * 8};
     }();
 
     if (!preindex()) {
@@ -924,36 +933,101 @@ static void intr_wait(Cpu& cpu, u32 set_flags, u32 interrupt_flags) {
     cpu.interrupts_waiting.set_data(static_cast<u16>(interrupt_flags));
   }
 }
-void SoftwareInterrupt::cpu_set(Cpu& cpu) {
-  const u32 source = cpu.reg(Register::R0);
-  const u32 dest = cpu.reg(Register::R1);
-  const u32 control = cpu.reg(Register::R2);
-
-  const u32 type_size = gb::test_bit(control, 26) ? 4 : 2;
-  const u32 count = control & 0x1fffff;
-
-  const bool fixed_source = gb::test_bit(control, 24);
-
-  cpu.m_mmu->copy_memory(
-      {source, fixed_source ? Mmu::AddrOp::Fixed : Mmu::AddrOp::Increment},
-      {dest, Mmu::AddrOp::Increment}, count, type_size);
-}
 
 enum class SoftwareInterruptType : u32 {
+  SoftReset = 0x0,
+  RegisterRamReset = 0x1,
+  Halt = 0x02,
   VBlankIntrWait = 0x05,
+  Div = 0x06,
+  Sqrt = 0x08,
+  ArcTan2 = 0x0a,
   CpuSet = 0x0b,
+  CpuFastSet = 0x0c,
+  ObjAffineSet = 0x0f,
+  Lz77Wram = 0x11,
+  Lz77Vram = 0x12,
+  MidiKeyToFreq = 0x1f,
+  SoundDriverVSyncOff = 0x28,
+  NonstdStopExecution = 0xff,
 };
 
 u32 SoftwareInterrupt::execute(Cpu& cpu) {
-  const auto interrupt_type =
-      static_cast<SoftwareInterruptType>(m_value & 0x00ffffff);
+  using namespace gb::advance::hle::bios;
+
+  const auto interrupt_type = static_cast<SoftwareInterruptType>(
+      (m_value & 0x00ffffff) >> (cpu.program_status().thumb_mode() ? 0 : 16));
 
   switch (interrupt_type) {
+    case SoftwareInterruptType::SoftReset:
+      cpu.soft_reset();
+      break;
+    case SoftwareInterruptType::RegisterRamReset:
+      break;
+    case SoftwareInterruptType::Halt:
+      cpu.halted = true;
+      break;
     case SoftwareInterruptType::VBlankIntrWait:
       intr_wait(cpu, 1, 1);
       break;
+    case SoftwareInterruptType::Div: {
+      const auto [div, mod, abs_div] =
+          divide(cpu.reg(Register::R0), cpu.reg(Register::R1));
+      cpu.set_reg(Register::R0, div);
+      cpu.set_reg(Register::R1, mod);
+      cpu.set_reg(Register::R3, abs_div);
+      break;
+    }
+    case SoftwareInterruptType::Sqrt: {
+      const u16 res = std::sqrt(static_cast<float>(cpu.reg(Register::R0)));
+      cpu.set_reg(Register::R0, res);
+      break;
+    }
+    case SoftwareInterruptType::ArcTan2: {
+      const s16 x = static_cast<s16>(cpu.reg(Register::R0) & 0xffff);
+      const s16 y = static_cast<s16>(cpu.reg(Register::R1) & 0xffff);
+      cpu.set_reg(Register::R0, arctan2(x, y));
+      break;
+    }
     case SoftwareInterruptType::CpuSet:
-      cpu_set(cpu);
+      cpu_set(*cpu.m_mmu, cpu.reg(Register::R0), cpu.reg(Register::R1),
+              cpu.reg(Register::R2));
+      break;
+    case SoftwareInterruptType::CpuFastSet:
+      cpu_fast_set(*cpu.m_mmu, cpu.reg(Register::R0), cpu.reg(Register::R1),
+                   cpu.reg(Register::R2));
+      break;
+    case SoftwareInterruptType::ObjAffineSet:
+      break;
+    case SoftwareInterruptType::Lz77Wram: {
+      fmt::printf("source %08x dest %08x\n", cpu.reg(Register::R0),
+                  cpu.reg(Register::R1));
+      const auto [source_storage, source_addr] =
+          cpu.m_mmu->select_storage(cpu.reg(Register::R0));
+      const auto [dest_storage, dest_addr] =
+          cpu.m_mmu->select_storage(cpu.reg(Register::R1));
+      lz77_decompress(source_storage.subspan(source_addr),
+                      dest_storage.subspan(dest_addr), 1);
+      break;
+    }
+    case SoftwareInterruptType::Lz77Vram: {
+      fmt::printf("source %08x dest %08x\n", cpu.reg(Register::R0),
+                  cpu.reg(Register::R1));
+      const auto [source_storage, source_addr] =
+          cpu.m_mmu->select_storage(cpu.reg(Register::R0));
+      const auto [dest_storage, dest_addr] =
+          cpu.m_mmu->select_storage(cpu.reg(Register::R1));
+      lz77_decompress(source_storage.subspan(source_addr),
+                      dest_storage.subspan(dest_addr), 2);
+      break;
+    }
+    case SoftwareInterruptType::MidiKeyToFreq:
+      break;
+    case SoftwareInterruptType::SoundDriverVSyncOff:
+      break;
+
+    case SoftwareInterruptType::NonstdStopExecution:
+      cpu.debugger().stop_execution();
       break;
     default:
       throw std::runtime_error("unimplemented swi");
@@ -968,25 +1042,26 @@ u32 Cpu::handle_interrupts() {
       (interrupts_requested.data() & data) != 0) {
     interrupts_waiting.set_data(0);
   }
-  if (gb::test_bit(ime, 0) && m_current_program_status.irq_enabled() &&
-      (interrupts_enabled.data() & interrupts_requested.data()) != 0) {
-    const u32 next_pc = reg(Register::R15) + prefetch_offset();
+  if ((interrupts_enabled.data() & interrupts_requested.data()) != 0) {
+    halted = false;
+    if (gb::test_bit(ime, 0) && m_current_program_status.irq_enabled()) {
+      const u32 next_pc = reg(Register::R15) - prefetch_offset() + 4;
 
-    set_saved_program_status_for_mode(Mode::IRQ, m_current_program_status);
-    change_mode(Mode::IRQ);
-    set_reg(Register::R14, next_pc);
+      set_saved_program_status_for_mode(Mode::IRQ, m_current_program_status);
+      change_mode(Mode::IRQ);
+      set_reg(Register::R14, next_pc);
 
-    m_current_program_status.set_irq_enabled(false);
-    set_thumb(false);
+      m_current_program_status.set_irq_enabled(false);
+      set_thumb(false);
 
-    set_reg(Register::R15, 0x00000128);
-    fmt::print("handling interrupts\n");
+      set_reg(Register::R15, 0x00000128);
+    }
   }
   return 0;
 }
 
 u32 Cpu::execute() {
-  if (interrupts_waiting.data() > 0) {
+  if (interrupts_waiting.data() > 0 || halted) {
     return 1;
   }
 
@@ -994,8 +1069,8 @@ u32 Cpu::execute() {
     if (m_current_program_status.thumb_mode()) {
       static constexpr u32 nop = 0b1110'00'0'1101'0'0000'0000'000000000000;
       const u32 pc = reg(Register::R15) - 2;
-      // fmt::printf("%08x\n", pc);
       const u16 thumb_instruction = m_mmu->at<u16>(pc);
+      // fmt::printf("%08x\n", pc);
 
       // Long branch with link
       if ((thumb_instruction & 0xf000) == 0xf000) {
@@ -1019,6 +1094,7 @@ u32 Cpu::execute() {
     }
 
     const u32 pc = reg(Register::R15) - 4;
+    // fmt::printf("%08x\n", pc);
     const u32 arm_instruction = m_mmu->at<u32>(pc);
     set_reg(Register::R15, pc + 4);
     return arm_instruction;
@@ -1191,10 +1267,6 @@ TEST_CASE("bl instructions should set r14 equal to r15") {
 
   // CHECK(cpu.reg(Register::R15) == cpu.reg(Register::R14));
 }
-
-constexpr std::array<u8, 4> bytes_test = {0x42, 0x00, 0xa0, 0xe3};
-constexpr auto bytes_value = Integer<u32>::from_bytes({bytes_test});
-static_assert(bytes_value.data() == 0xe3a00042);
 
 static_assert(
     decode_instruction_type(0b0000'0011'1111'0011'0011'0000'0000'0000) ==

@@ -1,6 +1,7 @@
 #pragma once
 #include <fmt/format.h>
 #include <fmt/printf.h>
+#include <cstring>
 #include <functional>
 #include <variant>
 #include <vector>
@@ -147,11 +148,14 @@ class Mmu {
         m_palette_ram(1_kb, 0),
         m_vram(96_kb, 0),
         m_oam_ram(1_kb, 0),
-        m_sram(64_kb, 0) {}
+        m_sram(64_kb, 0) {
+    // std::fill(m_bios.begin(), m_bios.end(), 0xff);
+    std::fill(m_sram.begin(), m_sram.end(), 0xff);
+  }
 
   [[nodiscard]] u32 wait_cycles(u32 addr, Cycles cycles);
 
-  void load_rom(std::vector<u8>&& data) { m_rom = std::move(data); }
+  void load_rom(std::vector<u8> data) { m_rom = std::move(data); }
 
   nonstd::span<u8> bios() { return m_bios; }
 
@@ -194,8 +198,10 @@ class Mmu {
       const auto [span, resolved_addr] = select_storage(addr);
       return span.subspan(resolved_addr);
     }();
-    return convert_bytes_endian<T>(
-        nonstd::span<const u8, sizeof(T)>{selected_span.data(), sizeof(T)});
+
+    T ret{};
+    std::memcpy(&ret, selected_span.data(), sizeof(T));
+    return ret;
   }
 
   enum class AddrOp : int {
@@ -233,9 +239,9 @@ class Mmu {
   std::vector<u8> m_rom;
   std::vector<u8> m_sram;
 
-  [[nodiscard]] IntegerRef select_hardware(u32 addr, DataOperation op);
-
   std::function<void(u32, u32)> m_write_handler;
+
+  [[nodiscard]] IntegerRef select_hardware(u32 addr, DataOperation op);
 };
 
 }  // namespace gb::advance

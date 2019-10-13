@@ -57,9 +57,8 @@ class Dispcnt : public Integer<u16> {
 
 class Bgcnt : public Integer<u16> {
  public:
-  using Integer::Integer;
-
-  Bgcnt(Gpu& gpu) : Integer::Integer{0}, m_gpu{&gpu} {}
+  Bgcnt(Gpu& gpu, Dispcnt::BackgroundLayer layer)
+      : Integer::Integer{0}, m_gpu{&gpu}, m_layer{layer} {}
 
   void on_after_write() const;
 
@@ -96,8 +95,10 @@ class Bgcnt : public Integer<u16> {
     }
   };
 
+  [[nodiscard]] u32 screen_size_mode() const { return (m_value >> 14) & 0b11; }
+
   [[nodiscard]] ScreenSize screen_size() const {
-    switch ((m_value >> 14) & 0b11) {
+    switch (screen_size_mode()) {
       case 0b00:
         return {{256, 256}, {128, 128}};
       case 0b01:
@@ -112,6 +113,7 @@ class Bgcnt : public Integer<u16> {
 
  private:
   Gpu* m_gpu;
+  Dispcnt::BackgroundLayer m_layer;
 };
 
 class Bldcnt : public Integer<u16> {
@@ -125,9 +127,12 @@ class Gpu {
   static constexpr u32 ScreenHeight = 160;
 
   struct Background {
-    Bgcnt control{0};
+    Bgcnt control;
     Dispcnt::BackgroundLayer layer;
     Vec2<u16> scroll{0, 0};
+
+    Background(Gpu& gpu, Dispcnt::BackgroundLayer l)
+        : control{gpu, l}, layer{l} {}
   };
 
   Gpu(Mmu& mmu)
@@ -150,15 +155,16 @@ class Gpu {
     std::fill(m_framebuffer.begin(), m_framebuffer.end(), Color{0, 0, 0, 255});
   }
 
-  void render_scanline(int scanline);
+  void render_scanline(unsigned int scanline);
 
   [[nodiscard]] nonstd::span<const Color> framebuffer() const {
     return {m_framebuffer};
   }
 
  private:
-  void render_background(Background background, int scanline);
-  void render_sprites(int scanline);
+  void render_mode4();
+  void render_background(Background background, unsigned int scanline);
+  void render_sprites(unsigned int scanline);
 
   std::array<Background*, 4> m_backgrounds{&bg0, &bg1, &bg2, &bg3};
   std::array<Background*, 4>::iterator m_backgrounds_end =
@@ -167,6 +173,7 @@ class Gpu {
   nonstd::span<u8> m_vram;
   nonstd::span<u8> m_palette_ram;
   nonstd::span<u8> m_oam_ram;
+
   std::vector<Color> m_framebuffer;
 };
 }  // namespace gb::advance

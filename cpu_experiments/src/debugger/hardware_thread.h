@@ -1,4 +1,5 @@
 #pragma once
+#include <condition_variable>
 #include <mutex>
 #include <thread>
 #include <variant>
@@ -39,14 +40,32 @@ class HardwareThread {
     m_events.emplace_back(event);
   }
 
+  void signal_vsync() {
+    std::lock_guard<std::mutex> lock{m_vsync_mutex};
+    m_vsync_done = true;
+    m_vsync_cv.notify_one();
+  }
+
   ~HardwareThread() { m_hardware_thread.join(); }
 
  private:
   void run();
 
+  void wait_for_vsync() {
+    std::unique_lock<std::mutex> lock{m_vsync_mutex};
+    m_vsync_cv.wait(lock, [this] { return m_vsync_done; });
+    m_vsync_done = false;
+  }
+
   std::vector<Event> m_events;
   Hardware m_hardware;
   std::mutex m_events_mutex;
+
+  std::mutex m_vsync_mutex;
+  std::condition_variable m_vsync_cv;
+
+  bool m_vsync_done = false;
+
   std::thread m_hardware_thread;
 };
 }  // namespace gb::advance

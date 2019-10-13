@@ -4,6 +4,11 @@
 namespace gb::advance {
 
 namespace hardware {
+namespace mgba {
+constexpr u32 DEBUG_ENABLE = 0x4fff780;
+constexpr u32 DEBUG_FLAGS = 0x4fff700;
+constexpr u32 DEBUG_STRING = 0x4fff600;
+}  // namespace mgba
 // LCD Control
 constexpr u32 DISPCNT = 0x4000000;
 // Green Swap
@@ -202,6 +207,7 @@ constexpr u32 IME = 0x4000208;
 constexpr u32 POSTFLG = 0x4000300;
 // Undocumented - Power Down Control
 constexpr u32 HALTCNT = 0x4000301;
+constexpr u32 WAVERAM = 0x4000090;
 }  // namespace hardware
 
 struct IoRegisterResult {
