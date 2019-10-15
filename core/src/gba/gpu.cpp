@@ -386,7 +386,7 @@ void Gpu::render_background(Background background, unsigned int scanline) {
       }
     }
   }
-}  // namespace gb::advance
+}
 
 void Gpu::render_sprites(unsigned int scanline) {
   const auto sprite_palette_ram = m_palette_ram.subspan(0x200);
