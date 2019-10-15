@@ -181,10 +181,12 @@ static void render_tile_row_4bpp(nonstd::span<Color> framebuffer,
                                  bool horizontal_flip = false) {
   const auto [base_index, scanline] = position;
 
-  const unsigned int pixel_two_offset = horizontal_flip ? -1 : 1;
+  const int pixel_two_offset = horizontal_flip ? -1 : 1;
+  const unsigned int flip_target_offset = horizontal_flip ? 1 : 0;
   for (unsigned int x = 0; x < tile_pixels.size(); ++x) {
     const u8 tile_group = tile_pixels[x];
-    const auto pixel_x = horizontal_flip ? tile_pixels.size() - x - 1 : x;
+    const unsigned int pixel_x =
+        horizontal_flip ? tile_pixels.size() - x - 1 : x;
 
     const u8 pixel_one = tile_group & 0xf;
     const u8 pixel_two = (tile_group >> 4) & 0xf;
@@ -194,15 +196,21 @@ static void render_tile_row_4bpp(nonstd::span<Color> framebuffer,
     const u16 color_two =
         (palette_bank[pixel_two * 2] | (palette_bank[pixel_two * 2 + 1] << 8));
 
-    if (pixel_one != 0) {
-      draw_color(framebuffer, (base_index + pixel_x * 2) % Gpu::ScreenWidth,
-                 scanline, color_one);
+    // Target 0..7 or 7..0 when flipped
+    const auto target_pixel_x = pixel_x * 2 + flip_target_offset;
+
+    {
+      const auto pixel_one_x = base_index + target_pixel_x;
+      if (pixel_one != 0 && pixel_one_x < Gpu::ScreenWidth) {
+        draw_color(framebuffer, pixel_one_x, scanline, color_one);
+      }
     }
-    if (pixel_two != 0) {
-      draw_color(
-          framebuffer,
-          (base_index + pixel_two_offset + pixel_x * 2) % Gpu::ScreenWidth,
-          scanline, color_two);
+
+    {
+      const auto pixel_two_x = base_index + pixel_two_offset + target_pixel_x;
+      if (pixel_two != 0 && pixel_two_x < Gpu::ScreenWidth) {
+        draw_color(framebuffer, pixel_two_x, scanline, color_two);
+      }
     }
   }
 }
@@ -263,15 +271,15 @@ void Gpu::render_background(Background background, unsigned int scanline) {
 
   const nonstd::span<const u8> palette = m_palette_ram;
 
-  const auto get_tile_byte = [vram, background](unsigned int x, unsigned int y,
-                                                unsigned int offset) {
-    const auto y_screen_offset =
-        0;  //((y + tile_scanline) / tile_height) % (tile_height / 32);
-    // const auto x_screen_offset = ((x) / tile_width) % (tile_width / 32);
+  const auto get_tile_byte =
+      [vram, screen_size_mode = background.control.screen_size_mode()](
+          unsigned int x, unsigned int y, unsigned int offset) {
+        const auto y_screen_offset =
+            0;  //((y + tile_scanline) / tile_height) % (tile_height / 32);
+        // const auto x_screen_offset = ((x) / tile_width) % (tile_width / 32);
 
-    const auto x_screen_offset =
-        0x7c0 * [control = background.control, x, offset] {
-          switch (control.screen_size_mode()) {
+        const auto x_screen_offset = 0x7c0 * [screen_size_mode, x, offset] {
+          switch (screen_size_mode) {
             case 0:
               return 0;
             case 1: {
@@ -287,29 +295,59 @@ void Gpu::render_background(Background background, unsigned int scanline) {
           }
         }();
 
-    const auto tile_row_start = (32 * (y % 32) * 2);
-    const auto tile_row_end = tile_row_start + 0x800 + 32 * 2;
-    const auto tile_byte_offset = ((32 * (y % 32) + x) * 2) +
-                                  (0x800 * y_screen_offset) + x_screen_offset +
-                                  offset;
+        const auto background_row_offset = [screen_size_mode] {
+          switch (screen_size_mode) {
+            case 0:
+            case 2:
+              return 0x0;
+            case 1:
+            case 3:
+              return 0x800;
+            default:
+              GB_UNREACHABLE();
+          }
+        }();
 
-    if (background.control.screen_size_mode() == 1) {
-      return vram[tile_byte_offset >= tile_row_end ? tile_byte_offset - 0x840
-                                                   : tile_byte_offset];
-    }
-    return vram[tile_byte_offset];
-  };
+        const auto map_width = [screen_size_mode] {
+          switch (screen_size_mode) {
+            case 0:
+            case 2:
+              return 32;
+            case 1:
+            case 3:
+              return 64;
+          }
+          GB_UNREACHABLE();
+        }();
+
+        // The amount to subtract from the end of a row across all backgrounds
+        // to get to the start of the row
+        const auto background_row_width = background_row_offset + 0x40;
+
+        const auto tile_row_start = (64 * (y % 32));
+        const auto tile_row_end =
+            tile_row_start + background_row_offset /*0x800*/ + 32 * 2;
+        const auto tile_byte_offset = ((32 * (y % 32) + (x % map_width)) * 2) +
+                                      (0x800 * y_screen_offset) +
+                                      x_screen_offset + offset;
+
+        return vram[tile_byte_offset >= tile_row_end
+                        ? tile_byte_offset - background_row_width
+                        : tile_byte_offset];
+      };
 
   const auto tile_scroll_offset =
       tile_y + tile_scanline +
       // Render the next tile if the scanline is past the
       // midpoint created by scroll y
-      ((scanline % 8) > (7 - (background.scroll.y % TileSize)) ? 1 : 0);
+      ((scanline % TileSize) > (7 - (background.scroll.y % TileSize)) ? 1 : 0);
+
   const auto get_byte = [get_tile_byte, tile_x, tile_scroll_offset](int i) {
     return get_tile_byte(tile_x, tile_scroll_offset, i);
   };
 
-  for (unsigned int i = 0; i < (ScreenWidth / TileSize) * 2; i += 2) {
+  // Render the number of tiles that can fit on the screen + 1 for scrolling
+  for (unsigned int i = 0; i < ((ScreenWidth / TileSize) + 1) * 2; i += 2) {
     const unsigned int index = i / 2;
     const TileMapEntry entry(get_byte(i) | (get_byte(i + 1) << 8));
 
@@ -328,25 +366,27 @@ void Gpu::render_background(Background background, unsigned int scanline) {
 
     const auto base_index = index * TileSize;
     if (bits_per_pixel == 4) {
-      render_tile_row_4bpp(m_framebuffer, palette_bank,
-                           {static_cast<unsigned int>(
-                                base_index - (background.scroll.x % TileSize)),
-                            static_cast<unsigned int>(scanline)},
-                           tile_pixels, entry.horizontal_flip());
+      render_tile_row_4bpp(
+          m_framebuffer, palette_bank,
+          {base_index - (background.scroll.x % TileSize), scanline},
+          tile_pixels, entry.horizontal_flip());
     } else {
       for (unsigned int pixel_x = 0; pixel_x < tile_pixels.size(); ++pixel_x) {
         const u8 tile_group = tile_pixels[pixel_x];
         const u16 color = (palette_bank[tile_group * 2]) |
                           (palette_bank[tile_group * 2 + 1] << 8);
 
-        draw_color(m_framebuffer,
-                   entry.horizontal_flip() ? TileSize + base_index - pixel_x
-                                           : base_index + pixel_x,
-                   scanline, color);
+        const auto x = entry.horizontal_flip()
+                           ? (TileSize - 1) + base_index - pixel_x
+                           : base_index + pixel_x;
+
+        if (x < Gpu::ScreenWidth) {
+          draw_color(m_framebuffer, x, scanline, color);
+        }
       }
     }
   }
-}
+}  // namespace gb::advance
 
 void Gpu::render_sprites(unsigned int scanline) {
   const auto sprite_palette_ram = m_palette_ram.subspan(0x200);
@@ -377,7 +417,7 @@ void Gpu::render_sprites(unsigned int scanline) {
     const auto sprite_2d_offset =
         dispcnt.obj_vram_mapping() == Dispcnt::ObjVramMapping::TwoDimensional
             ? (sprite_height_scanline * 32 * tile_length)
-            : 0;
+            : sprite_height_scanline * tile_length;
 
     if (scanline < sprite_y + sprite_rect.height) {
       const auto tile_base_offset = (sprite.attrib2.tile_id() * tile_length);
@@ -402,7 +442,7 @@ void Gpu::render_sprites(unsigned int scanline) {
         render_tile_row_4bpp(
             m_framebuffer,
             sprite_palette_ram.subspan(sprite.attrib2.palette_bank() * 2 * 16),
-            {static_cast<unsigned int>(base_x), scanline}, sprite_pixels,
+            {base_x, scanline}, sprite_pixels,
             sprite.attrib1.horizontal_flip());
       };
       // Render a scanline across all tiles
