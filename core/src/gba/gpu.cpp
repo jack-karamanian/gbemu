@@ -154,6 +154,11 @@ void Gpu::sort_backgrounds() {
                             return dispcnt.layer_enabled(background->layer);
                           });
   constexpr_sort(m_backgrounds.begin(), i, [](auto* a, auto* b) {
+    auto a_priority = a->control.priority();
+    auto b_priority = b->control.priority();
+    if (a_priority == b_priority) {
+      return static_cast<int>(a->layer) > static_cast<int>(b->layer);
+    }
     return a->control.priority() > b->control.priority();
   });
   m_backgrounds_end = i;
