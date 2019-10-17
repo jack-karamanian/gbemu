@@ -2,7 +2,6 @@
 #include <doctest/doctest.h>
 #include <fmt/printf.h>
 #include <array>
-#include <range/v3/all.hpp>
 #include "utils.h"
 
 namespace gb::advance {
