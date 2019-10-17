@@ -1,10 +1,11 @@
+#include <fmt/printf.h>
 #include "rom_loader.h"
 
 namespace gb {
 RomHeader parse_rom(nonstd::span<const u8> data) {
   // Decode the MBC type from the cart header
   const Mbc::Type mbc_type = [rom_type = data[0x147]] {
-    printf("rom type: %d\n", rom_type);
+    fmt::printf("rom type: %d\n", rom_type);
     switch (rom_type) {
       case 0x00:
         return Mbc::Type::None;
@@ -61,8 +62,8 @@ RomHeader parse_rom(nonstd::span<const u8> data) {
   }();
 
   const unsigned int rom_size = (1024 * 32) << data[0x148];
-  printf("%d\n", data[0x148]);
-  printf("%d\n", data[0x149]);
+  fmt::printf("%d\n", data[0x148]);
+  fmt::printf("%d\n", data[0x149]);
 
   const u8 gbc_flag = data[0x143];
   const bool is_gbc = gbc_flag == 0xc0 || gbc_flag == 0x80;
