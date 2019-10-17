@@ -1,7 +1,7 @@
-#include <doctest/doctest.h>
-#include <range/v3/all.hpp>
-#include "constants.h"
 #include "gpu.h"
+#include <doctest/doctest.h>
+#include <range/v3/view/iota.hpp>
+#include "constants.h"
 #include "memory.h"
 #include "registers/lcdc.h"
 #include "sdl_renderer.h"
