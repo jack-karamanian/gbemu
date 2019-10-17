@@ -16,7 +16,6 @@ class SdlRenderer {
 
   sdl::sdl_unique_ptr<SDL_PixelFormat> format;
 
-  int draw_order_counter = 0;
   sdl::sdl_unique_ptr<SDL_Texture> texture;
 
  public:
