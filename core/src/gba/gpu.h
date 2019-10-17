@@ -126,6 +126,10 @@ class Gpu {
   static constexpr u32 ScreenWidth = 240;
   static constexpr u32 ScreenHeight = 160;
 
+  struct PerPixelContext {
+    std::array<unsigned int, ScreenWidth> priorities;
+  };
+
   struct Background {
     Bgcnt control;
     Dispcnt::BackgroundLayer layer;
@@ -167,13 +171,13 @@ class Gpu {
   void render_sprites(unsigned int scanline);
 
   std::array<Background*, 4> m_backgrounds{&bg0, &bg1, &bg2, &bg3};
-  std::array<Background*, 4>::iterator m_backgrounds_end =
-      m_backgrounds.begin();
+  decltype(m_backgrounds)::iterator m_backgrounds_end = m_backgrounds.begin();
 
   nonstd::span<u8> m_vram;
   nonstd::span<u8> m_palette_ram;
   nonstd::span<u8> m_oam_ram;
 
+  PerPixelContext m_per_pixel_context;
   std::vector<Color> m_framebuffer;
 };
 }  // namespace gb::advance

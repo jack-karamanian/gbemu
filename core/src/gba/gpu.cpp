@@ -21,88 +21,6 @@ class TileMapEntry : public Integer<u16> {
   [[nodiscard]] int palette_bank() const { return (m_value >> 12) & 0xf; }
 };
 
-class ObjAttribute0 : public Integer<u16> {
- public:
-  using Integer::Integer;
-
-  [[nodiscard]] unsigned int y() const { return m_value & 0xff; }
-
-  enum class Mode {
-    Normal,
-    Affine,
-    Disable,
-    AffineDoubleRendering,
-  };
-
-  [[nodiscard]] Mode mode() const {
-    return static_cast<Mode>((m_value >> 8) & 0b11);
-  }
-
-  enum class GfxMode {
-    Normal,
-    AlphaBlending,
-    Window,
-    Forbidden,
-  };
-
-  [[nodiscard]] GfxMode gfx_mode() const {
-    return static_cast<GfxMode>((m_value >> 10) & 0b11);
-  }
-
-  [[nodiscard]] bool mosaic() const { return test_bit(12); }
-
-  [[nodiscard]] unsigned int bits_per_pixel() const {
-    return test_bit(13) ? 8 : 4;
-  }
-
-  enum class Shape {
-    Square = 0,
-    Horizontal = 1,
-    Vertical = 2,
-  };
-
-  [[nodiscard]] Shape shape() const {
-    return static_cast<Shape>((m_value >> 14) & 0b11);
-  }
-};
-
-class ObjAttribute1 : public Integer<u16> {
- public:
-  using Integer::Integer;
-  [[nodiscard]] unsigned int x() const { return m_value & 0b1'1111'1111; }
-
-  [[nodiscard]] bool horizontal_flip() const { return test_bit(12); }
-
-  [[nodiscard]] bool vertical_flip() const { return test_bit(13); }
-
-  [[nodiscard]] unsigned int obj_size() const { return (m_value >> 14) & 0b11; }
-};
-
-class ObjAttribute2 : public Integer<u16> {
- public:
-  using Integer::Integer;
-  [[nodiscard]] unsigned int tile_id() const {
-    return m_value & 0b11'1111'1111;
-  }
-
-  [[nodiscard]] unsigned int priority() const { return (m_value >> 10) & 0b11; }
-
-  [[nodiscard]] unsigned int palette_bank() const {
-    return (m_value >> 12) & 0b1111;
-  }
-};
-
-struct Sprite {
-  ObjAttribute0 attrib0;
-  ObjAttribute1 attrib1;
-  ObjAttribute2 attrib2;
-
-  Sprite(u16 attrib0_value, u16 attrib1_value, u16 attrib2_value)
-      : attrib0{attrib0_value},
-        attrib1{attrib1_value},
-        attrib2{attrib2_value} {}
-};
-
 static Rect<unsigned int> sprite_size(ObjAttribute0::Shape shape,
                                       unsigned int size_index) {
   static constexpr std::array<Rect<unsigned int>, 12> sprite_sizes = {{
@@ -129,6 +47,8 @@ void Gpu::render_scanline(unsigned int scanline) {
   std::fill(m_framebuffer.begin() + ScreenWidth * scanline,
             m_framebuffer.begin() + ScreenWidth * scanline + ScreenWidth,
             Color{0, 0, 0, 255});
+  std::fill(m_per_pixel_context.priorities.begin(),
+            m_per_pixel_context.priorities.end(), -1);
 
   switch (dispcnt.bg_mode()) {
     case BgMode::Zero:
@@ -177,12 +97,25 @@ static void draw_color(nonstd::span<Color> framebuffer,
 static void render_tile_row_4bpp(nonstd::span<Color> framebuffer,
                                  nonstd::span<const u8> palette_bank,
                                  Vec2<unsigned int> position,
+                                 unsigned int priority,
+                                 Gpu::PerPixelContext& per_pixel_context,
                                  nonstd::span<const u8> tile_pixels,
+                                 bool is_sprite,
                                  bool horizontal_flip = false) {
   const auto [base_index, scanline] = position;
 
   const int pixel_two_offset = horizontal_flip ? -1 : 1;
   const unsigned int flip_target_offset = horizontal_flip ? 1 : 0;
+
+  const auto render_pixel = [framebuffer, priority, &per_pixel_context,
+                             is_sprite,
+                             scanline = scanline](u16 color, unsigned int x) {
+    if (x < Gpu::ScreenWidth && priority <= per_pixel_context.priorities[x]) {
+      draw_color(framebuffer, x, scanline, color);
+      per_pixel_context.priorities[x] = is_sprite ? -1 : priority;
+    }
+  };
+
   for (unsigned int x = 0; x < tile_pixels.size(); ++x) {
     const u8 tile_group = tile_pixels[x];
     const unsigned int pixel_x =
@@ -199,18 +132,14 @@ static void render_tile_row_4bpp(nonstd::span<Color> framebuffer,
     // Target 0..7 or 7..0 when flipped
     const auto target_pixel_x = pixel_x * 2 + flip_target_offset;
 
-    {
+    if (pixel_one != 0) {
       const auto pixel_one_x = base_index + target_pixel_x;
-      if (pixel_one != 0 && pixel_one_x < Gpu::ScreenWidth) {
-        draw_color(framebuffer, pixel_one_x, scanline, color_one);
-      }
+      render_pixel(color_one, pixel_one_x);
     }
 
-    {
+    if (pixel_two != 0) {
       const auto pixel_two_x = base_index + pixel_two_offset + target_pixel_x;
-      if (pixel_two != 0 && pixel_two_x < Gpu::ScreenWidth) {
-        draw_color(framebuffer, pixel_two_x, scanline, color_two);
-      }
+      render_pixel(color_two, pixel_two_x);
     }
   }
 }
@@ -219,7 +148,7 @@ void Gpu::render_mode4() {
   // const u32 frame_offset =
   //    static_cast<u32>(dispcnt.display_frame()) * ScreenWidth *
   //    ScreenHeight;
-  const auto background = m_vram.subspan(0, ScreenHeight * ScreenWidth);
+  // const auto background = m_vram.subspan(0, ScreenHeight * ScreenWidth);
 
   for (unsigned int y = 0; y < ScreenHeight; ++y) {
     for (unsigned int x = 0; x < ScreenWidth; ++x) {
@@ -243,9 +172,8 @@ void Gpu::render_background(Background background, unsigned int scanline) {
 
   const Bgcnt control = background.control;
 
-  const auto screen_size = control.screen_size();
-
 #if 0
+  const auto screen_size = control.screen_size();
   const auto tile_screen_size = screen_size.as_tiles();
   const u32 scroll_offset = [&] {
     const auto total_length = tile_screen_size.screen_size.width *
@@ -369,7 +297,8 @@ void Gpu::render_background(Background background, unsigned int scanline) {
       render_tile_row_4bpp(
           m_framebuffer, palette_bank,
           {base_index - (background.scroll.x % TileSize), scanline},
-          tile_pixels, entry.horizontal_flip());
+          background.control.priority(), m_per_pixel_context, tile_pixels,
+          false, entry.horizontal_flip());
     } else {
       for (unsigned int pixel_x = 0; pixel_x < tile_pixels.size(); ++pixel_x) {
         const u8 tile_group = tile_pixels[pixel_x];
@@ -381,6 +310,7 @@ void Gpu::render_background(Background background, unsigned int scanline) {
                            : base_index + pixel_x;
 
         if (x < Gpu::ScreenWidth) {
+          m_per_pixel_context.priorities[x] = background.control.priority();
           draw_color(m_framebuffer, x, scanline, color);
         }
       }
@@ -392,13 +322,13 @@ void Gpu::render_sprites(unsigned int scanline) {
   const auto sprite_palette_ram = m_palette_ram.subspan(0x200);
   const auto sprite_tile_data = m_vram.subspan(0x010000);
 
-  for (unsigned int i = 0; i < m_oam_ram.size(); i += 8) {
+  // Render sprites backwards to express the priority
+  for (int i = m_oam_ram.size() - 8; i >= 0; i -= 8) {
     const Sprite sprite(m_oam_ram[i + 0] | (m_oam_ram[i + 1] << 8),
                         m_oam_ram[i + 2] | (m_oam_ram[i + 3] << 8),
                         m_oam_ram[i + 4] | (m_oam_ram[i + 5] << 8));
 
-    if (!(scanline >= sprite.attrib0.y() &&
-          sprite.attrib0.mode() != ObjAttribute0::Mode::Disable)) {
+    if (!(scanline >= sprite.attrib0.y())) {
       continue;
     }
     const auto bits_per_pixel = sprite.attrib0.bits_per_pixel();
@@ -442,8 +372,8 @@ void Gpu::render_sprites(unsigned int scanline) {
         render_tile_row_4bpp(
             m_framebuffer,
             sprite_palette_ram.subspan(sprite.attrib2.palette_bank() * 2 * 16),
-            {base_x, scanline}, sprite_pixels,
-            sprite.attrib1.horizontal_flip());
+            {base_x, scanline}, sprite.attrib2.priority(), m_per_pixel_context,
+            sprite_pixels, true, sprite.attrib1.horizontal_flip());
       };
       // Render a scanline across all tiles
       for (unsigned int index = 0; index < sprite_tile_rect.width; ++index) {
