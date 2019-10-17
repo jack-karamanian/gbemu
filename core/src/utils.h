@@ -216,7 +216,15 @@ constexpr void constexpr_sort(Itr begin, Itr end, Func func) {
     swap(i, std::min_element(i, end, func));
   }
 }
-[[nodiscard]] inline constexpr unsigned long long int operator"" _kb(
+
+template <typename... Funcs>
+struct Overloaded : Funcs... {
+  Overloaded(Funcs&&... funcs) : Funcs(std::forward<Funcs>(funcs))... {}
+
+  using Funcs::operator()...;
+};
+
+[[nodiscard]] inline constexpr auto operator"" _kb(
     unsigned long long int kilobytes) noexcept {
   return kilobytes * 1024;
 }
