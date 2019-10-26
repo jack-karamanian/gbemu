@@ -108,11 +108,11 @@ static void render_tile_row_4bpp(nonstd::span<Color> framebuffer,
   const unsigned int flip_target_offset = horizontal_flip ? 1 : 0;
 
   const auto render_pixel = [framebuffer, priority, &per_pixel_context,
-                             is_sprite,
+                             new_priority = is_sprite ? -1 : priority,
                              scanline = scanline](u16 color, unsigned int x) {
     if (x < Gpu::ScreenWidth && priority <= per_pixel_context.priorities[x]) {
       draw_color(framebuffer, x, scanline, color);
-      per_pixel_context.priorities[x] = is_sprite ? -1 : priority;
+      per_pixel_context.priorities[x] = new_priority;
     }
   };
 
