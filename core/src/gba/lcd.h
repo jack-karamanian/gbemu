@@ -26,6 +26,10 @@ class DispStat : public Integer<u16> {
   [[nodiscard]] bool enable_vblank_interrupt() const { return test_bit(3); }
 
   [[nodiscard]] bool enable_hblank_interrupt() const { return test_bit(4); }
+
+  [[nodiscard]] bool enable_lyc_interrupt() const { return test_bit(5); }
+
+  [[nodiscard]] unsigned int lyc() const { return (m_value >> 8) & 0xff; }
 };
 class Lcd {
  public:
@@ -40,6 +44,8 @@ class Lcd {
   bool update(u32 cycles);
 
  private:
+  void increment_vcount();
+
   int m_cycles = 0;
   Mode m_mode = Mode::Draw;
   Cpu* m_cpu;
