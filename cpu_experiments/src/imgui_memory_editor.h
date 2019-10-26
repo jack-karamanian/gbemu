@@ -101,54 +101,62 @@ struct MemoryEditor {
   };
 
   // Settings
-  bool Open;  // = true   // set to false when DrawWindow() was closed. ignore
-              // if not using DrawWindow().
-  bool ReadOnly;        // = false  // disable any editing.
-  int Cols;             // = 16     // number of columns to display.
-  bool OptShowOptions;  // = true   // display options button/context menu. when
-                        // disabled, options will be locked unless you provide
-                        // your own UI for them.
-  bool OptShowDataPreview;  // = false  // display a footer previewing the
-                            // decimal/binary/hex/float representation of the
-                            // currently selected bytes.
-  bool OptShowHexII;  // = false  // display values in HexII representation
-                      // instead of regular hexadecimal: hide null/zero bytes,
-                      // ascii values as ".X".
-  bool OptShowAscii;  // = true   // display ASCII representation on the right
-                      // side.
-  bool OptGreyOutZeroes;  // = true   // display null/zero bytes using the
-                          // TextDisabled color.
-  bool OptUpperCaseHex;   // = true   // display hexadecimal values as "FF"
-                          // instead of "ff".
-  int OptMidColsCount;  // = 8      // set to 0 to disable extra spacing between
-                        // every mid-cols.
-  int OptAddrDigitsCount;  // = 0      // number of addr digits to display
-                           // (default calculated based on maximum displayed
-                           // addr).
-  ImU32 HighlightColor;    //          // background color of highlighted bytes.
+  bool Open = true;  // = true   // set to false when DrawWindow() was closed.
+                     // ignore if not using DrawWindow().
+  bool ReadOnly = false;       // = false  // disable any editing.
+  int Cols = 16;               // = 16     // number of columns to display.
+  bool OptShowOptions = true;  // = true   // display options button/context
+                               // menu. when disabled, options will be locked
+                               // unless you provide your own UI for them.
+  bool OptShowDataPreview =
+      false;                  // = false  // display a footer previewing the
+                              // decimal/binary/hex/float representation of the
+                              // currently selected bytes.
+  bool OptShowHexII = false;  // = false  // display values in HexII
+                              // representation instead of regular hexadecimal:
+                              // hide null/zero bytes, ascii values as ".X".
+  bool OptShowAscii = true;   // = true   // display ASCII representation on the
+                              // right side.
+  bool OptGreyOutZeroes = true;  // = true   // display null/zero bytes using
+                                 // the TextDisabled color.
+  bool OptUpperCaseHex = true;   // = true   // display hexadecimal values as
+                                 // "FF" instead of "ff".
+  int OptMidColsCount = 8;     // = 8      // set to 0 to disable extra spacing
+                               // between every mid-cols.
+  int OptAddrDigitsCount = 0;  // = 0      // number of addr digits to display
+                               // (default calculated based on maximum displayed
+                               // addr).
+  ImU32 HighlightColor =
+      IM_COL32(255,
+               255,
+               255,
+               50);  //          // background color of highlighted bytes.
   u8 (*ReadFn)(const u8* data,
-               size_t off);  // = NULL   // optional handler to read bytes.
+               size_t off) =
+      nullptr;  // = NULL   // optional handler to read bytes.
   void (*WriteFn)(u8* data,
                   size_t off,
-                  u8 d);  // = NULL   // optional handler to write bytes.
-  bool (*HighlightFn)(
-      const u8* data,
-      size_t off);  // NULL   // optional handler to return Highlight property
-                    // (to support non-contiguous highlighting).
+                  u8 d) =
+      nullptr;  // = NULL   // optional handler to write bytes.
+  bool (*HighlightFn)(const u8* data,
+                      size_t off) =
+      nullptr;  // NULL   // optional handler to return Highlight property
+                // (to support non-contiguous highlighting).
 
   // [Internal State]
-  bool ContentsWidthChanged;
-  size_t DataPreviewAddr;
-  size_t DataEditingAddr;
-  bool DataEditingTakeFocus;
-  char DataInputBuf[32];
-  char AddrInputBuf[32];
-  size_t GotoAddr;
-  size_t HighlightMin, HighlightMax;
-  int PreviewEndianess;
-  DataType PreviewDataType;
+  bool ContentsWidthChanged = false;
+  size_t DataPreviewAddr = static_cast<size_t>(-1);
+  size_t DataEditingAddr = static_cast<size_t>(-1);
+  bool DataEditingTakeFocus = false;
+  char DataInputBuf[32]{};
+  char AddrInputBuf[32]{};
+  size_t GotoAddr = static_cast<size_t>(-1);
+  size_t HighlightMin = static_cast<size_t>(-1),
+         HighlightMax = static_cast<size_t>(-1);
+  int PreviewEndianess = 0;
+  DataType PreviewDataType = DataType_S32;
 
-  MemoryEditor() {
+  constexpr MemoryEditor() {
     // Settings
     Open = true;
     ReadOnly = false;
@@ -170,8 +178,8 @@ struct MemoryEditor {
     ContentsWidthChanged = false;
     DataPreviewAddr = DataEditingAddr = (size_t)-1;
     DataEditingTakeFocus = false;
-    memset(DataInputBuf, 0, sizeof(DataInputBuf));
-    memset(AddrInputBuf, 0, sizeof(AddrInputBuf));
+    // memset(DataInputBuf, 0, sizeof(DataInputBuf));
+    // memset(AddrInputBuf, 0, sizeof(AddrInputBuf));
     GotoAddr = (size_t)-1;
     HighlightMin = HighlightMax = (size_t)-1;
     PreviewEndianess = 0;
