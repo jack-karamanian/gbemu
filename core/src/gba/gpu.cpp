@@ -49,6 +49,8 @@ void Gpu::render_scanline(unsigned int scanline) {
             Color{0, 0, 0, 255});
   std::fill(m_per_pixel_context.priorities.begin(),
             m_per_pixel_context.priorities.end(), -1);
+  std::fill(m_per_pixel_context.discarded_pixels.begin(),
+            m_per_pixel_context.discarded_pixels.end(), Color{0, 0, 0, 0});
 
   switch (dispcnt.bg_mode()) {
     case BgMode::Zero:
@@ -74,12 +76,12 @@ void Gpu::sort_backgrounds() {
                             return dispcnt.layer_enabled(background->layer);
                           });
   constexpr_sort(m_backgrounds.begin(), i, [](auto* a, auto* b) {
-    auto a_priority = a->control.priority();
-    auto b_priority = b->control.priority();
+    const auto a_priority = a->control.priority();
+    const auto b_priority = b->control.priority();
     if (a_priority == b_priority) {
       return static_cast<int>(a->layer) > static_cast<int>(b->layer);
     }
-    return a->control.priority() > b->control.priority();
+    return a_priority > b_priority;
   });
   m_backgrounds_end = i;
 }
@@ -110,9 +112,14 @@ static void render_tile_row_4bpp(nonstd::span<Color> framebuffer,
   const auto render_pixel = [framebuffer, priority, &per_pixel_context,
                              new_priority = is_sprite ? -1 : priority,
                              scanline = scanline](u16 color, unsigned int x) {
-    if (x < Gpu::ScreenWidth && priority <= per_pixel_context.priorities[x]) {
-      draw_color(framebuffer, x, scanline, color);
-      per_pixel_context.priorities[x] = new_priority;
+    const bool is_higher_priority = priority <= per_pixel_context.priorities[x];
+    if (x < Gpu::ScreenWidth) {
+      draw_color(
+          is_higher_priority ? framebuffer : per_pixel_context.discarded_pixels,
+          x, is_higher_priority ? scanline : 0, color);
+      if (is_higher_priority) {
+        per_pixel_context.priorities[x] = new_priority;
+      }
     }
   };
 
@@ -159,6 +166,27 @@ void Gpu::render_mode4() {
       draw_color(m_framebuffer, x, y, color);
     }
   }
+}
+
+static void blend_pixels(nonstd::span<Color> target,
+                         nonstd::span<const Color> blend_target_pixels,
+                         float first_target_weight,
+                         float second_target_weight) {
+  const auto blend = [first_target_weight, second_target_weight](
+                         float channel1, float channel2) {
+    return std::min(255.0F, channel1 * first_target_weight +
+                                channel2 * second_target_weight);
+  };
+
+  const auto begin = target.begin();
+  const auto end = target.end();
+  std::transform(
+      begin, end, begin,
+      [i = 0, blend, blend_target_pixels](const Color color) mutable {
+        const Color color_two = blend_target_pixels[i++];
+        return Color(blend(color.r, color_two.r), blend(color.g, color_two.g),
+                     blend(color.b, color_two.b), color.a);
+      });
 }
 
 void Gpu::render_background(Background background, unsigned int scanline) {
@@ -316,14 +344,68 @@ void Gpu::render_background(Background background, unsigned int scanline) {
       }
     }
   }
+
+  if (bldcnt.mode() == Bldcnt::BlendMode::Alpha) {
+    const auto blend_layer = Bldcnt::to_blend_layer(background.layer);
+
+    if (blend_layer == Bldcnt::BlendLayer::None) {
+      return;
+    }
+
+    if (bldcnt.second_target_enabled(blend_layer)) {
+      const auto begin = m_framebuffer.begin() + ScreenWidth * scanline;
+      const auto end = begin + ScreenWidth;
+      std::copy(begin, end, m_per_pixel_context.blend_target_pixels.begin());
+      m_per_pixel_context.blend_layer = background.layer;
+    }
+    if (m_per_pixel_context.blend_layer != background.layer &&
+        bldcnt.first_target_enabled(blend_layer)) {
+      const float first_target_coefficient =
+          bldalpha.first_target_coefficient();
+      const float second_target_coefficient =
+          bldalpha.second_target_coefficient();
+
+      const nonstd::span<Color> framebuffer = m_framebuffer;
+      blend_pixels(framebuffer.subspan(ScreenWidth * scanline, ScreenWidth),
+                   m_per_pixel_context.blend_target_pixels,
+                   first_target_coefficient, second_target_coefficient);
+#if 0
+      const auto begin = m_framebuffer.begin() + ScreenWidth * scanline;
+      const auto end = begin + ScreenWidth;
+      const auto target = begin;
+      const auto blend = [first_target_coefficient, second_target_coefficient](
+                             float channel1, float channel2) {
+        return std::min(255.0F, channel1 * first_target_coefficient +
+                                    channel2 * second_target_coefficient);
+      };
+
+      std::transform(begin, end, target,
+                     [i = 0, blend, this](const Color color) mutable {
+                       const Color color_two =
+                           m_per_pixel_context.blend_target_pixels[i++];
+                       return Color(blend(color.r, color_two.r),
+                                    blend(color.g, color_two.g),
+                                    blend(color.b, color_two.b), 255);
+                     });
+#endif
+    }
+  }
 }
 
 void Gpu::render_sprites(unsigned int scanline) {
   const auto sprite_palette_ram = m_palette_ram.subspan(0x200);
   const auto sprite_tile_data = m_vram.subspan(0x010000);
 
+  std::array<Color, ScreenWidth> sprite_scanline;
+
+  {
+    auto begin = m_framebuffer.begin() + ScreenWidth * scanline;
+    auto end = begin + ScreenWidth;
+    std::copy(begin, end, m_per_pixel_context.blend_target_pixels.begin());
+  }
+
   // Render sprites backwards to express the priority
-  for (int i = m_oam_ram.size() - 8; i >= 0; i -= 8) {
+  for (std::ptrdiff_t i = m_oam_ram.ssize() - 8; i >= 0; i -= 8) {
     const Sprite sprite(m_oam_ram[i + 0] | (m_oam_ram[i + 1] << 8),
                         m_oam_ram[i + 2] | (m_oam_ram[i + 3] << 8),
                         m_oam_ram[i + 4] | (m_oam_ram[i + 5] << 8));
@@ -352,11 +434,12 @@ void Gpu::render_sprites(unsigned int scanline) {
     if (scanline < sprite_y + sprite_rect.height) {
       const auto tile_base_offset = (sprite.attrib2.tile_id() * tile_length);
 
-      const auto render_sprite_tile = [sprite_tile_data, sprite_palette_ram,
-                                       sprite_tile_rect, tile_row_length,
-                                       tile_scanline, tile_length, sprite,
-                                       tile_base_offset, sprite_2d_offset,
-                                       scanline, this](unsigned int index) {
+      const auto render_sprite_tile = [&sprite_scanline, sprite_tile_data,
+                                       sprite_palette_ram, sprite_tile_rect,
+                                       tile_row_length, tile_scanline,
+                                       tile_length, sprite, tile_base_offset,
+                                       sprite_2d_offset, scanline,
+                                       this](unsigned int index) {
         const auto sprite_pixels = sprite_tile_data.subspan(
             tile_base_offset + sprite_2d_offset +
                 (tile_row_length * tile_scanline) + (tile_length * index),
@@ -370,15 +453,36 @@ void Gpu::render_sprites(unsigned int scanline) {
                 : (sprite.attrib1.x() + TileSize * index);
 
         render_tile_row_4bpp(
-            m_framebuffer,
+            sprite_scanline,
             sprite_palette_ram.subspan(sprite.attrib2.palette_bank() * 2 * 16),
-            {base_x, scanline}, sprite.attrib2.priority(), m_per_pixel_context,
+            {base_x, 0}, sprite.attrib2.priority(), m_per_pixel_context,
             sprite_pixels, true, sprite.attrib1.horizontal_flip());
       };
       // Render a scanline across all tiles
       for (unsigned int index = 0; index < sprite_tile_rect.width; ++index) {
         render_sprite_tile(index);
       }
+    }
+  }
+
+  const auto framebuffer = nonstd::span<Color>{m_framebuffer}.subspan(
+      ScreenWidth * scanline, ScreenWidth);
+  if (bldcnt.mode() == Bldcnt::BlendMode::Alpha) {
+    if (bldcnt.first_target_enabled(Bldcnt::BlendLayer::Obj)) {
+      blend_pixels(sprite_scanline, framebuffer,
+                   bldalpha.first_target_coefficient(),
+                   bldalpha.second_target_coefficient());
+    }
+  }
+  copy_if_same_index(sprite_scanline.begin(), sprite_scanline.end(),
+                     framebuffer.begin(),
+                     [](const Color color) { return color.a > 0; });
+
+  if (bldcnt.mode() == Bldcnt::BlendMode::Alpha) {
+    if (bldcnt.second_target_enabled(Bldcnt::BlendLayer::Obj)) {
+      blend_pixels(framebuffer, m_per_pixel_context.discarded_pixels,
+                   bldalpha.first_target_coefficient(),
+                   bldalpha.second_target_coefficient());
     }
   }
 }

@@ -117,6 +117,72 @@ class Bgcnt : public Integer<u16> {
 class Bldcnt : public Integer<u16> {
  public:
   using Integer::Integer;
+
+  enum class BlendMode : u16 {
+    None = 0,
+    Alpha = 1,
+    BrightnessIncrease = 2,
+    BrightnessDecrease = 3,
+  };
+
+  enum class BlendLayer : u16 {
+    Background0 = 0,
+    Background1 = 1,
+    Background2 = 2,
+    Background3 = 3,
+    Obj = 4,
+    Backdrop = 5,
+    None = 6,
+  };
+
+  [[nodiscard]] BlendMode mode() const {
+    return static_cast<BlendMode>((m_value >> 6) & 0b11);
+  }
+
+  [[nodiscard]] bool first_target_enabled(BlendLayer layer) const {
+    assert(layer != BlendLayer::None);
+    const auto layer_mask = 1 << static_cast<u16>(layer);
+    return (m_value & layer_mask) != 0;
+  }
+
+  [[nodiscard]] bool second_target_enabled(BlendLayer layer) const {
+    assert(layer != BlendLayer::None);
+    const auto layer_mask = 1 << (static_cast<u16>(layer) + 8);
+    return (m_value & layer_mask) != 0;
+  }
+
+  static BlendLayer to_blend_layer(Dispcnt::BackgroundLayer layer) {
+    switch (layer) {
+      case Dispcnt::BackgroundLayer::Zero:
+        return BlendLayer::Background0;
+      case Dispcnt::BackgroundLayer::One:
+        return BlendLayer::Background1;
+      case Dispcnt::BackgroundLayer::Two:
+        return BlendLayer::Background2;
+      case Dispcnt::BackgroundLayer::Three:
+        return BlendLayer::Background3;
+      default:
+        return BlendLayer::None;
+    }
+  }
+};
+
+class Bldalpha : public Integer<u16> {
+ public:
+  using Integer::Integer;
+
+  [[nodiscard]] float first_target_coefficient() const {
+    return calculate_coefficient(m_value & 0b11111);
+  }
+
+  [[nodiscard]] float second_target_coefficient() const {
+    return calculate_coefficient((m_value >> 8) & 0b11111);
+  }
+
+ private:
+  static float calculate_coefficient(u16 value) {
+    return value >= 16 ? 1.0F : (static_cast<float>(value) / 16.0F);
+  }
 };
 
 class ObjAttribute0 : public Integer<u16> {
@@ -217,17 +283,21 @@ class Gpu {
 
   struct PerPixelContext {
     std::array<unsigned int, ScreenWidth> priorities;
+    std::array<Color, ScreenWidth> blend_target_pixels;
+    std::array<Color, ScreenWidth> discarded_pixels;
+    Dispcnt::BackgroundLayer blend_layer = Dispcnt::BackgroundLayer::Window0;
   };
 
   struct Background {
     Bgcnt control;
     Dispcnt::BackgroundLayer layer;
     Vec2<u16> scroll{0, 0};
-    // std::vector<Color> framebuffer;
+    nonstd::span<Color> scanline;
 
-    Background(Gpu& gpu, Dispcnt::BackgroundLayer l)
-        : control{gpu},
-          layer{l} /*, framebuffer(ScreenWidth * ScreenHeight)*/ {}
+    Background(Gpu& gpu,
+               Dispcnt::BackgroundLayer l,
+               nonstd::span<Color> scanline_buffer)
+        : control{gpu}, layer{l}, scanline{scanline_buffer} {}
   };
 
   Gpu(Mmu& mmu)
@@ -238,11 +308,15 @@ class Gpu {
 
   Dispcnt dispcnt{*this};
 
-  Background bg0{*this, Dispcnt::BackgroundLayer::Zero};
-  Background bg1{*this, Dispcnt::BackgroundLayer::One};
-  Background bg2{*this, Dispcnt::BackgroundLayer::Two};
-  Background bg3{*this, Dispcnt::BackgroundLayer::Three};
-  u16 bldcnt = 0;
+  std::array<std::array<Color, ScreenWidth>, 4> m_scanlines;
+
+  Background bg0{*this, Dispcnt::BackgroundLayer::Zero, m_scanlines[0]};
+  Background bg1{*this, Dispcnt::BackgroundLayer::One, m_scanlines[1]};
+  Background bg2{*this, Dispcnt::BackgroundLayer::Two, m_scanlines[2]};
+  Background bg3{*this, Dispcnt::BackgroundLayer::Three, m_scanlines[3]};
+
+  Bldcnt bldcnt{0};
+  Bldalpha bldalpha{0};
 
   void sort_backgrounds();
 
