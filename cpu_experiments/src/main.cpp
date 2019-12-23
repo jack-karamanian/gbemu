@@ -4,6 +4,7 @@
 #include <folly/executors/CPUThreadPoolExecutor.h>
 #include <folly/futures/Future.h>
 #include <folly/init/Init.h>
+#include <charconv>
 #include <range/v3/all.hpp>
 #include <string>
 #include <vector>
@@ -25,41 +26,57 @@
 #include "gba/emulator.h"
 #include "gba/dma.h"
 #include "gba/gpu.h"
+#include "gba/sound.h"
 #include "debugger/disassembly_view.h"
 #include "debugger/hardware_thread.h"
 #include "imgui_memory_editor.h"
 
 namespace gb::advance {
 
-static const char* bool_to_string(bool value) {
+static constexpr char const* bool_to_string(bool value) {
   return value ? "true" : "false";
 }
 
 class NumberInput {
  public:
-  explicit NumberInput(const char* name)
-      : m_name{name}, m_button_id{std::string{name} + "-button"} {};
+  constexpr explicit NumberInput(const char* name, int id = 0)
+
+      : m_name{name}, m_button_id{id} {};
 
   template <typename Func>
+
   void render(Func callback) {
-    ImGui::InputText(m_name, &m_value);
+    ImGui::InputText(m_name, m_value.data(), m_value.size());
+
     ImGui::SameLine();
-    ImGui::PushID(m_button_id.c_str());
+
+    ImGui::PushID(m_button_id);
+
     if (ImGui::Button("Set")) {
       try {
-        const u32 number_value = std::stoi(m_value, nullptr, 16);
-        callback(number_value);
+        u32 number_value = 0;
+
+        auto res = std::from_chars(
+            m_value.data(), m_value.data() + m_value.size(), number_value, 16);
+
+        if (res.ec == std::errc{}) {
+          callback(number_value);
+        } else {
+          fmt::print("Invalid string\n");
+        }
+
       } catch (std::exception& e) {
         std::cerr << e.what() << '\n';
       }
     }
+
     ImGui::PopID();
   }
 
  private:
   const char* m_name;
-  std::string m_value;
-  std::string m_button_id;
+  int m_button_id;
+  std::array<char, 9> m_value{};
 };
 
 static void DispntDisplay(Dispcnt dispcnt) {
@@ -84,7 +101,7 @@ static void DispntDisplay(Dispcnt dispcnt) {
 }
 
 static void BackgroundDisplay(Gpu::Background background) {
-  const auto [control, _, scroll] = background;
+  const auto [control, _, scroll, scanline] = background;
   ImGui::LabelText("Bits per Pixel", "%d", control.bits_per_pixel());
   ImGui::LabelText("Tile Map Base Block", "%08x", control.tilemap_base_block());
   ImGui::LabelText("Character Base Block", "%08x",
@@ -115,7 +132,7 @@ static std::vector<gb::u8> load_file(const std::string_view file_name) {
 }
 
 void run_emulator_and_debugger(std::string_view rom_path) {
-  if (SDL_Init(SDL_INIT_VIDEO) != 0) {
+  if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO) != 0) {
     std::cerr << SDL_GetError() << '\n';
     return;
   }
@@ -135,6 +152,22 @@ void run_emulator_and_debugger(std::string_view rom_path) {
   SDL_Window* window = SDL_CreateWindow(
       "CPU Experiments", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, 1920,
       1080, SDL_WINDOW_OPENGL | SDL_WINDOW_RESIZABLE);
+
+  SDL_AudioSpec want, have;
+
+  memset(&want, 0, sizeof(want));
+  want.freq = 44100;
+  want.format = AUDIO_F32SYS;
+  want.channels = 2;
+  want.samples = 1024;
+  want.callback = nullptr;
+
+  SDL_AudioDeviceID audio_device;
+  if ((audio_device = SDL_OpenAudioDevice(nullptr, 0, &want, &have, 0)) < 0) {
+    fmt::print(std::cerr, "Failed to open audio\n");
+    return;
+  }
+  SDL_PauseAudioDevice(audio_device, 0);
 
   SDL_GLContext gl_context = SDL_GL_CreateContext(window);
 
@@ -168,7 +201,8 @@ void run_emulator_and_debugger(std::string_view rom_path) {
                      [i = 0](auto& entry) mutable -> std::pair<u32, u32> {
                        return {entry.loc, i++};
                      });
-      disassembly_info.disassembly = std::move(res);
+      disassembly_info.disassembly =
+          std::forward<std::decay_t<decltype(res)>>(res);
     };
   };
 
@@ -246,9 +280,19 @@ void run_emulator_and_debugger(std::string_view rom_path) {
   Lcd lcd{cpu, mmu, dmas, gpu};
   Input input;
 
-  Timers timers{cpu};
+  auto sample_callback =
+      [audio_device](nonstd::span<Sound::SampleType> samples) {
+        if (SDL_QueueAudio(audio_device, samples.data(),
+                           sizeof(Sound::SampleType) * samples.size()) < 0) {
+          fmt::print(std::cerr, SDL_GetError());
+        }
+      };
 
-  Hardware hardware{&cpu, &lcd, &input, &mmu, &timers, &dmas, &gpu};
+  Sound sound{sample_callback, dmas};
+
+  Timers timers{cpu, sound};
+
+  Hardware hardware{&cpu, &lcd, &input, &mmu, &timers, &dmas, &gpu, &sound};
 
   mmu.hardware = hardware;
 
@@ -259,7 +303,7 @@ void run_emulator_and_debugger(std::string_view rom_path) {
 
   bool running = true;
 
-  std::string assembler_string = "";
+  std::string assembler_string;
 
   GLuint texture;
   glGenTextures(1, &texture);
@@ -273,233 +317,232 @@ void run_emulator_and_debugger(std::string_view rom_path) {
                static_cast<const void*>(gpu.framebuffer().data()));
 
   while (running) {
-    SDL_Event event;
-    while (SDL_PollEvent(&event) != 0) {
-      ImGui_ImplSDL2_ProcessEvent(&event);
+    {
+      SDL_Event event;
+      while (SDL_PollEvent(&event) != 0) {
+        ImGui_ImplSDL2_ProcessEvent(&event);
 
-      switch (event.type) {
-        case SDL_QUIT:
-          running = false;
-          hardware_thread.signal_vsync();
-          hardware_thread.push_event(Quit{});
-          break;
+        switch (event.type) {
+          case SDL_QUIT:
+            running = false;
+            break;
 
-        case SDL_KEYDOWN:
-        case SDL_KEYUP: {
-          bool set = event.type == SDL_KEYDOWN;
+          case SDL_KEYDOWN:
+          case SDL_KEYUP: {
+            bool set = event.type == SDL_KEYDOWN;
 
-          switch (event.key.keysym.sym) {
-            case SDLK_UP:
-              input.set_up(set);
-              break;
-            case SDLK_DOWN:
-              input.set_down(set);
-              break;
-            case SDLK_LEFT:
-              input.set_left(set);
-              break;
-            case SDLK_RIGHT:
-              input.set_right(set);
-              break;
-            case SDLK_z:
-              input.set_b(set);
-              break;
-            case SDLK_x:
-              input.set_a(set);
-              break;
-            case SDLK_a:
-              input.set_l(set);
-              break;
-            case SDLK_s:
-              input.set_r(set);
-              break;
-            case SDLK_RETURN:
-              input.set_start(set);
-              break;
-            case SDLK_RSHIFT:
-              input.set_select(set);
-              break;
-            default:
-              break;
+            switch (event.key.keysym.sym) {
+              case SDLK_UP:
+                input.set_up(set);
+                break;
+              case SDLK_DOWN:
+                input.set_down(set);
+                break;
+              case SDLK_LEFT:
+                input.set_left(set);
+                break;
+              case SDLK_RIGHT:
+                input.set_right(set);
+                break;
+              case SDLK_z:
+                input.set_b(set);
+                break;
+              case SDLK_x:
+                input.set_a(set);
+                break;
+              case SDLK_a:
+                input.set_l(set);
+                break;
+              case SDLK_s:
+                input.set_r(set);
+                break;
+              case SDLK_RETURN:
+                input.set_start(set);
+                break;
+              case SDLK_RSHIFT:
+                input.set_select(set);
+                break;
+              default:
+                break;
+            }
+
+            break;
           }
-
-          break;
         }
       }
-    }
 
-    ImGui_ImplOpenGL3_NewFrame();
-    ImGui_ImplSDL2_NewFrame(window);
-    ImGui::NewFrame();
+      ImGui_ImplOpenGL3_NewFrame();
+      ImGui_ImplSDL2_NewFrame(window);
+      ImGui::NewFrame();
 
-    bool show_demo_window = true;
-    ImGui::ShowDemoWindow(&show_demo_window);
+      bool show_demo_window = true;
+      ImGui::ShowDemoWindow(&show_demo_window);
+      {
+        ImGui::Begin("Frame Time");
+        ImGui::LabelText("Frame Rate", "%f", hardware_thread.framerate);
+        ImGui::LabelText("Frame Time", "%f", hardware_thread.frametime);
+        ImGui::End();
+      }
 
-    {
-      ImGui::Begin("Cpu");
+      {
+        ImGui::Begin("Cpu");
+        ImGui::Checkbox("Execute", &hardware_thread.execute);
 
-      for (gb::u32 i = 0; i < 16; ++i) {
+        for (gb::u32 i = 0; i < 16; ++i) {
+          using namespace std::literals;
+          auto reg = static_cast<Register>(i);
+          auto value = cpu.reg(reg);
+          ImGui::LabelText(("R"s + std::to_string(i)).c_str(), "%d / %08x",
+                           value, value);
+        }
+
+        ImGui::LabelText("Negative", "%s",
+                         bool_to_string(cpu.program_status().negative()));
+        ImGui::LabelText("Zero", "%s",
+                         bool_to_string(cpu.program_status().zero()));
+        ImGui::LabelText("Overflow", "%s",
+                         bool_to_string(cpu.program_status().overflow()));
+        ImGui::LabelText("Carry", "%s",
+                         bool_to_string(cpu.program_status().carry()));
+        ImGui::LabelText("Thumb", "%s",
+                         bool_to_string(cpu.program_status().thumb_mode()));
+
+        ImGui::LabelText("Interrupts Enabled", "%04x",
+                         cpu.interrupts_enabled.data());
+        ImGui::LabelText("Interrupts Requested", "%04x",
+                         cpu.interrupts_requested.data());
+        if (ImGui::Button("Execute")) {
+          hardware_thread.push_event(SetExecute{true});
+        }
+
+        {
+          static NumberInput breakpoint_input{"Breakpoint", 0};
+          breakpoint_input.render([&](u32 value) {
+            hardware_thread.push_event(SetBreakpoint{value});
+          });
+        }
+        {
+          static NumberInput watchpoint_input{"Watchpoint", 1};
+          watchpoint_input.render([&](u32 value) {
+            hardware_thread.push_event(SetWatchpoint{value});
+          });
+        }
+
+        if (ImGui::Button("Step")) {
+          try {
+            gb::advance::execute_hardware(hardware);
+            // cpu.execute();
+          } catch (const std::exception& e) {
+            std::cerr << e.what() << '\n';
+          }
+        }
+        ImGui::End();
+      }
+
+      {
+        ImGui::Begin("Editor");
+
+        ImGui::InputTextMultiline("Assembly", &assembler_string,
+                                  ImVec2{400, 900},
+                                  ImGuiInputTextFlags_AllowTabInput);
+
+        if (ImGui::Button("Assemble")) {
+        }
+        ImGui::End();
+      }
+      {
+        ImGui::Begin("Memory");
+
+        static MemoryEditor memory_editor;
+
+        memory_editor.Cols = 4;
+        ImGui::BeginChild("#rom_bytes");
+        auto rom = mmu.rom();
+        memory_editor.DrawContents(rom.data(), rom.size());
+        ImGui::EndChild();
+
+        ImGui::End();
+      }
+      {
+        static DisassemblyView arm_disassembly_view{"ARM Disassembly"};
+        static DisassemblyView thumb_disassembly_view{"Thumb Disassembly"};
+        static DisassemblyView iwram_disassembly_view{"IWRam Disassembly"};
+        arm_disassembly_view.render(gb::advance::Mmu::RomRegion0Begin, cpu,
+                                    disassembly);
+        thumb_disassembly_view.render(gb::advance::Mmu::RomRegion0Begin, cpu,
+                                      thumb_disassembly);
+        iwram_disassembly_view.render(gb::advance::Mmu::IWramBegin, cpu,
+                                      iwram_disassembly);
+      }
+      {
+        ImGui::Begin("VRAM");
+        static MemoryEditor vram_memory_editor;
+        const auto vram = mmu.vram();
+        vram_memory_editor.DrawContents(vram.data(), vram.size());
+        ImGui::End();
+      }
+      {
         using namespace std::literals;
-        auto reg = static_cast<Register>(i);
-        auto value = cpu.reg(reg);
-        ImGui::LabelText(("R"s + std::to_string(i)).c_str(), "%d / %08x", value,
-                         value);
-      }
+        static constexpr std::array<std::string_view, 2> arches = {"arm"sv,
+                                                                   "thumb"sv};
+        static int arch_index = 0;
 
-      ImGui::LabelText("Negative", "%s",
-                       bool_to_string(cpu.program_status().negative()));
-      ImGui::LabelText("Zero", "%s",
-                       bool_to_string(cpu.program_status().zero()));
-      ImGui::LabelText("Overflow", "%s",
-                       bool_to_string(cpu.program_status().overflow()));
-      ImGui::LabelText("Carry", "%s",
-                       bool_to_string(cpu.program_status().carry()));
-      ImGui::LabelText("Thumb", "%s",
-                       bool_to_string(cpu.program_status().thumb_mode()));
+        ImGui::Begin("IWRam");
+        ImGui::RadioButton("ARM", &arch_index, 0);
+        ImGui::RadioButton("Thumb", &arch_index, 1);
 
-      ImGui::LabelText("Interrupts Enabled", "%04x",
-                       cpu.interrupts_enabled.data());
-      ImGui::LabelText("Interrupts Requested", "%04x",
-                       cpu.interrupts_requested.data());
-      if (ImGui::Button("Execute")) {
-        hardware_thread.push_event(SetExecute{true});
-      }
+        if (ImGui::Button("Disassemble")) {
+          folly::via(&executor, [&mmu]() {
+            return experiments::disassemble(mmu.iwram(), arches[arch_index]);
+          }).thenValue(make_handler_for(iwram_disassembly));
+        }
 
-      {
-        static NumberInput breakpoint_input{"Breakpoint"};
-        breakpoint_input.render([&](u32 value) {
-          hardware_thread.push_event(SetBreakpoint{value});
-        });
+        static MemoryEditor memory_editor;
+        auto iwram = mmu.iwram();
+        memory_editor.DrawContents(iwram.data(), iwram.size());
+        ImGui::End();
       }
       {
-        static NumberInput watchpoint_input{"Watchpoint"};
-        watchpoint_input.render([&](u32 value) {
-          hardware_thread.push_event(SetWatchpoint{value});
-        });
+        ImGui::Begin("EWram");
+        static MemoryEditor memory_editor;
+        auto ewram = mmu.ewram();
+        memory_editor.DrawContents(ewram.data(), ewram.size());
+        ImGui::End();
       }
+      {
+        ImGui::Begin("DMA");
 
-      if (ImGui::Button("Step")) {
-        try {
-          gb::advance::execute_hardware(hardware);
-          // cpu.execute();
-        } catch (const std::exception& e) {
-          std::cerr << e.what() << '\n';
+        for (const Dma& dma : dmas.span()) {
+          ImGui::Text("DMA %d", static_cast<u32>(dma.number()));
+          ImGui::LabelText("Source", "%08x", dma.source);
+          ImGui::LabelText("Dest", "%08x", dma.dest);
+          ImGui::LabelText("Count", "%08x", dma.count);
+          ImGui::LabelText("Control", "%08x", dma.control().data());
         }
+        ImGui::End();
       }
-      ImGui::End();
-    }
-
-    {
-      ImGui::Begin("Editor");
-
-      ImGui::InputTextMultiline("Assembly", &assembler_string, ImVec2{400, 900},
-                                ImGuiInputTextFlags_AllowTabInput);
-
-      if (ImGui::Button("Assemble")) {
-#if 0
-        write_stored_data(assembler_string);
-        bytes = experiments::assemble(assembler_string);
-        if (!bytes.empty()) {
-          cpu = Cpu{mmu};
-          cpu.execute();
-        }
-#endif
+      {
+        ImGui::Begin("Dispcnt");
+        DispntDisplay(gpu.dispcnt);
+        ImGui::LabelText("Bldcnt", "%04x", gpu.bldcnt.data());
+        ImGui::End();
       }
-      ImGui::End();
-    }
-    {
-      ImGui::Begin("Memory");
+      {
+        ImGui::Begin("Background");
+        ImGui::Text("BG0");
+        BackgroundDisplay(gpu.bg0);
 
-      static MemoryEditor memory_editor;
+        ImGui::Text("BG1");
+        BackgroundDisplay(gpu.bg1);
 
-      memory_editor.Cols = 4;
-      ImGui::BeginChild("#rom_bytes");
-      auto rom = mmu.rom();
-      memory_editor.DrawContents(rom.data(), rom.size());
-      ImGui::EndChild();
+        ImGui::Text("BG2");
+        BackgroundDisplay(gpu.bg2);
 
-      ImGui::End();
-    }
-    {
-      static DisassemblyView arm_disassembly_view{"ARM Disassembly", 4};
-      static DisassemblyView thumb_disassembly_view{"Thumb Disassembly", 2};
-      static DisassemblyView iwram_disassembly_view{"IWRam Disassembly", 4};
-      arm_disassembly_view.render(gb::advance::Mmu::RomRegion0Begin, cpu,
-                                  disassembly);
-      thumb_disassembly_view.render(gb::advance::Mmu::RomRegion0Begin, cpu,
-                                    thumb_disassembly);
-      iwram_disassembly_view.render(gb::advance::Mmu::IWramBegin, cpu,
-                                    iwram_disassembly);
-    }
-    {
-      ImGui::Begin("VRAM");
-      static MemoryEditor vram_memory_editor;
-      auto vram = mmu.vram();
-      vram_memory_editor.DrawContents(vram.data(), vram.size());
-      ImGui::End();
-    }
-    {
-      using namespace std::literals;
-      static constexpr std::array<std::string_view, 2> arches = {"arm"sv,
-                                                                 "thumb"sv};
-      static int arch_index = 0;
-
-      ImGui::Begin("IWRam");
-      ImGui::RadioButton("ARM", &arch_index, 0);
-      ImGui::RadioButton("Thumb", &arch_index, 1);
-
-      if (ImGui::Button("Disassemble")) {
-        folly::via(&executor, [&mmu]() {
-          return experiments::disassemble(mmu.iwram(), arches[arch_index]);
-        }).thenValue(make_handler_for(iwram_disassembly));
+        ImGui::Text("BG3");
+        BackgroundDisplay(gpu.bg3);
+        ImGui::End();
       }
-
-      static MemoryEditor memory_editor;
-      auto iwram = mmu.iwram();
-      memory_editor.DrawContents(iwram.data(), iwram.size());
-      ImGui::End();
-    }
-    {
-      ImGui::Begin("EWram");
-      static MemoryEditor memory_editor;
-      auto ewram = mmu.ewram();
-      memory_editor.DrawContents(ewram.data(), ewram.size());
-      ImGui::End();
-    }
-    {
-      ImGui::Begin("DMA");
-
-      for (const Dma& dma : dmas.span()) {
-        ImGui::Text("DMA %d", static_cast<u32>(dma.number()));
-        ImGui::LabelText("Source", "%08x", dma.source);
-        ImGui::LabelText("Dest", "%08x", dma.dest);
-        ImGui::LabelText("Count", "%08x", dma.count);
-        ImGui::LabelText("Control", "%08x", dma.control().data());
-      }
-      ImGui::End();
-    }
-    {
-      ImGui::Begin("Dispcnt");
-      DispntDisplay(gpu.dispcnt);
-      ImGui::LabelText("Bldcnt", "%04x", gpu.bldcnt);
-      ImGui::End();
-    }
-    {
-      ImGui::Begin("Background");
-      ImGui::Text("BG0");
-      BackgroundDisplay(gpu.bg0);
-
-      ImGui::Text("BG1");
-      BackgroundDisplay(gpu.bg1);
-
-      ImGui::Text("BG2");
-      BackgroundDisplay(gpu.bg2);
-
-      ImGui::Text("BG3");
-      BackgroundDisplay(gpu.bg3);
-      ImGui::End();
-    }
-    {
+      {
 #if 0
       nonstd::span<gb::u16> pixels{
           reinterpret_cast<gb::u16*>(mmu.vram.data()),
@@ -516,22 +559,23 @@ void run_emulator_and_debugger(std::string_view rom_path) {
       }
 #endif
 
-      glBindTexture(GL_TEXTURE_2D, texture);
-      glPixelStorei(GL_UNPACK_ROW_LENGTH, 0);
-      glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, 240, 160, 0, GL_RGBA,
-                   GL_UNSIGNED_BYTE,
-                   reinterpret_cast<const void*>(gpu.framebuffer().data()));
-      auto error = glGetError();
+        glBindTexture(GL_TEXTURE_2D, texture);
+        glPixelStorei(GL_UNPACK_ROW_LENGTH, 0);
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, 240, 160, 0, GL_RGBA,
+                     GL_UNSIGNED_BYTE,
+                     reinterpret_cast<const void*>(gpu.framebuffer().data()));
+        auto error = glGetError();
 
-      if (error != GL_NO_ERROR) {
-        std::cerr << "gl error \n";
-        std::cerr << glewGetErrorString(error);
+        if (error != GL_NO_ERROR) {
+          std::cerr << "gl error \n";
+          std::cerr << glewGetErrorString(error);
+        }
       }
-      ImGui::Begin("Screen");
-      ImGui::Image(reinterpret_cast<void*>(static_cast<intptr_t>(texture)),
-                   ImVec2{240 * 2, 160 * 2});
-      ImGui::End();
     }
+    ImGui::Begin("Screen");
+    ImGui::Image(reinterpret_cast<void*>(static_cast<intptr_t>(texture)),
+                 ImVec2{240 * 2, 160 * 2});
+    ImGui::End();
     ImGui::Render();
     SDL_GL_MakeCurrent(window, gl_context);
 
@@ -540,7 +584,7 @@ void run_emulator_and_debugger(std::string_view rom_path) {
 
     ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
     SDL_GL_SwapWindow(window);
-    hardware_thread.signal_vsync();
+    hardware_thread.run_frame();
   }
 
   ImGui_ImplOpenGL3_Shutdown();
