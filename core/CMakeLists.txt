@@ -96,6 +96,11 @@ set(SRCS
   src/gba/gpu.cpp
   src/gba/hle.h
   src/gba/hle.cpp
+  src/static_vector.h
+  src/gba/sound.h
+  src/gba/sound.cpp
+  src/gba/interrupts.h
+  src/gba/interrupts.cpp
 )
 
 

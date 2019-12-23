@@ -1,8 +1,10 @@
 #include "gba/mmu.h"
 #include <fmt/printf.h>
 #include <chrono>
+#include <numeric>
 #include "gba/cpu.h"
 #include "gba/gpu.h"
+#include "gba/sound.h"
 #include "timer.h"
 #include "utils.h"
 
@@ -13,19 +15,6 @@
   } while (0)
 
 namespace gb::advance {
-
-/*
-  .code 32
-  stmfd r13!, {r0,r1,r2,r3,r12,r14}
-  mov r0, #0x40000000
-  add r14, r15, #0
-  ldr r15, [r0, #-4]
-  ldmfd r13!, {r0, r1, r2, r3, r12, r14}
-  subs r15, r14, #4
-*/
-static std::array<u8, 24> bios_interrupt = {
-    0x0f, 0x50, 0x2d, 0xe9, 0x01, 0x03, 0xa0, 0xe3, 0x00, 0xe0, 0x8f, 0xe2,
-    0x04, 0xf0, 0x10, 0xe5, 0x0f, 0x50, 0xbd, 0xe8, 0x04, 0xf0, 0x5e, 0xe2};
 
 u32 Mmu::wait_cycles(u32 addr, Cycles cycles) {
   const auto [wait_nonsequential,
@@ -55,6 +44,94 @@ u32 Mmu::wait_cycles(u32 addr, Cycles cycles) {
          (cycles.sequential + (cycles.sequential != 0 ? wait_sequential : 0));
 }
 
+// static void eeprom_write(Mmu::AddrParam source, Mmu::AddrParam dest) {}
+//
+static void unpack_bits(nonstd::span<u8> dest, const u64 value) {
+  u16 bit_value = 0;
+  fmt::printf("%016x\n", value);
+  for (unsigned int i = 0; i < sizeof(u64) * 8; ++i) {
+    const u32 shift = 63 - i;
+    bit_value = (value & (1ULL << shift)) >> shift;
+    fmt::print("{} ", bit_value);
+    // bit_value = (value & ((63 - i) << i)) >> i;
+    std::memcpy(&dest[i * 2], &bit_value, sizeof(u16));
+  }
+  fmt::print("\n");
+}
+
+void Mmu::eeprom_send_command(nonstd::span<const u8> source_storage,
+                              u32 count) {
+  constexpr u32 type_size = 2;
+
+  const auto resolved_source_storage =
+      source_storage.subspan(0, count * type_size);
+
+#if 0
+    if (count == 9) {
+    } else {
+      throw std::runtime_error(fmt::format("got type_size {}", type_size));
+    }
+#endif
+  fmt::print("EEPROM DATA ");
+  for (unsigned int i = 0; i < count * type_size; ++i) {
+    fmt::printf("%02x ", source_storage[i]);
+  }
+  fmt::print("\n");
+
+  const bool read_command = [resolved_source_storage] {
+    const u8 upper_bit = resolved_source_storage[0] & 1;
+    const u8 lower_bit = resolved_source_storage[2] & 1;
+    assert(!(upper_bit == 0 && lower_bit == 0));
+    if (upper_bit == 0 && lower_bit == 0) {
+      throw std::runtime_error("invalid eeprom transfer header found 00");
+    }
+    return (upper_bit == 1 && lower_bit == 1);
+  }();
+
+  const auto read_addr = [resolved_source_storage](unsigned int size) -> u16 {
+    const auto addr_bytes = resolved_source_storage.subspan(4, size * 2);
+
+    u16 res = 0;
+    for (unsigned int i = 0; i < size; ++i) {
+      res |= (addr_bytes[i * 2] & 1) << (size - (i + 1));
+    }
+
+    assert((size == 6 && res <= 0x3f) || (size == 14 && res <= 0x3ff));
+    return res;
+  };
+
+  if (read_command) {
+    const int eeprom_addr_size = count == 9 ? 6 : 14;
+    const u16 eeprom_addr = read_addr(eeprom_addr_size);
+    u8* const eeprom_storage = &m_eeprom[sizeof(u64) * eeprom_addr];
+
+    fmt::printf("READ ADDR %04x\n", eeprom_addr);
+
+    std::memcpy(&m_eeprom_buffer, eeprom_storage, sizeof(u64));
+  } else {
+    const int eeprom_addr_size = count == 73 ? 6 : 14;
+    const u16 eeprom_addr = read_addr(eeprom_addr_size);
+    fmt::printf("WRITE ADDR %04x\n", eeprom_addr);
+    u8* const eeprom_storage = &m_eeprom[sizeof(u64) * eeprom_addr];
+    // Write
+    const nonstd::span<const u8> write_data = resolved_source_storage.subspan(
+        4 + (sizeof(u16) * eeprom_addr_size), 64 * sizeof(u16));
+
+    u64 data = 0;
+    for (int i = 0; i < 64; ++i) {
+      data |= (write_data[2 * i] & 1ULL) << (63 - i);
+    }
+
+    std::memcpy(eeprom_storage, &data, sizeof(u64));
+  }
+
+  // for (unsigned int i = 0; i <)
+}
+
+void Mmu::eeprom_read(nonstd::span<u8> dest) {
+  unpack_bits(dest.subspan(4 * sizeof(u16)), m_eeprom_buffer);
+}
+
 void Mmu::copy_memory(AddrParam source,
                       AddrParam dest,
                       u32 count,
@@ -62,19 +139,59 @@ void Mmu::copy_memory(AddrParam source,
   const auto [source_addr, source_op] = source;
   const auto [dest_addr, dest_op] = dest;
 
+  if ((source_addr & 0xff000000) == 0 || (dest_addr & 0xff000000) == 0) {
+    return;
+  }
+
+  if (memory_region(dest_addr) == 0x0d000000 ||
+      memory_region(source_addr) == 0x0d000000) {
+    if (type_size != 2) {
+      throw std::runtime_error("unexpected type size in eeprom write");
+    }
+
+    // fmt::printf("%08x %08x %d %d EEPROM WRITE\n", dest_addr, source_addr,
+    // count,
+    //            type_size);
+
+    // hardware.cpu->debugger().stop_execution();
+
+    if (!m_eeprom_enabled) {
+      m_memory_region_table[0xd] = m_eeprom;
+      m_eeprom_enabled = true;
+    }
+
+    if (memory_region(dest_addr) == 0x0d000000) {
+      const auto [source_storage, resolved_source_addr] =
+          select_storage(source_addr);
+      eeprom_send_command(source_storage.subspan(resolved_source_addr), count);
+      // eeprom_copy(source_addr, dest_addr, count,
+      //            (source_addr & 0x0d000000) == 0x0d000000);
+    } else if (memory_region(source_addr) == 0x0d000000) {
+      const auto [dest_storage, resolved_dest_addr] = select_storage(dest_addr);
+      // fmt::printf("DEST ADDR %08x\n", dest_addr);
+      eeprom_read(dest_storage.subspan(resolved_dest_addr));
+    }
+    return;
+  }
+
+  const int source_stride =
+      static_cast<int>(source_op) * static_cast<int>(type_size);
+  const int dest_stride =
+      static_cast<int>(dest_op) * static_cast<int>(type_size);
   if (is_hardware_addr(source_addr) || is_hardware_addr(dest_addr)) {
+    u32 resolved_source_addr = source_addr;
+    u32 resolved_dest_addr = dest_addr;
     for (u32 i = 0; i < count; ++i) {
       for (u32 j = 0; j < type_size; ++j) {
-        const auto offset = count * type_size + i;
-        set<u8>(dest_addr + offset, at<u8>(source_addr + offset));
+        // fmt::printf("%08x\n", resolved_source_addr + j);
+
+        set<u8>(resolved_dest_addr + (dest_stride == 0 ? 0 : j),
+                at<u8>(resolved_source_addr + j));
       }
+      resolved_source_addr += source_stride;
+      resolved_dest_addr += dest_stride;
     }
   } else {
-    const int source_stride =
-        static_cast<int>(source_op) * static_cast<int>(type_size);
-    const int dest_stride =
-        static_cast<int>(dest_op) * static_cast<int>(type_size);
-
     auto [source_storage, resolved_source_addr] = select_storage(source_addr);
     auto [dest_storage, resolved_dest_addr] = select_storage(dest_addr);
 
@@ -89,11 +206,15 @@ void Mmu::copy_memory(AddrParam source,
   }
 }
 
+nonstd::span<const u8> Mmu::get_prefetched_opcode() const noexcept {
+  return hardware.cpu->prefetched_opcode();
+}
+
 void Mmu::set_bytes(u32 addr, nonstd::span<const u8> bytes) {
   auto [selected_span, resolved_addr] = select_storage(addr);
   auto subspan = selected_span.subspan(resolved_addr);
 
-  const std::size_t copy_size = bytes.size();
+  const std::size_t copy_size = bytes.size() & 7;
 
   for (std::size_t i = 0; i < copy_size; ++i) {
     subspan[i] = bytes[i];
@@ -107,12 +228,13 @@ void Mmu::set_hardware_bytes(u32 addr, nonstd::span<const u8> bytes) {
   const auto [io_addr, resolved_addr] = select_io_register(addr);
   auto selected_hardware = select_hardware(io_addr, DataOperation::Write);
 
-  const auto bytes_size = static_cast<std::size_t>(bytes.size());
+  const auto bytes_size = static_cast<std::size_t>(bytes.size() & 7);
 
   const bool is_overrunning = bytes_size > selected_hardware.size_bytes();
   const long difference =
       bytes_size - (selected_hardware.size_bytes() - resolved_addr);
 
+  assert(io_addr + resolved_addr == addr);
   selected_hardware.write_byte(
       resolved_addr, difference > 0 ? bytes.subspan(0, difference) : bytes);
 
@@ -127,7 +249,17 @@ void Mmu::set_hardware_bytes(u32 addr, nonstd::span<const u8> bytes) {
 #endif
 }
 
+void Mmu::print_bios_warning() const {
+#if 1
+  fmt::printf(
+      "WARNING: BIOS memory access at %08x\n",
+      hardware.cpu->reg(Register::R15) - hardware.cpu->prefetch_offset());
+#endif
+}
+
+#if 0
 std::tuple<nonstd::span<u8>, u32> Mmu::select_storage(u32 addr) {
+#if 0
   if (addr >= IWramBegin && addr <= IWramEnd) {
     return {m_iwram, addr - IWramBegin};
   }
@@ -169,19 +301,39 @@ std::tuple<nonstd::span<u8>, u32> Mmu::select_storage(u32 addr) {
   }
 
   if (addr >= BiosBegin && addr <= BiosEnd) {
-    fmt::printf(
-        "WARNING: BIOS memory access at %08x\n",
-        hardware.cpu->reg(Register::R15) - hardware.cpu->prefetch_offset());
+    // fmt::printf(
+    //   "WARNING: BIOS memory access at %08x\n",
+    //   hardware.cpu->reg(Register::R15) - hardware.cpu->prefetch_offset());
     return {m_bios, addr};
   }
+#else
+  if (addr >= 0x03ffff00 && addr < 0x04000000) {
+    const u32 offset = addr & 0xff;
+    return {m_iwram, 0x7f00 + offset};
+  }
 
-  printf("unimplemented select_storage addr %08x\n", addr);
+  if (const u32 addr_region = addr >> 24;
+      addr_region < std::size(m_memory_region_table)) {
+#if 0
+    fmt::printf("%08x %08x %08x %08x %08x\n", addr_region, addr,
+                (addr_region << 24), addr - (addr_region << 24),
+                m_memory_region_table[addr_region].size());
+    assert(addr_region < std::size(m_memory_region_table));
+    assert(addr - (addr_region << 24) <
+           m_memory_region_table[addr_region].size());
+#endif
+    return {m_memory_region_table[addr_region], addr - (addr_region << 24)};
+  }
+#endif
+
+  fmt::printf("unimplemented select_storage addr %08x\n", addr);
   throw std::runtime_error("unimplemented select storage");
 }
+#endif
 
 class MgbaDebugPrint : public Integer<u16> {
  public:
-  MgbaDebugPrint() : Integer::Integer{0} {}
+  constexpr MgbaDebugPrint() : Integer::Integer{0} {}
 
   void write_byte([[maybe_unused]] u32 addr, u8 value) {
     fmt::printf("%c", value);
@@ -293,7 +445,7 @@ IntegerRef Mmu::select_hardware(u32 addr, DataOperation op) {
     case hardware::BLDCNT:
       return hardware.gpu->bldcnt;
     case hardware::BLDALPHA:
-      STUB_ADDR(bldalpha);
+      return hardware.gpu->bldalpha;
     case hardware::BLDY:
       STUB_ADDR(bldy);
     case hardware::SOUND1CNT_L:
@@ -319,15 +471,16 @@ IntegerRef Mmu::select_hardware(u32 addr, DataOperation op) {
     case hardware::SOUNDCNT_L:
       STUB_ADDR(soundcnt_l);
     case hardware::SOUNDCNT_H:
-      STUB_ADDR(soundcnt_h);
+      return hardware.sound->soundcnt_high;
     case hardware::SOUNDCNT_X:
+      fmt::printf("SOUNDCNT_X\n");
       STUB_ADDR(soundcnt_x);
     case hardware::SOUNDBIAS:
-      STUB_ADDR(soundbias);
+      return hardware.sound->soundbias;
     case hardware::FIFO_A:
-      STUB_ADDR(fifo_a);
+      return hardware.sound->fifo_a;
     case hardware::FIFO_B:
-      STUB_ADDR(fifo_b);
+      return hardware.sound->fifo_b;
     case hardware::SIOMULTI0:
       STUB_ADDR(siomulti0);
     case hardware::SIOMULTI1:

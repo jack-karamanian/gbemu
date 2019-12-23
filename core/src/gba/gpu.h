@@ -2,6 +2,7 @@
 #include "color.h"
 #include "error_handling.h"
 #include "gba/mmu.h"
+#include "static_vector.h"
 #include "utils.h"
 
 namespace gb::advance {
@@ -12,7 +13,7 @@ class Gpu;
 
 class Dispcnt : public Integer<u16> {
  public:
-  Dispcnt(Gpu& gpu) : Integer::Integer{0}, m_gpu{&gpu} {}
+  Dispcnt(Gpu& gpu) : Integer::Integer{0x0080}, m_gpu{&gpu} {}
 
   void on_after_write() const;
 
@@ -45,6 +46,7 @@ class Dispcnt : public Integer<u16> {
     Window0 = 1 << 13,
     Window1 = 1 << 14,
     ObjWindow = 1 << 15,
+    None = 0,
   };
 
   [[nodiscard]] bool layer_enabled(BackgroundLayer layer) const {
@@ -114,6 +116,11 @@ class Bgcnt : public Integer<u16> {
   Gpu* m_gpu;
 };
 
+struct PriorityInfo {
+  Dispcnt::BackgroundLayer layer;
+  int priority;
+};
+
 class Bldcnt : public Integer<u16> {
  public:
   using Integer::Integer;
@@ -161,7 +168,12 @@ class Bldcnt : public Integer<u16> {
         return BlendLayer::Background2;
       case Dispcnt::BackgroundLayer::Three:
         return BlendLayer::Background3;
+      case Dispcnt::BackgroundLayer::Obj:
+        return BlendLayer::Obj;
       default:
+#ifndef NDEBUG
+        fmt::print("WARNING: BlendLayer::None reached\n");
+#endif
         return BlendLayer::None;
     }
   }
@@ -283,8 +295,11 @@ class Gpu {
 
   struct PerPixelContext {
     std::array<unsigned int, ScreenWidth> priorities;
-    std::array<Color, ScreenWidth> blend_target_pixels;
-    std::array<Color, ScreenWidth> discarded_pixels;
+    std::array<Color, ScreenWidth> top_pixels;
+    std::array<StaticVector<Dispcnt::BackgroundLayer, 5>, ScreenWidth>
+        pixel_layers;
+    std::array<int, ScreenWidth> sprite_priorities;
+    std::array<StaticVector<PriorityInfo, 5>, ScreenWidth> pixel_priorities;
     Dispcnt::BackgroundLayer blend_layer = Dispcnt::BackgroundLayer::Window0;
   };
 
@@ -293,6 +308,10 @@ class Gpu {
     Dispcnt::BackgroundLayer layer;
     Vec2<u16> scroll{0, 0};
     nonstd::span<Color> scanline;
+
+    [[nodiscard]] int priority() const {
+      return (static_cast<int>(layer) >> 8) + control.priority();
+    }
 
     Background(Gpu& gpu,
                Dispcnt::BackgroundLayer l,
@@ -332,11 +351,39 @@ class Gpu {
 
  private:
   void render_mode4();
+
+  void render_tile_row_4bpp(nonstd::span<Color> framebuffer,
+                            nonstd::span<const u8> palette_bank,
+                            Vec2<unsigned int> position,
+                            unsigned int priority,
+                            Gpu::PerPixelContext& per_pixel_context,
+                            nonstd::span<const u8> tile_pixels,
+                            // bool is_sprite,
+                            Dispcnt::BackgroundLayer layer,
+                            PriorityInfo priority_info,
+                            bool horizontal_flip = false);
   void render_background(Background background, unsigned int scanline);
   void render_sprites(unsigned int scanline);
 
+  nonstd::span<Color> framebuffer_from_layer(Dispcnt::BackgroundLayer layer) {
+    switch (layer) {
+      case Dispcnt::BackgroundLayer::Zero:
+        return bg0.scanline;
+      case Dispcnt::BackgroundLayer::One:
+        return bg1.scanline;
+      case Dispcnt::BackgroundLayer::Two:
+        return bg2.scanline;
+      case Dispcnt::BackgroundLayer::Three:
+        return bg3.scanline;
+      case Dispcnt::BackgroundLayer::Obj:
+        return sprite_scanline;
+    }
+  }
+
   std::array<Background*, 4> m_backgrounds{&bg0, &bg1, &bg2, &bg3};
   decltype(m_backgrounds)::iterator m_backgrounds_end = m_backgrounds.begin();
+
+  std::array<Color, ScreenWidth> sprite_scanline;
 
   nonstd::span<u8> m_vram;
   nonstd::span<u8> m_palette_ram;

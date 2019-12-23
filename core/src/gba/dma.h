@@ -1,4 +1,7 @@
 #pragma once
+#include <fmt/format.h>
+#include "error_handling.h"
+#include "gba/interrupts.h"
 #include "utils.h"
 
 namespace gb::advance {
@@ -32,9 +35,21 @@ class Dma {
   [[nodiscard]] static std::tuple<AddressType, DmaNumber, bool> select_dma(
       u32 addr);
 
+  friend class Control;
   class Control : public Integer<u16> {
    public:
     Control(u16 value, Dma& dma) : Integer::Integer(value), m_dma{&dma} {}
+
+    void write_byte(unsigned int byte, u8 value) {
+      const bool reload_internal_regs =
+          byte == 1 && gb::test_bit(value, 7) && !test_bit(15);
+      if (reload_internal_regs) {
+        m_dma->m_internal_dest = m_dma->dest;
+        m_dma->m_internal_source = m_dma->source;
+        m_dma->m_internal_count = m_dma->count;
+      }
+      Integer::write_byte(byte, value);
+    }
 
     void on_after_write() const { m_dma->handle_side_effects(); }
 
@@ -88,6 +103,7 @@ class Dma {
       : m_mmu{&mmu},
         m_cpu{&cpu},
         m_dma_number{dma_number},
+        m_dma_interrupt{dma_number_to_interrupt(dma_number)},
         m_source_mask{static_cast<u32>(
             dma_number == DmaNumber::Dma0 ? 0x07ffffff : 0x0fffffff)},
         m_dest_mask{static_cast<u32>(
@@ -97,11 +113,14 @@ class Dma {
   [[nodiscard]] const Control& control() const { return m_control; }
 
   [[nodiscard]] DmaNumber number() const { return m_dma_number; }
+  [[nodiscard]] Interrupt interrupt() const { return m_dma_interrupt; }
 
   void handle_side_effects() {
     if (m_control.enabled() &&
         m_control.start_timing() == Control::StartTiming::Immediately) {
-      m_internal_dest = dest;
+      // m_internal_source = source;
+      // m_internal_dest = dest;
+      // m_internal_count = count;
       run();
     }
   }
@@ -109,13 +128,30 @@ class Dma {
   void run();
 
  private:
+  static Interrupt dma_number_to_interrupt(Dma::DmaNumber dma_number) {
+    switch (dma_number) {
+      case Dma::DmaNumber::Dma0:
+        return Interrupt::Dma0;
+      case Dma::DmaNumber::Dma1:
+        return Interrupt::Dma1;
+      case Dma::DmaNumber::Dma2:
+        return Interrupt::Dma2;
+      case Dma::DmaNumber::Dma3:
+        return Interrupt::Dma3;
+    }
+    GB_UNREACHABLE();
+  }
   Mmu* m_mmu;
   Cpu* m_cpu;
   Control m_control{0, *this};
   DmaNumber m_dma_number;
+  Interrupt m_dma_interrupt;
   u32 m_source_mask;
   u32 m_dest_mask;
   u32 m_internal_dest = 0;
+  u32 m_internal_source = 0;
+  u16 m_internal_count = 0;
+  Control m_internal_control{0, *this};
 };
 
 class Dmas {

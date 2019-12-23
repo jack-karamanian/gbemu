@@ -1,4 +1,4 @@
-#include "lcd.h"
+#include "gba/lcd.h"
 #include "gba/cpu.h"
 #include "gba/dma.h"
 #include "gba/gpu.h"
@@ -8,9 +8,9 @@ namespace gb::advance {
 void Lcd::increment_vcount() {
   ++vcount;
 
-  if (dispstat.enable_lyc_interrupt() && vcount == dispstat.lyc()) {
-    m_cpu->interrupts_requested.set_interrupt(Interrupt::VCountMatch, true);
-  }
+  m_cpu->interrupts_requested.set_interrupt(
+      Interrupt::VCountMatch,
+      dispstat.enable_lyc_interrupt() && vcount == dispstat.lyc());
 }
 
 bool Lcd::update(u32 cycles) {
@@ -39,10 +39,10 @@ bool Lcd::update(u32 cycles) {
     case Mode::HBlank:
       if (m_cycles >= 272) {
         m_cycles = 0;
-        //++vcount;
+        if (vcount <= 159) {
+          m_gpu->render_scanline(vcount);
+        }
         increment_vcount();
-
-        // m_mode = vcount > 160 ? Mode::VBlank : Mode::Draw;
 
         dispstat.set_hblank(false);
         if (vcount > 159) {
@@ -60,7 +60,6 @@ bool Lcd::update(u32 cycles) {
           draw_frame = true;
 
         } else {
-          m_gpu->render_scanline(vcount);
           m_mode = Mode::Draw;
         }
       }
@@ -68,7 +67,6 @@ bool Lcd::update(u32 cycles) {
     case Mode::VBlank:
       if (m_cycles >= 1232) {
         m_cycles = 0;
-        //++vcount;
         increment_vcount();
 
         if (vcount > 227) {

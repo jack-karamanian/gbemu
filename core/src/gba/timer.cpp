@@ -1,5 +1,6 @@
+#include "gba/timer.h"
 #include "gba/cpu.h"
-#include "timer.h"
+#include "gba/sound.h"
 
 namespace gb::advance {
 
@@ -9,24 +10,39 @@ bool Timer::increment_counter() {
 
   if (did_overflow) {
     counter = reload_value;
-    m_cpu->interrupts_requested.set_interrupt(m_interrupt, true);
+    if (control.interrupt()) {
+      m_cpu->interrupts_requested.set_interrupt(m_timer_interrupt, true);
+    }
+
+    if (m_sound->soundcnt_high.dma_sound_a_timer() == m_timer_number) {
+      m_sound->read_fifo_a_sample();
+    }
+    if (m_sound->soundcnt_high.dma_sound_b_timer() == m_timer_number) {
+      m_sound->read_fifo_b_sample();
+    }
   }
 
   return did_overflow;
 }
 bool Timer::update(u32 cycles) {
   if (control.enabled()) {
+    bool did_overflow = false;
+    const u32 overflow_cycles = control.cycles();
     m_cycles += cycles;
 
-    const u32 overflow_cycles = control.cycles();
-    if (m_cycles >= overflow_cycles) {
+    while (m_cycles >= overflow_cycles) {
       m_cycles -= overflow_cycles;
+      if (m_cycles > 10) {
+        fmt::print("cycles {}\n", m_cycles);
+      }
       if (!control.count_up()) {
-        if (m_interrupt == Interrupt::Timer0Overflow) {
-        }
-        return increment_counter();
+        // return increment_counter();
+        const bool overflow = increment_counter();
+        did_overflow = did_overflow || overflow;
       }
     }
+    return did_overflow;
+    //}
   }
   return false;
 }

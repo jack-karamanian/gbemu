@@ -8,7 +8,7 @@ namespace gb::advance {
 using namespace gb::advance::hardware;
 
 static constexpr auto gen_table() {
-  constexpr std::array<std::pair<u32, u32>, 100> io_register_sizes_ = {
+  constexpr std::array<std::pair<u32, u32>, 99> io_register_sizes_ = {
       {{DISPCNT, 2},     {GREENSWAP, 2},   {DISPSTAT, 2},    {VCOUNT, 2},
        {BG0CNT, 2},      {BG1CNT, 2},      {BG2CNT, 2},      {BG3CNT, 2},
        {BG0HOFS, 2},     {BG0VOFS, 2},     {BG1HOFS, 2},     {BG1VOFS, 2},
@@ -33,7 +33,7 @@ static constexpr auto gen_table() {
        {SIOMLT_SEND, 2}, {SIODATA8, 2},    {KEYINPUT, 2},    {KEYCNT, 2},
        {RCNT, 2},        {JOYCNT, 2},      {JOY_RECV, 4},    {JOY_TRANS, 4},
        {JOYSTAT, 2},     {IE, 2},          {IF, 2},          {WAITCNT, 2},
-       {IME, 2},         {POSTFLG, 1},     {HALTCNT, 1},     {WAVERAM, 0x20}}};
+       {IME, 2},         {POSTFLG, 1},     {HALTCNT, 1}}};
 
   std::array<u32, 0x410> res{};
   constexpr_fill(res, 0xffffffff);
@@ -52,6 +52,9 @@ static constexpr auto gen_table() {
 static constexpr auto io_register_sizes = gen_table();
 
 IoRegisterResult select_io_register(u32 addr) {
+  if (addr >= hardware::WAVERAM && addr < hardware::WAVERAM + 0x10) {
+    return {hardware::WAVERAM, 0};
+  }
   if (addr == hardware::mgba::DEBUG_FLAGS ||
       addr == hardware::mgba::DEBUG_ENABLE) {
     return {addr, 0};

@@ -25,6 +25,7 @@ inline DivResult divide(s32 num, s32 denom) noexcept {
 
 void lz77_decompress(nonstd::span<const u8> src,
                      nonstd::span<u8> dest,
+                     u32 dest_addr,
                      u32 type_size);
 }  // namespace hle::bios
 }  // namespace gb::advance

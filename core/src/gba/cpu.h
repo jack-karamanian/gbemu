@@ -518,7 +518,7 @@ class Cpu {
   [[nodiscard]] const Debugger& debugger() const { return m_debugger; }
 
   InterruptBucket interrupts_enabled{0};
-  InterruptsRequested interrupts_requested{0};
+  InterruptsRequested interrupts_requested{*this};
   InterruptBucket interrupts_waiting{0};
   u32 ime = 0;
 
@@ -531,7 +531,11 @@ class Cpu {
   }
 
   [[nodiscard]] u32 execute();
-  [[nodiscard]] u32 handle_interrupts();
+  void handle_interrupts();
+
+  [[nodiscard]] nonstd::span<const u8> prefetched_opcode() const noexcept {
+    return m_prefetched_opcode;
+  }
 
   bool halted = false;
 
@@ -577,7 +581,12 @@ class Cpu {
   std::array<ProgramStatus, 5> m_saved_program_status{};
   SavedRegisters m_saved_registers;
   u32 m_prefetch_offset = 4;
-};
+
+  nonstd::span<const u8> m_current_memory;
+  u32 m_current_memory_region = 0;
+  u32 m_memory_offset = 0;
+  std::array<u8, 4> m_prefetched_opcode = {0, 0, 0, 0};
+};  // namespace gb::advance
 
 class SoftwareInterrupt : public Instruction {
  public:

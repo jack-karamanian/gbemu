@@ -1,7 +1,15 @@
 #include "gba/gpu.h"
+#include <execution>
 #include "gba/mmu.h"
 
 namespace gb::advance {
+
+static constexpr auto make_blend_func(float first_weight, float second_weight) {
+  return [first_weight, second_weight](float channel1,
+                                       float channel2) -> float {
+    return std::min(255.0F, channel1 * first_weight + channel2 * second_weight);
+  };
+}
 
 void Dispcnt::on_after_write() const {
   m_gpu->sort_backgrounds();
@@ -44,13 +52,22 @@ static Rect<unsigned int> sprite_size(ObjAttribute0::Shape shape,
 }
 
 void Gpu::render_scanline(unsigned int scanline) {
+  for (auto& infos : m_per_pixel_context.pixel_priorities) {
+    infos.clear();
+  }
+  std::fill(m_per_pixel_context.sprite_priorities.begin(),
+            m_per_pixel_context.sprite_priorities.end(), -1);
+  for (auto& bg_scanline : m_scanlines) {
+    std::fill(bg_scanline.begin(), bg_scanline.end(), Color{0, 0, 0, 0});
+  }
   std::fill(m_framebuffer.begin() + ScreenWidth * scanline,
             m_framebuffer.begin() + ScreenWidth * scanline + ScreenWidth,
             Color{0, 0, 0, 255});
   std::fill(m_per_pixel_context.priorities.begin(),
             m_per_pixel_context.priorities.end(), -1);
-  std::fill(m_per_pixel_context.discarded_pixels.begin(),
-            m_per_pixel_context.discarded_pixels.end(), Color{0, 0, 0, 0});
+  std::fill(m_per_pixel_context.top_pixels.begin(),
+            m_per_pixel_context.top_pixels.end(), Color{0, 0, 0, 0});
+  std::fill(sprite_scanline.begin(), sprite_scanline.end(), Color{0, 0, 0, 0});
 
   switch (dispcnt.bg_mode()) {
     case BgMode::Zero:
@@ -68,6 +85,90 @@ void Gpu::render_scanline(unsigned int scanline) {
       break;
   }
   render_sprites(scanline);
+
+  {
+    int x = 0;
+
+    for (int priority : m_per_pixel_context.sprite_priorities) {
+      if (priority != -1) {
+        auto& priorities = m_per_pixel_context.pixel_priorities[x];
+        const int insert_index = [&priorities, priority] {
+          for (int i = priorities.size() - 1; i >= 0; --i) {
+            if (priorities[i].priority >= priority) {
+              return i + 1;
+            }
+          }
+          return 0;
+        }();
+        priorities.insert(&priorities[insert_index],
+                          PriorityInfo{Dispcnt::BackgroundLayer::Obj, -1});
+      }
+      ++x;
+    }
+  }
+
+  if (bldcnt.mode() == Bldcnt::BlendMode::Alpha) {
+    const float first_weight = bldalpha.first_target_coefficient();
+    const float second_weight = bldalpha.second_target_coefficient();
+    int x = 0;
+    for (auto& pixel_layers : m_per_pixel_context.pixel_priorities) {
+      auto first_target = std::find_if(
+          pixel_layers.rbegin(), pixel_layers.rend(), [this](auto info) {
+            return bldcnt.first_target_enabled(
+                Bldcnt::to_blend_layer(info.layer));
+          });
+
+      auto second_target =
+
+          std::find_if(first_target == pixel_layers.rend()
+                           ? pixel_layers.rbegin()
+                           : first_target + 1,
+                       pixel_layers.rend(), [this](auto info) {
+                         return bldcnt.second_target_enabled(
+                             Bldcnt::to_blend_layer(info.layer));
+                       });
+
+      if ((first_target != pixel_layers.rend() &&
+           second_target == pixel_layers.rend()) ||
+          (first_target == pixel_layers.rend() &&
+           second_target != pixel_layers.rend())) {
+        m_framebuffer[ScreenWidth * scanline + x] =
+            m_per_pixel_context.top_pixels[x];
+      } else if (first_target != pixel_layers.rend() &&
+                 (first_target + 1) != pixel_layers.rend()) {
+        if (pixel_layers.back().layer == first_target->layer &&
+            (first_target + 1)->layer == second_target->layer) {
+          const auto blend = [first_weight, second_weight](float channel1,
+                                                           float channel2) {
+            return std::min(255.0F,
+                            channel1 * first_weight + channel2 * second_weight);
+          };
+          const Color color_one =
+              framebuffer_from_layer(first_target->layer)[x];
+          const Color color_two =
+              framebuffer_from_layer((first_target + 1)->layer)[x];
+
+          m_framebuffer[ScreenWidth * scanline + x] = Color(
+              blend(color_one.r, color_two.r), blend(color_one.g, color_two.g),
+              blend(color_one.b, color_two.b), 255);
+        } else {
+          m_framebuffer[ScreenWidth * scanline + x] =
+              m_per_pixel_context.top_pixels[x];
+        }
+      } else {
+        m_framebuffer[ScreenWidth * scanline + x] =
+            m_per_pixel_context.top_pixels[x];
+      }
+      ++x;
+    }
+  } else {
+    const auto begin = m_per_pixel_context.top_pixels.cbegin();
+    const auto end = m_per_pixel_context.top_pixels.cend();
+    std::copy(begin, end, &m_framebuffer[ScreenWidth * scanline]);
+  }
+  for (auto& layers : m_per_pixel_context.pixel_layers) {
+    layers.clear();
+  }
 }
 
 void Gpu::sort_backgrounds() {
@@ -96,37 +197,48 @@ static void draw_color(nonstd::span<Color> framebuffer,
       static_cast<u8>(convert_space<32, 255>((color >> 10) & 0x1f)), 255};
 }
 
-static void render_tile_row_4bpp(nonstd::span<Color> framebuffer,
-                                 nonstd::span<const u8> palette_bank,
-                                 Vec2<unsigned int> position,
-                                 unsigned int priority,
-                                 Gpu::PerPixelContext& per_pixel_context,
-                                 nonstd::span<const u8> tile_pixels,
-                                 bool is_sprite,
-                                 bool horizontal_flip = false) {
+void Gpu::render_tile_row_4bpp(nonstd::span<Color> framebuffer,
+                               nonstd::span<const u8> palette_bank,
+                               Vec2<unsigned int> position,
+                               unsigned int priority,
+                               Gpu::PerPixelContext& per_pixel_context,
+                               nonstd::span<const u8> tile_pixels,
+                               Dispcnt::BackgroundLayer layer,
+                               PriorityInfo priority_info,
+                               bool horizontal_flip) {
   const auto [base_index, scanline] = position;
 
   const int pixel_two_offset = horizontal_flip ? -1 : 1;
   const unsigned int flip_target_offset = horizontal_flip ? 1 : 0;
 
-  const auto render_pixel = [framebuffer, priority, &per_pixel_context,
-                             new_priority = is_sprite ? -1 : priority,
-                             scanline = scanline](u16 color, unsigned int x) {
-    const bool is_higher_priority = priority <= per_pixel_context.priorities[x];
-    if (x < Gpu::ScreenWidth) {
-      draw_color(
-          is_higher_priority ? framebuffer : per_pixel_context.discarded_pixels,
-          x, is_higher_priority ? scanline : 0, color);
-      if (is_higher_priority) {
-        per_pixel_context.priorities[x] = new_priority;
-      }
-    }
-  };
+  const auto render_pixel =
+      [framebuffer, priority, priority_info, layer, &per_pixel_context,
+       new_priority = layer == Dispcnt::BackgroundLayer::Obj ? -1 : priority](
+          u16 color, unsigned int x) {
+        if (x < Gpu::ScreenWidth) {
+          const bool is_higher_priority =
+              priority <= per_pixel_context.priorities[x];
+          draw_color(framebuffer, x, 0, color);
 
-  for (unsigned int x = 0; x < tile_pixels.size(); ++x) {
+          if (layer == Dispcnt::BackgroundLayer::Obj) {
+            per_pixel_context.sprite_priorities[x] = priority;
+          }
+
+          if (is_higher_priority) {
+            auto& priorities = per_pixel_context.pixel_priorities[x];
+            if (layer != Dispcnt::BackgroundLayer::Obj &&
+                (priorities.size() == 0 || priorities.back().layer != layer)) {
+              priorities.push_back(priority_info);
+            }
+            per_pixel_context.priorities[x] = new_priority;
+            per_pixel_context.top_pixels[x] = framebuffer[x];
+          }
+        }
+      };
+
+  for (unsigned int x = 0; x < 4; ++x) {
     const u8 tile_group = tile_pixels[x];
-    const unsigned int pixel_x =
-        horizontal_flip ? tile_pixels.size() - x - 1 : x;
+    const unsigned int pixel_x = horizontal_flip ? 4 - x - 1 : x;
 
     const u8 pixel_one = tile_group & 0xf;
     const u8 pixel_two = (tile_group >> 4) & 0xf;
@@ -168,52 +280,12 @@ void Gpu::render_mode4() {
   }
 }
 
-static void blend_pixels(nonstd::span<Color> target,
-                         nonstd::span<const Color> blend_target_pixels,
-                         float first_target_weight,
-                         float second_target_weight) {
-  const auto blend = [first_target_weight, second_target_weight](
-                         float channel1, float channel2) {
-    return std::min(255.0F, channel1 * first_target_weight +
-                                channel2 * second_target_weight);
-  };
-
-  const auto begin = target.begin();
-  const auto end = target.end();
-  std::transform(
-      begin, end, begin,
-      [i = 0, blend, blend_target_pixels](const Color color) mutable {
-        const Color color_two = blend_target_pixels[i++];
-        return Color(blend(color.r, color_two.r), blend(color.g, color_two.g),
-                     blend(color.b, color_two.b), color.a);
-      });
-}
-
 void Gpu::render_background(Background background, unsigned int scanline) {
   const u32 tile_scanline = scanline / TileSize;
-#if 0
-  const s16 tile_x = static_cast<s16>(background.scroll.x) / TileSize;
-  const s16 tile_y = static_cast<s16>(background.scroll.y) / TileSize;
-#endif
   const u16 tile_x = (background.scroll.x & 0b1'1111'1111) / TileSize;
   const u16 tile_y = (background.scroll.y & 0b1'1111'1111) / TileSize;
 
   const Bgcnt control = background.control;
-
-#if 0
-  const auto screen_size = control.screen_size();
-  const auto tile_screen_size = screen_size.as_tiles();
-  const u32 scroll_offset = [&] {
-    const auto total_length = tile_screen_size.screen_size.width *
-                              tile_screen_size.screen_size.height * 2;
-    const auto base_offset =
-        (32 * tile_y + tile_x) * 2 + (32 * 2 * tile_scanline);
-
-    return control.display_overflow() == Bgcnt::DisplayOverflow::Wraparound
-               ? base_offset % total_length
-               : base_offset;
-  }();
-#endif
 
   const auto base_block_offset = control.tilemap_base_block();
   const nonstd::span<const u8> vram = m_vram.subspan(base_block_offset);
@@ -323,10 +395,12 @@ void Gpu::render_background(Background background, unsigned int scanline) {
     const auto base_index = index * TileSize;
     if (bits_per_pixel == 4) {
       render_tile_row_4bpp(
-          m_framebuffer, palette_bank,
-          {base_index - (background.scroll.x % TileSize), scanline},
+          background.scanline, palette_bank,
+          {base_index - (background.scroll.x % TileSize), 0 /*scanline*/},
           background.control.priority(), m_per_pixel_context, tile_pixels,
-          false, entry.horizontal_flip());
+          background.layer,
+          {background.layer, static_cast<int>(background.control.priority())},
+          entry.horizontal_flip());
     } else {
       for (unsigned int pixel_x = 0; pixel_x < tile_pixels.size(); ++pixel_x) {
         const u8 tile_group = tile_pixels[pixel_x];
@@ -337,57 +411,11 @@ void Gpu::render_background(Background background, unsigned int scanline) {
                            ? (TileSize - 1) + base_index - pixel_x
                            : base_index + pixel_x;
 
-        if (x < Gpu::ScreenWidth) {
+        if (x < Gpu::ScreenWidth && tile_group != 0) {
           m_per_pixel_context.priorities[x] = background.control.priority();
-          draw_color(m_framebuffer, x, scanline, color);
+          draw_color(m_per_pixel_context.top_pixels, x, 0 /*scanline*/, color);
         }
       }
-    }
-  }
-
-  if (bldcnt.mode() == Bldcnt::BlendMode::Alpha) {
-    const auto blend_layer = Bldcnt::to_blend_layer(background.layer);
-
-    if (blend_layer == Bldcnt::BlendLayer::None) {
-      return;
-    }
-
-    if (bldcnt.second_target_enabled(blend_layer)) {
-      const auto begin = m_framebuffer.begin() + ScreenWidth * scanline;
-      const auto end = begin + ScreenWidth;
-      std::copy(begin, end, m_per_pixel_context.blend_target_pixels.begin());
-      m_per_pixel_context.blend_layer = background.layer;
-    }
-    if (m_per_pixel_context.blend_layer != background.layer &&
-        bldcnt.first_target_enabled(blend_layer)) {
-      const float first_target_coefficient =
-          bldalpha.first_target_coefficient();
-      const float second_target_coefficient =
-          bldalpha.second_target_coefficient();
-
-      const nonstd::span<Color> framebuffer = m_framebuffer;
-      blend_pixels(framebuffer.subspan(ScreenWidth * scanline, ScreenWidth),
-                   m_per_pixel_context.blend_target_pixels,
-                   first_target_coefficient, second_target_coefficient);
-#if 0
-      const auto begin = m_framebuffer.begin() + ScreenWidth * scanline;
-      const auto end = begin + ScreenWidth;
-      const auto target = begin;
-      const auto blend = [first_target_coefficient, second_target_coefficient](
-                             float channel1, float channel2) {
-        return std::min(255.0F, channel1 * first_target_coefficient +
-                                    channel2 * second_target_coefficient);
-      };
-
-      std::transform(begin, end, target,
-                     [i = 0, blend, this](const Color color) mutable {
-                       const Color color_two =
-                           m_per_pixel_context.blend_target_pixels[i++];
-                       return Color(blend(color.r, color_two.r),
-                                    blend(color.g, color_two.g),
-                                    blend(color.b, color_two.b), 255);
-                     });
-#endif
     }
   }
 }
@@ -396,15 +424,11 @@ void Gpu::render_sprites(unsigned int scanline) {
   const auto sprite_palette_ram = m_palette_ram.subspan(0x200);
   const auto sprite_tile_data = m_vram.subspan(0x010000);
 
-  std::array<Color, ScreenWidth> sprite_scanline;
-
-  {
-    auto begin = m_framebuffer.begin() + ScreenWidth * scanline;
-    auto end = begin + ScreenWidth;
-    std::copy(begin, end, m_per_pixel_context.blend_target_pixels.begin());
-  }
-
+  const float first_weight = bldalpha.first_target_coefficient();
+  const float second_weight = bldalpha.second_target_coefficient();
+  const auto blend = make_blend_func(first_weight, second_weight);
   // Render sprites backwards to express the priority
+  std::array<Color, TileSize> old_tile;
   for (std::ptrdiff_t i = m_oam_ram.ssize() - 8; i >= 0; i -= 8) {
     const Sprite sprite(m_oam_ram[i + 0] | (m_oam_ram[i + 1] << 8),
                         m_oam_ram[i + 2] | (m_oam_ram[i + 3] << 8),
@@ -423,22 +447,22 @@ void Gpu::render_sprites(unsigned int scanline) {
 
     const auto sprite_y = sprite.attrib0.y();
 
-    const auto sprite_height_scanline = ((scanline - sprite_y) / TileSize);
+    const auto sprite_height_scanline = (scanline - sprite_y) / TileSize;
 
     const auto tile_scanline = ((scanline - sprite_y) % TileSize);
     const auto sprite_2d_offset =
         dispcnt.obj_vram_mapping() == Dispcnt::ObjVramMapping::TwoDimensional
             ? (sprite_height_scanline * 32 * tile_length)
-            : sprite_height_scanline * tile_length;
+            : sprite_height_scanline * sprite_rect.width * tile_row_length;
 
     if (scanline < sprite_y + sprite_rect.height) {
       const auto tile_base_offset = (sprite.attrib2.tile_id() * tile_length);
 
-      const auto render_sprite_tile = [&sprite_scanline, sprite_tile_data,
-                                       sprite_palette_ram, sprite_tile_rect,
-                                       tile_row_length, tile_scanline,
-                                       tile_length, sprite, tile_base_offset,
-                                       sprite_2d_offset, scanline,
+      const auto render_sprite_tile = [sprite_tile_data, sprite_palette_ram,
+                                       sprite_tile_rect, tile_row_length,
+                                       tile_scanline, tile_length, sprite,
+                                       tile_base_offset, sprite_2d_offset,
+                                       blend, &old_tile,
                                        this](unsigned int index) {
         const auto sprite_pixels = sprite_tile_data.subspan(
             tile_base_offset + sprite_2d_offset +
@@ -452,37 +476,41 @@ void Gpu::render_sprites(unsigned int scanline) {
                    TileSize * (sprite_tile_rect.width - index - 1))
                 : (sprite.attrib1.x() + TileSize * index);
 
+        for (unsigned int x = base_x; x < base_x + TileSize && x < ScreenWidth;
+             ++x) {
+          old_tile[x - base_x] = m_per_pixel_context.top_pixels[x];
+        }
+
         render_tile_row_4bpp(
             sprite_scanline,
             sprite_palette_ram.subspan(sprite.attrib2.palette_bank() * 2 * 16),
             {base_x, 0}, sprite.attrib2.priority(), m_per_pixel_context,
-            sprite_pixels, true, sprite.attrib1.horizontal_flip());
+            sprite_pixels, Dispcnt::BackgroundLayer::Obj,
+            {Dispcnt::BackgroundLayer::Obj,
+             static_cast<int>(sprite.attrib2.priority())},
+            sprite.attrib1.horizontal_flip());
+
+        if (sprite.attrib0.gfx_mode() ==
+            ObjAttribute0::GfxMode::AlphaBlending) {
+          for (unsigned int x = base_x;
+               x < base_x + TileSize && x < ScreenWidth; ++x) {
+            // Disable any other alpha blending for this pixel
+            // and write the blended sprite
+            m_per_pixel_context.pixel_priorities[x].clear();
+            const Color color_one = m_per_pixel_context.top_pixels[x];
+            const Color color_two = old_tile[x - base_x];
+            m_per_pixel_context.top_pixels[x] =
+                Color(blend(color_one.r, color_two.r),
+                      blend(color_one.g, color_two.g),
+                      blend(color_one.b, color_two.b), 255);
+          }
+        }
       };
+
       // Render a scanline across all tiles
       for (unsigned int index = 0; index < sprite_tile_rect.width; ++index) {
         render_sprite_tile(index);
       }
-    }
-  }
-
-  const auto framebuffer = nonstd::span<Color>{m_framebuffer}.subspan(
-      ScreenWidth * scanline, ScreenWidth);
-  if (bldcnt.mode() == Bldcnt::BlendMode::Alpha) {
-    if (bldcnt.first_target_enabled(Bldcnt::BlendLayer::Obj)) {
-      blend_pixels(sprite_scanline, framebuffer,
-                   bldalpha.first_target_coefficient(),
-                   bldalpha.second_target_coefficient());
-    }
-  }
-  copy_if_same_index(sprite_scanline.begin(), sprite_scanline.end(),
-                     framebuffer.begin(),
-                     [](const Color color) { return color.a > 0; });
-
-  if (bldcnt.mode() == Bldcnt::BlendMode::Alpha) {
-    if (bldcnt.second_target_enabled(Bldcnt::BlendLayer::Obj)) {
-      blend_pixels(framebuffer, m_per_pixel_context.discarded_pixels,
-                   bldalpha.first_target_coefficient(),
-                   bldalpha.second_target_coefficient());
     }
   }
 }

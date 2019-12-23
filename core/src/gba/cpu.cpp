@@ -137,7 +137,7 @@ constexpr u32 compute_result(ShiftType shift_type,
 }
 
 constexpr std::tuple<bool, u32> compute_shifted_operand(
-    const ShiftResult& shift_result) {
+    const ShiftResult shift_result) {
   const auto [shift_type, shift_amount, shift_operand, result, set_carry] =
       shift_result;
 
@@ -239,8 +239,9 @@ class DataProcessing : public Instruction {
     };
 
     const auto run_arithmetic =
-        [&](u64 op1, u64 op2, bool write, auto impl, bool invert_carry,
-            bool carry_override = false, bool carry_override_value = false) {
+        [&](u64 op1, u64 op2, bool write, FunctionRef<u64(u64, u64)> impl,
+            bool invert_carry, bool carry_override = false,
+            bool carry_override_value = false) {
           const u64 result = impl(op1, op2);
 
           const u32 result_32 = static_cast<u32>(result & 0xffffffff);
@@ -567,7 +568,7 @@ class Branch : public Instruction {
       cpu.set_reg(Register::R14, cpu.reg(Register::R15) - 4);
     }
     cpu.set_reg(Register::R15, next_pc);
-    return (2_seq + 1_nonseq).sum();
+    return 3;
   }
 };
 
@@ -944,6 +945,7 @@ enum class SoftwareInterruptType : u32 {
   ArcTan2 = 0x0a,
   CpuSet = 0x0b,
   CpuFastSet = 0x0c,
+  BgAffineSet = 0xe,
   ObjAffineSet = 0x0f,
   Lz77Wram = 0x11,
   Lz77Vram = 0x12,
@@ -997,32 +999,52 @@ u32 SoftwareInterrupt::execute(Cpu& cpu) {
       cpu_fast_set(*cpu.m_mmu, cpu.reg(Register::R0), cpu.reg(Register::R1),
                    cpu.reg(Register::R2));
       break;
+    case SoftwareInterruptType::BgAffineSet:
+      break;
     case SoftwareInterruptType::ObjAffineSet:
       break;
     case SoftwareInterruptType::Lz77Wram: {
-      fmt::printf("source %08x dest %08x\n", cpu.reg(Register::R0),
-                  cpu.reg(Register::R1));
+      // fmt::printf("source %08x dest %08x\n", cpu.reg(Register::R0),
+      //            cpu.reg(Register::R1));
       const auto [source_storage, source_addr] =
           cpu.m_mmu->select_storage(cpu.reg(Register::R0));
       const auto [dest_storage, dest_addr] =
           cpu.m_mmu->select_storage(cpu.reg(Register::R1));
+#if 0
+      lz77_decompress(source_storage.subspan(source_addr), dest_storage,
+                      dest_addr, 1);
+#else
       lz77_decompress(source_storage.subspan(source_addr),
-                      dest_storage.subspan(dest_addr), 1);
+                      dest_storage.subspan(dest_addr), dest_addr, 1);
+#endif
       break;
     }
     case SoftwareInterruptType::Lz77Vram: {
-      fmt::printf("source %08x dest %08x\n", cpu.reg(Register::R0),
-                  cpu.reg(Register::R1));
+      // fmt::printf("source %08x dest %08x\n", cpu.reg(Register::R0),
+      //            cpu.reg(Register::R1));
       const auto [source_storage, source_addr] =
           cpu.m_mmu->select_storage(cpu.reg(Register::R0));
       const auto [dest_storage, dest_addr] =
-          cpu.m_mmu->select_storage(cpu.reg(Register::R1));
+          cpu.m_mmu->select_storage(cpu.reg(Register::R1) & ~1);
+#if 0
+      lz77_decompress(source_storage.subspan(source_addr), dest_storage,
+                      dest_addr, 2);
+#else
       lz77_decompress(source_storage.subspan(source_addr),
-                      dest_storage.subspan(dest_addr), 2);
+                      dest_storage.subspan(dest_addr), dest_addr, 2);
+#endif
       break;
     }
-    case SoftwareInterruptType::MidiKeyToFreq:
+    case SoftwareInterruptType::MidiKeyToFreq: {
+      // From mgba
+      auto freq = cpu.m_mmu->at<u32>(cpu.reg(Register::R0) + 4) /
+
+                  std::exp2f((180.0f - cpu.reg(Register::R1) -
+                              cpu.reg(Register::R2) / 256.0f) /
+                             12.0f);
+      cpu.set_reg(Register::R0, freq);
       break;
+    }
     case SoftwareInterruptType::SoundDriverVSyncOff:
       break;
 
@@ -1037,27 +1059,17 @@ u32 SoftwareInterrupt::execute(Cpu& cpu) {
   return 3;
 }
 
-u32 Cpu::handle_interrupts() {
-  if (const auto data = interrupts_waiting.data();
-      (interrupts_requested.data() & data) != 0) {
-    interrupts_waiting.set_data(0);
-  }
-  if ((interrupts_enabled.data() & interrupts_requested.data()) != 0) {
-    halted = false;
-    if (gb::test_bit(ime, 0) && m_current_program_status.irq_enabled()) {
-      const u32 next_pc = reg(Register::R15) - prefetch_offset() + 4;
+void Cpu::handle_interrupts() {
+  const u32 next_pc = reg(Register::R15) - prefetch_offset() + 4;
 
-      set_saved_program_status_for_mode(Mode::IRQ, m_current_program_status);
-      change_mode(Mode::IRQ);
-      set_reg(Register::R14, next_pc);
+  set_saved_program_status_for_mode(Mode::IRQ, m_current_program_status);
+  change_mode(Mode::IRQ);
+  set_reg(Register::R14, next_pc);
 
-      m_current_program_status.set_irq_enabled(false);
-      set_thumb(false);
+  m_current_program_status.set_irq_enabled(false);
+  set_thumb(false);
 
-      set_reg(Register::R15, 0x00000128);
-    }
-  }
-  return 0;
+  set_reg(Register::R15, 0x00000128);
 }
 
 u32 Cpu::execute() {
@@ -1066,10 +1078,30 @@ u32 Cpu::execute() {
   }
 
   const u32 instruction = [this] {
+#define NEW
+#ifdef NEW
+    if (const u32 pc_region = reg(Register::R15) & 0xff000000;
+        m_current_memory_region != pc_region) {
+      const auto [storage, _] = m_mmu->select_storage(reg(Register::R15));
+      // fmt::printf("%08x %08x %08x %d\n", pc_region, m_current_memory_region,
+      //            reg(Register::R15), storage.size());
+      m_current_memory_region = pc_region;
+      m_current_memory = storage;
+      m_memory_offset = pc_region;
+      // m_memory_offset = pc_region == 0 ? 0x128 : pc_region;
+    }
+#endif
     if (m_current_program_status.thumb_mode()) {
       static constexpr u32 nop = 0b1110'00'0'1101'0'0000'0000'000000000000;
       const u32 pc = reg(Register::R15) - 2;
+
+#ifdef NEW
+      u16 thumb_instruction;
+      std::memcpy(&thumb_instruction, &m_current_memory[pc - m_memory_offset],
+                  sizeof(u16));
+#else
       const u16 thumb_instruction = m_mmu->at<u16>(pc);
+#endif
       // fmt::printf("%08x\n", pc);
 
       // Long branch with link
@@ -1095,12 +1127,19 @@ u32 Cpu::execute() {
 
     const u32 pc = reg(Register::R15) - 4;
     // fmt::printf("%08x\n", pc);
+#ifdef NEW
+    u32 arm_instruction;
+    std::memcpy(&arm_instruction, &m_current_memory[pc - m_memory_offset],
+                sizeof(u32));
+#else
     const u32 arm_instruction = m_mmu->at<u32>(pc);
+#endif
     set_reg(Register::R15, pc + 4);
     return arm_instruction;
   }();
 
-  const InstructionType type = decode_instruction_type(instruction);
+  const auto type = decode_instruction_type(instruction);
+
   switch (type) {
     case InstructionType::DataProcessing:
       return run_instruction(DataProcessing{instruction});

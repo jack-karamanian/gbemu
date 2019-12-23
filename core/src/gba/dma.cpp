@@ -18,22 +18,10 @@ static Mmu::AddrOp select_addr_op(Dma::Control::AddrControl control) {
   GB_UNREACHABLE();
 }
 
-static Interrupt dma_number_to_interrupt(Dma::DmaNumber dma_number) {
-  switch (dma_number) {
-    case Dma::DmaNumber::Dma0:
-      return Interrupt::Dma0;
-    case Dma::DmaNumber::Dma1:
-      return Interrupt::Dma1;
-    case Dma::DmaNumber::Dma2:
-      return Interrupt::Dma2;
-    case Dma::DmaNumber::Dma3:
-      return Interrupt::Dma3;
-  }
-  GB_UNREACHABLE();
-}
-
 void Dma::run() {
-  m_internal_dest = dest;
+  if (!m_control.enabled()) {
+    return;
+  }
   m_control.set_data(m_control.data() & ~0b1'1111);
 
   const auto source_op = select_addr_op(m_control.source_addr_control());
@@ -43,73 +31,28 @@ void Dma::run() {
 
   constexpr u32 byte_mask = 0x0ffffffe;
 
-  const u32 masked_source = (source & m_source_mask) & byte_mask;
+  const u32 masked_source = (m_internal_source & m_source_mask) & byte_mask;
   const u32 masked_dest = (m_internal_dest & m_dest_mask) & byte_mask;
 
-  m_mmu->copy_memory(
-      {masked_source, source_op}, {masked_dest, dest_op},
-      count ? count : m_dma_number == DmaNumber::Dma3 ? 0x10000 : 0x4000,
-      type_size);
+  const u32 final_count =
+      count ? count : m_dma_number == DmaNumber::Dma3 ? 0x10000 : 0x4000;
+
+  m_mmu->copy_memory({masked_source, source_op}, {masked_dest, dest_op},
+                     final_count, type_size);
 
   if (m_control.dest_addr_control() !=
       Control::AddrControl::IncrementAndReload) {
-    // const u32 transfer_size =
-    //    m_control.word_transfer() ? sizeof(u32) : sizeof(u16);
-    m_internal_dest = count * type_size;
+    m_internal_dest += final_count * (type_size * static_cast<int>(dest_op));
+    m_internal_source +=
+        final_count * (type_size * static_cast<int>(source_op));
   }
 
-  if (!m_control.repeat() &&
-      m_control.start_timing() == Control::StartTiming::Immediately) {
+  if (!m_control.repeat()) {
     m_control.set_enabled(false);
   }
   if (m_control.interrupt_at_end()) {
-    m_cpu->interrupts_requested.set_interrupt(
-        dma_number_to_interrupt(m_dma_number), true);
+    m_cpu->interrupts_requested.set_interrupt(m_dma_interrupt, true);
   }
-  // m_mmu->hardware.cpu->debugger().stop_execution();
-  // m_mmu->hardware.cpu->debugger().stop_execution();
 }
 
-template <typename T>
-struct ExtractDmaNumber {};
-
-template <Dma::DmaNumber Num>
-struct ExtractDmaNumber<Dma::Addresses<Num>> {
-  static constexpr Dma::DmaNumber value = Num;
-};
-
-std::tuple<Dma::AddressType, Dma::DmaNumber, bool> Dma::select_dma(u32 addr) {
-  using DmaNumbers =
-      std::tuple<Addresses<DmaNumber::Dma0>, Addresses<DmaNumber::Dma1>,
-                 Addresses<DmaNumber::Dma2>, Addresses<DmaNumber::Dma3>>;
-  std::tuple<AddressType, DmaNumber, bool> found{AddressType::Source,
-                                                 DmaNumber::Dma0, false};
-  for_static<std::tuple_size_v<DmaNumbers>>([addr, &found](auto i) {
-    using T = std::tuple_element_t<i, DmaNumbers>;
-    constexpr DmaNumber dma_number = ExtractDmaNumber<T>::value;
-    switch (addr) {
-      case T::Source:
-        found = {AddressType::Source, dma_number, true};
-        break;
-      case T::Dest:
-        found = {AddressType::Dest, dma_number, true};
-        break;
-      case T::Count:
-        found = {AddressType::Count, dma_number, true};
-        break;
-      case T::Control:
-        found = {AddressType::Control, dma_number, true};
-        break;
-    }
-  });
-  return found;
-}
-
-TEST_CASE("dma address lookups should return the correct dma") {
-  const auto [address_type, dma_number, found] =
-      Dma::select_dma(Dma::Addresses<Dma::DmaNumber::Dma3>::Control);
-  CHECK(address_type == Dma::AddressType::Control);
-  CHECK(dma_number == Dma::DmaNumber::Dma3);
-  CHECK(found == true);
-}
 }  // namespace gb::advance

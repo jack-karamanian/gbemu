@@ -32,12 +32,21 @@ class InterruptBucket : public Integer<u16> {
   }
 };
 
+class Cpu;
+
 class InterruptsRequested : public InterruptBucket {
  public:
-  using InterruptBucket::InterruptBucket;
+  InterruptsRequested(Cpu& cpu)
+      : InterruptBucket::InterruptBucket{0}, m_cpu{&cpu} {}
   constexpr void write_byte(unsigned int byte, u8 value) {
     const u32 shift = byte * 8;
+    // m_value = (m_value) ^ (value << shift);
     m_value = (m_value) & ~(value << shift);
   }
+
+  void set_interrupt(Interrupt interrrupt, bool set);
+
+ private:
+  Cpu* m_cpu;
 };
 }  // namespace gb::advance
