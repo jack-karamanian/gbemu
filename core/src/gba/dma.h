@@ -43,15 +43,19 @@ class Dma {
     void write_byte(unsigned int byte, u8 value) {
       const bool reload_internal_regs =
           byte == 1 && gb::test_bit(value, 7) && !test_bit(15);
+      Integer::write_byte(byte, value);
       if (reload_internal_regs) {
         m_dma->m_internal_dest = m_dma->dest;
         m_dma->m_internal_source = m_dma->source;
         m_dma->m_internal_count = m_dma->count;
+        if (m_dma->m_control.start_timing() ==
+            Control::StartTiming::Immediately) {
+          m_dma->run();
+        }
       }
-      Integer::write_byte(byte, value);
     }
 
-    void on_after_write() const { m_dma->handle_side_effects(); }
+    void on_after_write() const noexcept {}
 
     enum class AddrControl : u32 {
       Increment = 0,
@@ -114,16 +118,6 @@ class Dma {
 
   [[nodiscard]] DmaNumber number() const { return m_dma_number; }
   [[nodiscard]] Interrupt interrupt() const { return m_dma_interrupt; }
-
-  void handle_side_effects() {
-    if (m_control.enabled() &&
-        m_control.start_timing() == Control::StartTiming::Immediately) {
-      // m_internal_source = source;
-      // m_internal_dest = dest;
-      // m_internal_count = count;
-      run();
-    }
-  }
 
   void run();
 
