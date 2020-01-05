@@ -1791,7 +1791,7 @@ u32 Cpu::execute() {
 
   static constexpr std::array<InstFunc, 16> func_lookup_table = {
     // 0x0xx
-    make_handler_from(([](auto lower_bits, auto upper_bits) -> InstFunc {
+    MAKE_HANDLER_FROM(([](auto lower_bits, auto upper_bits) -> InstFunc {
       switch (lower_bits) {
         case 0b1001:
           if constexpr (test_bit(upper_bits, 3)) {
