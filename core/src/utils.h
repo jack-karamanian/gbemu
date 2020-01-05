@@ -110,9 +110,16 @@ void visit_optional(const std::optional<T>& value, Func&& func) {
 }
 
 template <typename T>
-[[nodiscard]] constexpr bool test_bit(T value, unsigned int bit) {
+[[nodiscard]] constexpr bool test_bit(T value, unsigned int bit) noexcept {
   const T mask = static_cast<T>(1) << bit;
   return (value & mask) != 0;
+}
+
+template <typename T, T I>
+[[nodiscard]] constexpr bool test_bit(
+    [[maybe_unused]] std::integral_constant<T, I> _,
+    unsigned int bit) noexcept {
+  return test_bit(I, bit);
 }
 
 template <typename T, typename U>
@@ -204,6 +211,7 @@ class Integer {
  protected:
   T m_value;
 };
+
 template <typename Itr, typename Func>
 constexpr void constexpr_sort(Itr begin, Itr end, Func func) {
   constexpr auto swap = [](auto a, auto b) {
@@ -228,6 +236,16 @@ struct Overloaded : Funcs... {
     unsigned long long int kilobytes) noexcept {
   return kilobytes * 1024;
 }
+template <typename T, typename = void>
+struct IsInteger : std::false_type {};
+
+template <typename T>
+struct IsInteger<T,
+                 std::void_t<decltype(std::declval<T>().byte_span()),
+                             decltype(std::declval<T>().write_byte(0, 0)),
+                             decltype(std::declval<T>().size_bytes())>>
+    : std::true_type {};
+
 class IntegerRef {
  public:
   template <
@@ -235,9 +253,8 @@ class IntegerRef {
       typename = std::enable_if_t<!std::is_same_v<IntegerRef, std::decay_t<T>>>>
   IntegerRef(T& integer) noexcept : m_ptr{static_cast<void*>(&integer)} {
     using DecayedT = std::decay_t<T>;
-    using IsIntegerT = typename std::disjunction<
-        std::is_convertible<DecayedT*, Integer<u32>*>,
-        std::is_convertible<DecayedT*, Integer<u16>*>>;
+
+    using IsIntegerT = IsInteger<DecayedT>;
 
     if constexpr (IsIntegerT::value) {
       m_byte_span = integer.byte_span();
@@ -247,24 +264,24 @@ class IntegerRef {
       m_size_bytes = sizeof(DecayedT);
     }
 
-    m_write_byte = [](void* ptr, unsigned int offset,
+    m_write_byte = [](void* self, unsigned int offset,
                       nonstd::span<const u8> bytes) {
       constexpr bool is_integer = IsIntegerT::value;
-      auto* integer_ptr = reinterpret_cast<DecayedT*>(ptr);
+      auto* integer_self = reinterpret_cast<DecayedT*>(self);
 
       const auto size = bytes.size() & 0x7;
 
-      for (auto i = offset; i < size; ++i) {
+      for (long i = offset; i < size; ++i) {
         if constexpr (is_integer) {
-          integer_ptr->write_byte(i, bytes[i]);
+          integer_self->write_byte(i, bytes[i]);
         } else {
           static_assert(std::is_integral_v<DecayedT>);
           static_assert(!std::is_pointer_v<DecayedT>);
-          *integer_ptr = gb::write_byte(*integer_ptr, i, bytes[i]);
+          *integer_self = gb::write_byte(*integer_self, i, bytes[i]);
         }
       }
       if constexpr (is_integer) {
-        integer_ptr->on_after_write();
+        integer_self->on_after_write();
       }
     };
   }

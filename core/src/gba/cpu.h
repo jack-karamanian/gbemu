@@ -1,7 +1,5 @@
 #pragma once
 #include <doctest/doctest.h>
-#include <fmt/format.h>
-#include <fmt/printf.h>
 #include <algorithm>
 #include <array>
 #include <functional>
@@ -90,6 +88,7 @@ struct InstructionLookupEntry {
   template <typename... Args>
   constexpr InstructionLookupEntry& mask_bits(Args... args) {
     mask |= set_bits<IntegerType>(args...);
+
     return *this;
   }
   constexpr InstructionLookupEntry& mask_bit_range(int begin, int end) {
@@ -193,9 +192,11 @@ class Instruction : public Integer<u32> {
 
   using Integer::Integer;
 
+  // Rd
   [[nodiscard]] constexpr Register dest_register() const {
     return static_cast<Register>((m_value >> 12) & 0xf);
   }
+  // Rn
   [[nodiscard]] constexpr Register operand_register() const {
     return static_cast<Register>((m_value >> 16) & 0xf);
   }
@@ -545,6 +546,8 @@ class Cpu {
   friend class BlockDataTransfer;
   friend class SingleDataSwap;
   friend class SoftwareInterrupt;
+
+  [[nodiscard]] Mmu* mmu() noexcept { return m_mmu; }
 
  private:
   struct SavedRegisters {
