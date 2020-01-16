@@ -1242,7 +1242,7 @@ u32 make_block_data_transfer(Cpu& cpu, u32 instruction) {
 namespace arm {
 u32 branch_and_exchange(Cpu& cpu, u32 instruction) {
   common::branch_and_exchange(cpu, static_cast<Register>(instruction & 0xf));
-  return 1;
+  return 3;
 };
 u32 software_interrupt(Cpu& cpu, u32 instruction) {
   return SoftwareInterrupt{instruction}.execute(cpu);
@@ -1351,7 +1351,7 @@ u32 alu_operation(Cpu& cpu, u16 instruction) {
         cpu.program_status().carry());
   }
 
-  return 1;
+  return 3;
 }
 
 template <int opcode, bool hi_dest, bool hi_src>
@@ -1376,7 +1376,7 @@ u32 hi_register_operation(Cpu& cpu, u16 instruction) {
         cpu, dest_reg, cpu.reg(dest_reg), cpu.reg(src_reg),
         cpu.program_status().carry());
   }
-  return 1;
+  return 2;
 }
 
 template <Register dest_reg>
@@ -1552,7 +1552,7 @@ u32 unconditional_branch(Cpu& cpu, u16 instruction) {
   const u32 offset = (instruction & 0b111'1111'1111) << 1;
   constexpr u32 mask = /*test_bit(offset, 11) */ is_signed ? 0xfffff800 : 0;
   cpu.set_reg(Register::R15, cpu.reg(Register::R15) + (offset | mask));
-  return 1;
+  return 3;
 }
 
 template <bool part_two>
