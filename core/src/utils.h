@@ -54,28 +54,18 @@ template <typename T>
 }
 
 template <typename T>
-[[nodiscard]] nonstd::span<u8> to_bytes(T& val) {
+[[nodiscard]] nonstd::span<u8> to_bytes(T& val) noexcept {
   return {reinterpret_cast<u8*>(&val), sizeof(T)};
 }
 
 template <typename Func, std::size_t... I>
-void for_static_impl(Func&& f, std::index_sequence<I...>) {
+constexpr void for_static_impl(Func&& f, std::index_sequence<I...>) {
   (f(std::integral_constant<std::size_t, I>{}), ...);
 }
 
 template <std::size_t I, typename Func>
-void for_static(Func&& f) {
-  for_static_impl(f, std::make_index_sequence<I>());
-}
-
-template <std::size_t Offset, std::size_t... I>
-constexpr auto tuple_from_range_impl(std::index_sequence<I...>) {
-  return std::make_tuple(std::integral_constant<std::size_t, Offset + I>{}...);
-}
-template <std::size_t Begin, std::size_t End>
-constexpr auto tuple_from_range() {
-  return tuple_from_range_impl<Begin>(
-      std::make_index_sequence<End - Begin + 1>());
+constexpr void for_static(Func&& f) {
+  for_static_impl(std::forward<Func>(f), std::make_index_sequence<I>());
 }
 
 template <typename T>
@@ -232,10 +222,35 @@ struct Overloaded : Funcs... {
   using Funcs::operator()...;
 };
 
-[[nodiscard]] inline constexpr auto operator"" _kb(
+[[nodiscard]] constexpr auto operator"" _kb(
     unsigned long long int kilobytes) noexcept {
   return kilobytes * 1024;
 }
+
+template <typename F>
+class FunctionRef;
+
+template <typename Ret, typename... Args>
+class FunctionRef<Ret(Args...)> {
+ public:
+  template <typename F>
+  FunctionRef(F&& func) noexcept : m_impl{&func} {
+    m_func_ptr = [](void* impl, Args... args) -> Ret {
+      return (*reinterpret_cast<std::decay_t<F>*>(impl))(
+          std::forward<Args>(args)...);
+    };
+  }
+
+  Ret operator()(Args... args) const noexcept {
+    return m_func_ptr(m_impl, std::forward<Args>(args)...);
+  }
+
+ private:
+  using FuncPtr = Ret (*)(void*, Args...);
+  void* m_impl;
+  FuncPtr m_func_ptr;
+};
+
 template <typename T, typename = void>
 struct IsInteger : std::false_type {};
 
