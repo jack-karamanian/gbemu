@@ -315,7 +315,7 @@ class Mmu {
       // Account for reads larger than the size of an io register.
       alignas(T) u8 storage[sizeof(T)];
 
-      auto num_bytes = sizeof(T);
+      int num_bytes = sizeof(T);
       while (num_bytes > 0) {
         const auto [io_addr, resolved_addr] =
             select_io_register(addr + (sizeof(T) - num_bytes));
@@ -325,7 +325,7 @@ class Mmu {
             std::min(sizeof(T), selected_hardware.size_bytes());
         assert((copy_size & (copy_size - 1)) == 0);
 
-        const auto data =
+        const auto* data =
             selected_hardware.byte_span().subspan(resolved_addr).data();
         std::copy_n(data, copy_size, &storage[sizeof(T) - num_bytes]);
 
@@ -338,6 +338,9 @@ class Mmu {
     }
 
     const auto selected_span = [addr, this]() -> nonstd::span<const u8> {
+      if (memory_region(addr) >= 0x10000000) {
+        return get_prefetched_opcode();
+      }
       const auto [span, resolved_addr] = select_storage(addr);
 
       if (resolved_addr > span.size()) {
