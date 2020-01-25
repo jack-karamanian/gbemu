@@ -343,7 +343,7 @@ class Mmu {
       }
       const auto [span, resolved_addr] = select_storage(addr);
 
-      if (resolved_addr > span.size()) {
+      if (resolved_addr >= span.size()) {
         return get_prefetched_opcode();
       }
 
