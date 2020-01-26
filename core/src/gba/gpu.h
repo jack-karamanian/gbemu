@@ -350,7 +350,7 @@ class Gpu {
   }
 
  private:
-  void render_mode4();
+  void render_mode4(unsigned int scanline);
 
   void render_tile_row_4bpp(nonstd::span<Color> framebuffer,
                             nonstd::span<const u8> palette_bank,

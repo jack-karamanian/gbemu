@@ -1,5 +1,4 @@
 #include "gba/gpu.h"
-#include <execution>
 #include "gba/mmu.h"
 
 namespace gb::advance {
@@ -29,26 +28,38 @@ class TileMapEntry : public Integer<u16> {
   [[nodiscard]] int palette_bank() const { return (m_value >> 12) & 0xf; }
 };
 
-static Rect<unsigned int> sprite_size(ObjAttribute0::Shape shape,
-                                      unsigned int size_index) {
-  static constexpr std::array<Rect<unsigned int>, 12> sprite_sizes = {{
-      {8, 8},    // 0, Square (Size, Shape)
-      {16, 8},   // 0, Horizontal
-      {8, 16},   // 0, Vertical
-      {16, 16},  // 1, Square
-      {32, 8},   // 1, Horizontal
-      {8, 32},   // 1, Vertical
-      {32, 32},  // 2, Square
-      {32, 16},  // 2, Horizontal
-      {16, 32},  // 2, Vertical
-      {64, 64},  // 3, Square
-      {64, 32},  // 3, Horizontal
-      {32, 64},  // 3, Vertical
-  }};
+static constexpr std::array<Rect<unsigned int>, 12> sprite_sizes = {{
+    {8, 8},    // 0, Square (Size, Shape)
+    {16, 8},   // 0, Horizontal
+    {8, 16},   // 0, Vertical
+    {16, 16},  // 1, Square
+    {32, 8},   // 1, Horizontal
+    {8, 32},   // 1, Vertical
+    {32, 32},  // 2, Square
+    {32, 16},  // 2, Horizontal
+    {16, 32},  // 2, Vertical
+    {64, 64},  // 3, Square
+    {64, 32},  // 3, Horizontal
+    {32, 64},  // 3, Vertical
+}};
 
+static constexpr std::array<Rect<unsigned int>, 12> sprite_tile_sizes = [] {
+  std::array<Rect<unsigned int>, 12> res{};
+
+  // std::transform
+  for (auto i = 0U; i < sprite_sizes.size(); ++i) {
+    res[i] = {sprite_sizes[i].width / TileSize,
+              sprite_sizes[i].height / TileSize};
+  }
+
+  return res;
+}();
+
+static std::size_t sprite_size_index(ObjAttribute0::Shape shape,
+                                     unsigned int size_index) {
   const int shape_index = static_cast<int>(shape);
 
-  return sprite_sizes[3 * size_index + shape_index];
+  return 3 * size_index + shape_index;
 }
 
 void Gpu::render_scanline(unsigned int scanline) {
@@ -81,7 +92,7 @@ void Gpu::render_scanline(unsigned int scanline) {
     case BgMode::Three:
     case BgMode::Four:
     case BgMode::Five:
-      render_mode4();
+      render_mode4(scanline);
       break;
   }
   render_sprites(scanline);
@@ -263,20 +274,13 @@ void Gpu::render_tile_row_4bpp(nonstd::span<Color> framebuffer,
   }
 }
 
-void Gpu::render_mode4() {
-  // const u32 frame_offset =
-  //    static_cast<u32>(dispcnt.display_frame()) * ScreenWidth *
-  //    ScreenHeight;
-  // const auto background = m_vram.subspan(0, ScreenHeight * ScreenWidth);
-
-  for (unsigned int y = 0; y < ScreenHeight; ++y) {
-    for (unsigned int x = 0; x < ScreenWidth; ++x) {
-      const auto color_index = ScreenWidth * y + x;
-      const auto palette_index = m_vram[color_index] * 2;
-      const u16 color = m_palette_ram[palette_index] |
-                        (m_palette_ram[palette_index + 1] << 8);
-      draw_color(m_framebuffer, x, y, color);
-    }
+void Gpu::render_mode4(unsigned int scanline) {
+  for (unsigned int x = 0; x < ScreenWidth; ++x) {
+    const auto color_index = ScreenWidth * scanline + x;
+    const auto palette_index = m_vram[color_index] * 2;
+    const u16 color =
+        m_palette_ram[palette_index] | (m_palette_ram[palette_index + 1] << 8);
+    draw_color(m_per_pixel_context.top_pixels, x, 0, color);
   }
 }
 
@@ -441,9 +445,13 @@ void Gpu::render_sprites(unsigned int scanline) {
     const auto tile_length = bits_per_pixel * 8;
     const auto tile_row_length = bits_per_pixel;
 
-    const auto sprite_rect =
-        sprite_size(sprite.attrib0.shape(), sprite.attrib1.obj_size());
-    const auto sprite_tile_rect = sprite_rect / TileSize;
+    const auto sprite_rect_index =
+        sprite_size_index(sprite.attrib0.shape(), sprite.attrib1.obj_size());
+
+    const auto sprite_rect = sprite_sizes[sprite_rect_index];
+    // sprite_size(sprite.attrib0.shape(), sprite.attrib1.obj_size());
+    const auto sprite_tile_rect = sprite_tile_sizes[sprite_rect_index];
+    // sprite_rect / TileSize;
 
     const auto sprite_y = sprite.attrib0.y();
 
