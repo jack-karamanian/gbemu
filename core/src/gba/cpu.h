@@ -439,15 +439,22 @@ class Cpu {
   }
 
   [[nodiscard]] constexpr ProgramStatus saved_program_status() const {
-    assert_in_user_mode();
+    const auto mode = m_current_program_status.mode();
+    if (mode == Mode::User || mode == Mode::System) {
+      return m_current_program_status;
+    }
     return m_saved_program_status[index_from_mode(
         m_current_program_status.mode())];
   }
 
   constexpr void set_saved_program_status(ProgramStatus program_status) {
-    assert_in_user_mode();
-    m_saved_program_status[index_from_mode(m_current_program_status.mode())] =
-        program_status;
+    const auto mode = m_current_program_status.mode();
+    if (mode == Mode::User || mode == Mode::System) {
+      // m_current_program_status = program_status;
+    } else {
+      m_saved_program_status[index_from_mode(m_current_program_status.mode())] =
+          program_status;
+    }
   }
 
   constexpr void set_saved_program_status_for_mode(
@@ -547,7 +554,7 @@ class Cpu {
   friend class SingleDataSwap;
   friend class SoftwareInterrupt;
 
-  [[nodiscard]] Mmu* mmu() noexcept { return m_mmu; }
+  [[nodiscard]] Mmu* mmu() const noexcept { return m_mmu; }
 
  private:
   struct SavedRegisters {
@@ -572,7 +579,7 @@ class Cpu {
     }
   }
 
-  [[nodiscard]] constexpr u32 index_from_mode(Mode mode) const {
+  [[nodiscard]] static constexpr u32 index_from_mode(Mode mode) {
     return static_cast<u32>(mode) - 1;
     // return static_cast<u32>(m_current_program_status.mode()) - 1;
   }

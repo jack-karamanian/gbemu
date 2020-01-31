@@ -5,6 +5,7 @@ namespace gb::advance {
 void InterruptsRequested::set_interrupt(Interrupt interrupt, bool set) {
   InterruptBucket::set_interrupt(interrupt, set);
 
+#if 0
   if (const auto data = m_cpu->interrupts_waiting.data();
       (m_cpu->interrupts_requested.data() & data) != 0) {
     m_cpu->interrupts_waiting.set_data(0);
@@ -16,5 +17,6 @@ void InterruptsRequested::set_interrupt(Interrupt interrupt, bool set) {
       m_cpu->handle_interrupts();
     }
   }
+#endif
 }
 }  // namespace gb::advance

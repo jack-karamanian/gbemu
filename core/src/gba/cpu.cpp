@@ -42,6 +42,7 @@ constexpr ShiftResult compute_shift_value(u32 value, const Cpu& cpu) {
     // Shift by 5 bit number
     return static_cast<u8>((value >> 7) & 0b0001'1111);
   }();
+
   const u32 reg_value =
       cpu.reg(reg) +
       // TODO: Is this offset correct?
@@ -226,6 +227,12 @@ u32 SoftwareInterrupt::execute(Cpu& cpu) {
     case SoftwareInterruptType::BgAffineSet:
       break;
     case SoftwareInterruptType::ObjAffineSet:
+#if 0
+      fmt::printf(
+          "obj affine set source: %08x dest: %08x num: %08x offset: %08x\n",
+          cpu.reg(Register::R0), cpu.reg(Register::R1), cpu.reg(Register::R2),
+          cpu.reg(Register::R3));
+#endif
       break;
     case SoftwareInterruptType::Lz77Wram: {
       // fmt::printf("source %08x dest %08x\n", cpu.reg(Register::R0),
@@ -283,6 +290,7 @@ u32 SoftwareInterrupt::execute(Cpu& cpu) {
 }
 
 void Cpu::handle_interrupts() {
+#if 0
   const u32 next_pc = reg(Register::R15) - prefetch_offset() + 4;
 
   set_saved_program_status_for_mode(Mode::IRQ, m_current_program_status);
@@ -293,6 +301,27 @@ void Cpu::handle_interrupts() {
   set_thumb(false);
 
   set_reg(Register::R15, 0x00000128);
+#else
+  if (const auto data = interrupts_waiting.data();
+      (interrupts_requested.data() & data) != 0) {
+    interrupts_waiting.set_data(0);
+  }
+  if ((interrupts_enabled.data() & interrupts_requested.data()) != 0) {
+    halted = false;
+    if (gb::test_bit(ime, 0) && program_status().irq_enabled()) {
+      const u32 next_pc = reg(Register::R15) - prefetch_offset() + 4;
+
+      set_saved_program_status_for_mode(Mode::IRQ, m_current_program_status);
+      change_mode(Mode::IRQ);
+      set_reg(Register::R14, next_pc);
+
+      m_current_program_status.set_irq_enabled(false);
+      set_thumb(false);
+
+      set_reg(Register::R15, 0x00000128);
+    }
+  }
+#endif
 }
 
 [[nodiscard]] bool should_execute(u32 instruction,
@@ -546,7 +575,7 @@ void data_processing(Cpu& cpu,
             return op1 - op2 + carry_value - 1;
           },
           true, true,
-          static_cast<u64>(operand2) + static_cast<u64>(carry_value) - 1 <=
+          (static_cast<u64>(operand2) - static_cast<u64>(carry_value) + 1) <=
               operand1);
       break;
     case Opcode::Rsc:
@@ -710,15 +739,21 @@ auto compute_operand2(const Cpu& cpu, u32 instruction)
   return compute_shifted_operand(shift_result);
 };
 
+namespace arm::cycles {}
+
 template <bool ImmediateOperand, Opcode opcode, bool SetConditionCode>
 constexpr u32 make_data_processing(Cpu& cpu, u32 instruction) {
   const auto shift_value = [&](const Cpu& cpu) -> ShiftResult {
     if constexpr (ImmediateOperand) {
+      const auto shift_amount = static_cast<u8>(((instruction >> 8) & 0xf) * 2);
+      const auto shift_operand = instruction & 0xff;
       return {ShiftType::RotateRight,
-              static_cast<u8>(((instruction >> 8) & 0xf) * 2),
-              instruction & 0xff,
+              shift_amount,
+              shift_operand,
               {},
-              cpu.program_status().carry()};
+              shift_amount == 0
+                  ? false
+                  : gb::test_bit(shift_operand, shift_amount - 1)};
     }
     return compute_shift_value(instruction, cpu);
   };
@@ -730,11 +765,11 @@ constexpr u32 make_data_processing(Cpu& cpu, u32 instruction) {
   const auto [shift_carry, operand2] = compute_operand2(cpu);
   const Register dest_reg = rd(instruction);
 
-  const u32 operand1 = cpu.reg(rn(instruction)); /*&
-                       // Mask off bit 1 of R15 for thumb "adr #xx" instructions
-                       ~(cpu.program_status().thumb_mode() && rn(instruction) ==
-                       Register::R15 && dest_reg != Register::R15 ? 0b10 : 0);
-                 */
+  const u32 operand1 = cpu.reg(rn(instruction)) +
+                       (!ImmediateOperand && test_bit(instruction, 4) &&
+                                rn(instruction) == Register::R15
+                            ? 4
+                            : 0);
 
   common::data_processing<opcode, SetConditionCode>(cpu, dest_reg, operand1,
                                                     operand2, shift_carry);
@@ -921,14 +956,22 @@ constexpr static u32 select_addr(Cpu& cpu,
 }
 
 template <typename T>
-constexpr void run_load(Cpu& cpu, u32 addr, u32 instruction) {
-  const Register dest_reg = rd(instruction);
+constexpr void run_load(Cpu& cpu, u32 addr, Register dest_reg) {
+  constexpr auto mask = sizeof(T) - 1;
+  const auto aligned_addr = addr & ~mask;
+  const auto rotate_amount = (addr & mask) * 8;
 
-  if constexpr (std::is_signed_v<T>) {
-    cpu.set_reg(dest_reg, static_cast<s32>(cpu.mmu()->at<T>(addr)));
-  } else {
-    cpu.set_reg(dest_reg, cpu.mmu()->at<T>(addr));
-  }
+  const auto value = [&] {
+    if constexpr (std::is_same_v<T, s16>) {
+      if ((addr & mask) != 0) {
+        return static_cast<s16>(cpu.mmu()->at<s8>(addr));
+      }
+    }
+    return cpu.mmu()->at<T>(aligned_addr);
+  }();
+  cpu.set_reg(dest_reg,
+              static_cast<std::conditional_t<std::is_signed_v<T>, s32, u32>>(
+                  rotate_right(value, rotate_amount)));
 }
 
 constexpr Cycles load_store_cycles(Register dest_reg, bool load) {
@@ -955,6 +998,9 @@ template <bool Preindex,
           TransferType transfer_type>
 u32 make_halfword_data_transfer(Cpu& cpu, u32 instruction) {
   Mmu& mmu = *cpu.mmu();
+  const Register src_or_dest_reg = rd(instruction);
+  const u32 original_dest_value = cpu.reg(src_or_dest_reg);
+
   const u32 offset = [&cpu, instruction]() {
     if (ImmediateOffset) {
       return ((instruction & 0xf00) >> 4) | (instruction & 0xf);
@@ -963,52 +1009,44 @@ u32 make_halfword_data_transfer(Cpu& cpu, u32 instruction) {
     const auto offset_reg = static_cast<Register>(instruction & 0xf);
     return cpu.reg(offset_reg);
   }();  // offset_value(cpu);
-  const u32 base_value = cpu.reg(rn(instruction));
+  const Register base_reg = rn(instruction);
+  const u32 base_value = cpu.reg(base_reg);
   const u32 addr = select_addr<Preindex, AddOffsetToBase, WriteBack>(
       cpu, base_value, offset, instruction);
 
   // const auto transfer_type =
   //    static_cast<TransferType>((instruction & 0x60) >> 5);
+  const auto aligned_addr = addr & ~0b01;
 
-  const Register src_or_dest_reg = rd(instruction);
+  const auto get_transfer_type = [] {
+    if constexpr (transfer_type == TransferType::UnsignedHalfword) {
+      return u16{};
+    } else if constexpr (transfer_type == TransferType::SignedByte) {
+      return s8{};
+    } else if constexpr (transfer_type == TransferType::SignedHalfword) {
+      return s16{};
+    }
+  };
+
+  using Type = decltype(get_transfer_type());
+  static_assert(!std::is_same_v<Type, void>, "can't SWP");
 
   if constexpr (Load) {
-    switch (transfer_type) {
-      case TransferType::Swp:
-        break;
-      case TransferType::UnsignedHalfword:
-        run_load<u16>(cpu, addr, instruction);
-        break;
-      case TransferType::SignedByte: {
-        run_load<s8>(cpu, addr, instruction);
-        break;
-      }
-      case TransferType::SignedHalfword: {
-        run_load<s16>(cpu, addr, instruction);
-        break;
-      }
-    }
+    run_load<Type>(cpu, addr, src_or_dest_reg);
   } else {
     // Store
-    switch (transfer_type) {
-      case TransferType::Swp:
-        break;
-      case TransferType::UnsignedHalfword:
-        mmu.set(addr, static_cast<u16>(cpu.reg(src_or_dest_reg)));
-        break;
-      case TransferType::SignedByte:
-        mmu.set(addr, static_cast<s8>(cpu.reg(src_or_dest_reg)));
-        break;
-      case TransferType::SignedHalfword:
-        mmu.set(addr, static_cast<s16>(cpu.reg(src_or_dest_reg)));
-        break;
-    }
+    const auto value = ((WriteBack || !Preindex) && base_reg == src_or_dest_reg
+                            ? original_dest_value
+                            : cpu.reg(src_or_dest_reg));
+    mmu.set(aligned_addr, static_cast<Type>(value));
   }
 
   if constexpr (!Preindex) {
-    const u32 writeback_addr =
-        calculate_addr<AddOffsetToBase>(base_value, offset);
-    run_write_back(cpu, writeback_addr, instruction);
+    if ((Load && base_reg != src_or_dest_reg) || !Load) {
+      const u32 writeback_addr =
+          calculate_addr<AddOffsetToBase>(base_value, offset);
+      run_write_back(cpu, writeback_addr, instruction);
+    }
   }
 
   return mmu.wait_cycles(addr, load_store_cycles(rd(instruction), Load));
@@ -1058,13 +1096,12 @@ u32 make_single_data_transfer(Cpu& cpu, u32 instruction) {
 
     return offset;
   };
+  const auto dest = rd(instruction);
+
+  const u32 original_dest_value = cpu.reg(dest);
 
   const Register base_register = rn(instruction);
-  const u32 base_value = cpu.reg(base_register); /* &
-                         // Set bit 1 of R15 to 0 when in thumb mode
-                         ~(cpu.program_status().thumb_mode() && base_register ==
-                         Register::R15 ? 0b10 : 0);
-                   */
+  const u32 base_value = cpu.reg(base_register);
 
   const u32 offset = calculate_offset();
 
@@ -1084,7 +1121,6 @@ u32 make_single_data_transfer(Cpu& cpu, u32 instruction) {
   }
 
   // const bool word_transfer = word();
-  const auto dest = rd(instruction);
 
   if constexpr (Load) {
     if constexpr (WordTransfer) {
@@ -1098,7 +1134,11 @@ u32 make_single_data_transfer(Cpu& cpu, u32 instruction) {
       cpu.set_reg(dest, loaded_value);
     }
   } else {
-    const u32 stored_value = cpu.reg(dest);
+    const u32 stored_value =
+        // Unspecified behavior for writeback store with base reg == dest reg
+        ((WriteBack || !Preindex) && base_register == dest ? original_dest_value
+                                                           : cpu.reg(dest)) +
+        (dest == Register::R15 ? 4 : 0);
     if constexpr (WordTransfer) {
       // Store a word
       mmu.set(aligned_addr, stored_value);
@@ -1351,7 +1391,7 @@ u32 alu_operation(Cpu& cpu, u16 instruction) {
         cpu.program_status().carry());
   }
 
-  return 3;
+  return 1;
 }
 
 template <int opcode, bool hi_dest, bool hi_src>
@@ -1406,18 +1446,14 @@ u32 load_store(Cpu& cpu, u16 instruction) {
   const auto base_reg = static_cast<Register>((instruction >> 3) & 0b111);
   const auto dest_reg = static_cast<Register>(instruction & 0b111);
 
-  constexpr bool word_transfer = sizeof(Type) == 4;
   const u32 addr = cpu.reg(base_reg) + offset;
 
-  const u32 aligned_addr = addr & ~0b11;
-  const u32 rotate_amount = (addr & 0b11) * 8;
-  const u32 resolved_addr = word_transfer ? aligned_addr : addr;
+  constexpr auto mask = sizeof(Type) - 1;
+
+  const u32 aligned_addr = addr & ~mask;
+  const u32 resolved_addr = aligned_addr;
   if constexpr (load) {
-    const auto value = cpu.mmu()->at<Type>(resolved_addr);
-    cpu.set_reg(
-        dest_reg,
-        static_cast<std::conditional_t<std::is_signed_v<Type>, s32, u32>>(
-            word_transfer ? rotate_right(value, rotate_amount) : value));
+    run_load<Type>(cpu, addr, dest_reg);
   } else {
     cpu.mmu()->set(resolved_addr, static_cast<Type>(cpu.reg(dest_reg)));
   }
@@ -1430,7 +1466,8 @@ u32 sp_relative_load_store(Cpu& cpu, u16 instruction) {
   const u32 addr = cpu.reg(Register::R13) + ((instruction & 0xff) << 2);
 
   if constexpr (load) {
-    cpu.set_reg(dest_reg, cpu.mmu()->at<u32>(addr));
+    const auto value = cpu.mmu()->at<u32>(addr & ~0b11);
+    cpu.set_reg(dest_reg, rotate_right(value, (addr & 0b11) * 8));
   } else {
     cpu.mmu()->set(addr, cpu.reg(dest_reg));
   }
@@ -1508,25 +1545,60 @@ u32 push_pop_registers(Cpu& cpu, u16 instruction) {
   return cycles;
 }
 
+static int popcount(int num) {
+#ifdef __GNUC__
+  return __builtin_popcount(num);
+#else
+  int i = 0;
+  while (num) {
+    ++i;
+    num &= (num - 1);
+  }
+  return i;
+#endif
+}
+
+static int ctz(int num) {
+  return __builtin_ctz(num);
+}
+
 template <bool load, Register base_reg>
 u32 multiple_load_store(Cpu& cpu, u16 instruction) {
   u32 base = cpu.reg(base_reg);
-  u32 cycles = 0;
+  u32 cycles = 1;
 
-  for (int i = 0; i < 8; ++i) {
-    if (test_bit(instruction, i)) {
-      const auto reg = static_cast<Register>(i);
-      if constexpr (load) {
-        // LDMIA
-        cpu.set_reg(reg, cpu.mmu()->at<u32>(base));
-      } else {
-        // STMIA
-        cpu.mmu()->set(base, cpu.reg(reg));
+  // Unspecified behavior for empty list
+  const auto reg_list = instruction & 0xff;
+  const bool empty_list = reg_list == 0;
+  if (load && empty_list) {
+    cpu.set_reg(Register::R15, cpu.mmu()->at<u32>(base));
+    base += 64;
+  } else if (!load && empty_list) {
+    cpu.mmu()->set(base, cpu.reg(Register::R15) + 2);
+    base += 64;
+  } else {
+    const auto count = popcount(reg_list);
+    const auto first_bit = ctz(reg_list);
+
+    for (int i = first_bit; i < 8; ++i) {
+      if (test_bit(instruction, i)) {
+        const auto reg = static_cast<Register>(i);
+        if constexpr (load) {
+          // LDMIA
+          cpu.set_reg(reg, cpu.mmu()->at<u32>(base));
+        } else {
+          // STMIA
+          if (reg == base_reg && i != first_bit) {
+            cpu.mmu()->set(base, cpu.reg(base_reg) + 4 * count);
+          } else {
+            cpu.mmu()->set(base, cpu.reg(reg));
+          }
+        }
+        cycles += cpu.mmu()->wait_cycles(
+            base, load_store_cycles(load ? reg : base_reg, load));
+
+        base += 4;
       }
-      cycles += cpu.mmu()->wait_cycles(
-          base, load_store_cycles(load ? reg : base_reg, load));
-
-      base += 4;
     }
   }
 
@@ -1552,6 +1624,7 @@ u32 unconditional_branch(Cpu& cpu, u16 instruction) {
   const u32 offset = (instruction & 0b111'1111'1111) << 1;
   constexpr u32 mask = /*test_bit(offset, 11) */ is_signed ? 0xfffff800 : 0;
   cpu.set_reg(Register::R15, cpu.reg(Register::R15) + (offset | mask));
+
   return 3;
 }
 
@@ -1779,13 +1852,21 @@ u32 Cpu::execute() {
               break;
             case 0b1011:
             case 0b1101:
-            case 0b1111:
-              res[i] = make_halfword_data_transfer<
-                  false, test_bit(upper_bits, 3), test_bit(upper_bits, 2),
-                  test_bit(upper_bits, 1), test_bit(upper_bits, 0),
-                  static_cast<TransferType>((lower_bits >> 1) & 0b11)>;
-              // HalfwordDataTransfer
-              break;
+            case 0b1111: {
+              constexpr auto transfer_type =
+                  static_cast<TransferType>((lower_bits >> 1) & 0b11);
+              if constexpr (transfer_type != TransferType::Swp) {
+                res[i] = make_halfword_data_transfer<
+                    false, test_bit(upper_bits, 3), test_bit(upper_bits, 2),
+                    test_bit(upper_bits, 1), test_bit(upper_bits, 0),
+                    transfer_type>;
+              } else {
+                res[i] = arm::invalid_instruction;
+              }
+
+            }
+            // HalfwordDataTransfer
+            break;
             default:
               res[i] =
                   make_data_processing<false,
@@ -1808,13 +1889,20 @@ u32 Cpu::execute() {
               break;
             case 0b1011:
             case 0b1101:
-            case 0b1111:
+            case 0b1111: {
               // HalfwordDataTransfer
-              res[i] = make_halfword_data_transfer<
-                  true, test_bit(upper_bits, 3), test_bit(upper_bits, 2),
-                  test_bit(upper_bits, 1), test_bit(upper_bits, 0),
-                  static_cast<TransferType>((lower_bits >> 1) & 0b11)>;
+              constexpr auto transfer_type =
+                  static_cast<TransferType>((lower_bits >> 1) & 0b11);
+              if constexpr (transfer_type != TransferType::Swp) {
+                res[i] = make_halfword_data_transfer<
+                    true, test_bit(upper_bits, 3), test_bit(upper_bits, 2),
+                    test_bit(upper_bits, 1), test_bit(upper_bits, 0),
+                    transfer_type>;
+              } else {
+                res[i] = arm::invalid_instruction;
+              }
               break;
+            }
             case 0b0001:
               if (!set_condition_code && opcode == 0b1001) {
                 res[i] = arm::branch_and_exchange;
@@ -1914,38 +2002,14 @@ u32 Cpu::execute() {
       // m_memory_offset = pc_region == 0 ? 0x128 : pc_region;
     }
     if (m_current_program_status.thumb_mode()) {
-      static constexpr u32 nop = 0b1110'00'0'1101'0'0000'0000'000000000000;
       const u32 pc = reg(Register::R15) - 2;
 
       u16 thumb_instruction;
       std::memcpy(&thumb_instruction, &m_current_memory[pc - m_memory_offset],
                   sizeof(u16));
-      // fmt::printf("%08x\n", pc);
-
-      // Long branch with link
-#if 0
-      if ((thumb_instruction & 0xf000) == 0xf000) {
-        const u32 offset = (thumb_instruction & 0x7ff);
-        if (!test_bit(thumb_instruction, 11)) {
-          const s32 signed_offset =
-              (offset << 12) | (test_bit(offset, 10) ? 0xff800000 : 0);
-          set_reg(Register::R14, pc + signed_offset);
-          set_reg(Register::R15, pc + 2);
-          return nop;
-        }
-
-        const u32 next_instruction = pc + 2;
-        set_reg(Register::R15, reg(Register::R14) + (offset << 1) + 4);
-        set_reg(Register::R14, next_instruction | 1);
-        return nop;
-      }
-#endif
       set_reg(Register::R15, pc + 2);
 
-      // if (thumb_lookup_table[(thumb_instruction >> 6) & 0x3ff] != nullptr) {
       return thumb_instruction;
-      //}
-      // return convert_thumb_to_arm(thumb_instruction);
     }
 
     const u32 pc = reg(Register::R15) - 4;

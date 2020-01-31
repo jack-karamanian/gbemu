@@ -40,7 +40,6 @@ class InterruptsRequested : public InterruptBucket {
       : InterruptBucket::InterruptBucket{0}, m_cpu{&cpu} {}
   constexpr void write_byte(unsigned int byte, u8 value) {
     const u32 shift = byte * 8;
-    // m_value = (m_value) ^ (value << shift);
     m_value = (m_value) & ~(value << shift);
   }
 
