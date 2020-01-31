@@ -8,9 +8,9 @@ namespace gb::advance {
 void Lcd::increment_vcount() {
   ++vcount;
 
-  m_cpu->interrupts_requested.set_interrupt(
-      Interrupt::VCountMatch,
-      dispstat.enable_lyc_interrupt() && vcount == dispstat.lyc());
+  if (dispstat.enable_lyc_interrupt() && vcount == dispstat.lyc()) {
+    m_cpu->interrupts_requested.set_interrupt(Interrupt::VCountMatch, true);
+  }
 }
 
 bool Lcd::update(u32 cycles) {
@@ -21,7 +21,7 @@ bool Lcd::update(u32 cycles) {
     case Mode::Draw:
       if (m_cycles >= 960) {
         m_mode = Mode::HBlank;
-        m_cycles = 0;
+        m_cycles -= 960;
 
         if (dispstat.enable_hblank_interrupt()) {
           m_cpu->interrupts_requested.set_interrupt(Interrupt::HBlank, true);
@@ -38,11 +38,10 @@ bool Lcd::update(u32 cycles) {
       break;
     case Mode::HBlank:
       if (m_cycles >= 272) {
-        m_cycles = 0;
+        m_cycles -= 272;
         if (vcount <= 159) {
           m_gpu->render_scanline(vcount);
         }
-        increment_vcount();
 
         dispstat.set_hblank(false);
         if (vcount > 159) {
@@ -62,11 +61,12 @@ bool Lcd::update(u32 cycles) {
         } else {
           m_mode = Mode::Draw;
         }
+        increment_vcount();
       }
       break;
     case Mode::VBlank:
       if (m_cycles >= 1232) {
-        m_cycles = 0;
+        m_cycles -= 1232;
         increment_vcount();
 
         if (vcount > 227) {
