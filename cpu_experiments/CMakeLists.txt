@@ -9,7 +9,6 @@ project(cpu_experiments)
 
 find_package(SDL2 CONFIG REQUIRED)
 find_package(doctest CONFIG REQUIRED)
-find_package(LLVM CONFIG REQUIRED)
 find_package(fmt CONFIG REQUIRED)
 find_package(GLEW REQUIRED)
 
@@ -38,15 +37,13 @@ set_target_properties(cpu_experiments PROPERTIES
   INTERPROCEDURAL_OPTIMIZATION TRUE
 )
 
-llvm_map_components_to_libnames(llvm_libs core support mcdisassembler AllTargetsAsmPrinters AllTargetsAsmParsers AllTargetsDisassemblers AllTargetsInfos AllTargetsCodeGens)
-
 target_link_libraries(cpu_experiments PRIVATE
   SDL2::SDL2
   GLEW::GLEW
   GL
   gbemu_core
   fmt::fmt
-  ${llvm_libs}
+  capstone
 )
 
 target_include_directories(cpu_experiments 

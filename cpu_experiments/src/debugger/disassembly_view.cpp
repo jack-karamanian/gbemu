@@ -58,6 +58,7 @@ void DisassemblyView::render(u32 base,
     ImGui::SetScrollFromPosY(adjusted_offset);
   }
 
+  std::string empty = "empty";
   while (clipper.Step()) {
     for (int i = clipper.DisplayStart; i < clipper.DisplayEnd; ++i) {
       const u32 instr_index = i * instr_size;
@@ -68,7 +69,11 @@ void DisassemblyView::render(u32 base,
               experiments::disassemble(storage.subspan(instr_index, instr_size),
                                        instr_size == 2 ? "thumb" : "arm");
           assert(res.size() == 1);
-          return disassembly_info.disassembly_cache[i] = std::move(res[0].text);
+          if (!res.empty()) {
+            return disassembly_info.disassembly_cache[i] =
+                       std::move(res[0].text);
+          }
+          return empty;
         }
         return entry;
       }();

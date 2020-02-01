@@ -6,7 +6,6 @@
 
 namespace experiments {
 
-std::vector<gb::u8> assemble(const std::string& src);
 struct DisassemblyEntry {
   std::string text;
   unsigned int loc;
