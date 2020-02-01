@@ -11,6 +11,7 @@ constexpr int CLOCK_FREQUENCY = 4194304;
 #ifdef __SWITCH__
 constexpr int SOUND_SAMPLE_FREQUENCY = 48000;
 #else
-constexpr int SOUND_SAMPLE_FREQUENCY = 44100;
+constexpr int SOUND_SAMPLE_FREQUENCY = 48100;
 #endif
+constexpr int SOUND_SAMPLE_BUFFER_SIZE = 1024;
 }  // namespace gb
