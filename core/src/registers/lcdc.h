@@ -71,7 +71,9 @@ class Lcdc {
     return addr == 0x8000 ? addr : 0x8800;
   }
 
-  [[nodiscard]] bool is_tile_map_signed() const { return bg_tile_data_base() == 0x8800; }
+  [[nodiscard]] bool is_tile_map_signed() const {
+    return bg_tile_data_base() == 0x8800;
+  }
 };
 }  // namespace Registers
 }  // namespace gb

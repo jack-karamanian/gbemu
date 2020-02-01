@@ -1,14 +1,56 @@
-#include <initializer_list>
-#include <iostream>
-#include <vector>
 #include "mbc.h"
 
 namespace gb {
+
+static bool in_lower_write_range(u16 addr, Mbc::Type type) {
+  const u16 masked_addr = addr & 0xf000;
+  switch (type) {
+    case Mbc::Type::MBC1:
+    case Mbc::Type::MBC2:
+    case Mbc::Type::MBC3:
+      return masked_addr == 0x2000 || masked_addr == 0x3000;
+    case Mbc::Type::MBC5:
+      return masked_addr == 0x2000;
+    default:
+      return false;
+  }
+}
+
+static bool in_upper_write_range(u16 addr, Mbc::Type type) {
+  const u16 masked_addr = addr & 0xf000;
+  switch (type) {
+    case Mbc::Type::MBC1:
+      return masked_addr == 0x4000 || masked_addr == 0x5000;
+    case Mbc::Type::MBC5:
+      return masked_addr == 0x3000;
+    default:
+      return false;
+  }
+}
+
+static bool in_ram_enable_range(u16 addr) {
+  return addr <= 0x1fff;
+}
+
+static bool in_ram_bank_write_range(u16 addr, Mbc::Type type, u8 ram_bank) {
+  switch (type) {
+    case Mbc::Type::MBC3:
+      if (ram_bank > 3) {
+        return false;
+      }
+    case Mbc::Type::MBC1:
+    case Mbc::Type::MBC5:
+      return addr >= 0x4000 && addr <= 0x5fff;
+    default:
+      return false;
+  }
+}
 
 void Mbc::set_lower(u8 val) {
   switch (type) {
     case Mbc::Type::MBC1:
       lower = val & 0x1f;
+      // Unselectable banks select bank + 1
       if (lower == 0 || lower == 0x20 || lower == 0x40 || lower == 0x60) {
         ++lower;
       }
@@ -49,11 +91,11 @@ void Mbc::set_upper(u8 val) {
 }
 
 bool Mbc::handle_memory_write(u16 addr, u8 value) {
-  if (in_lower_write_range(addr)) {
+  if (in_lower_write_range(addr, type)) {
     set_lower(value);
     return true;
   }
-  if (in_upper_write_range(addr)) {
+  if (in_upper_write_range(addr, type)) {
     set_upper(value);
     return true;
   }
@@ -61,7 +103,7 @@ bool Mbc::handle_memory_write(u16 addr, u8 value) {
     set_save_ram_enabled((value & 0x0a) == 0x0a);
     return true;
   }
-  if (in_ram_bank_write_range(addr)) {
+  if (in_ram_bank_write_range(addr, type, ram_bank)) {
     set_ram_bank(value);
     return true;
   }
@@ -71,32 +113,6 @@ bool Mbc::handle_memory_write(u16 addr, u8 value) {
     return true;
   }
   return false;
-}
-
-bool Mbc::in_lower_write_range(u16 addr) const {
-  const u16 masked_addr = addr & 0xf000;
-  switch (type) {
-    case Mbc::Type::MBC1:
-    case Mbc::Type::MBC2:
-    case Mbc::Type::MBC3:
-      return masked_addr == 0x2000 || masked_addr == 0x3000;
-    case Mbc::Type::MBC5:
-      return masked_addr == 0x2000;
-    default:
-      return false;
-  }
-}
-
-bool Mbc::in_upper_write_range(u16 addr) const {
-  const u16 masked_addr = addr & 0xf000;
-  switch (type) {
-    case Mbc::Type::MBC1:
-      return masked_addr == 0x4000 || masked_addr == 0x5000;
-    case Mbc::Type::MBC5:
-      return masked_addr == 0x3000;
-    default:
-      return false;
-  }
 }
 
 u16 Mbc::lower_rom_bank_selected() const {
@@ -129,24 +145,6 @@ void Mbc::set_ram_bank(u8 val) {
       break;
     default:
       break;
-  }
-}
-
-bool Mbc::in_ram_enable_range(u16 addr) const {
-  return addr <= 0x1fff;
-}
-
-bool Mbc::in_ram_bank_write_range(u16 addr) const {
-  switch (type) {
-    case Mbc::Type::MBC3:
-      if (ram_bank > 3) {
-        return false;
-      }
-    case Mbc::Type::MBC1:
-    case Mbc::Type::MBC5:
-      return addr >= 0x4000 && addr <= 0x5fff;
-    default:
-      return false;
   }
 }
 

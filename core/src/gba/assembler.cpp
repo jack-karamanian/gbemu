@@ -1,3 +1,4 @@
+#include "gba/assembler.h"
 #include <fmt/printf.h>
 #include <llvm/ADT/Triple.h>
 #include <llvm/MC/MCAsmBackend.h>
@@ -21,7 +22,6 @@
 #include <llvm/Support/TargetSelect.h>
 #include <llvm/Support/raw_ostream.h>
 #include <iostream>
-#include "assembler.h"
 
 namespace experiments {
 static const std::string triple_name = "arm-none-eabi";
@@ -112,7 +112,7 @@ std::vector<DisassemblyEntry> disassemble(nonstd::span<gb::u8> bytes,
   llvm::InitializeAllAsmParsers();
   llvm::InitializeAllDisassemblers();
 
-  llvm::SmallString<128> asm_string;
+  llvm::SmallString<256> asm_string;
   llvm::raw_svector_ostream ostream{asm_string};
   std::string error;
 
@@ -166,7 +166,7 @@ std::vector<DisassemblyEntry> disassemble(nonstd::span<gb::u8> bytes,
   llvm::ArrayRef<gb::u8> bytes_ref{bytes.data(),
                                    static_cast<std::size_t>(bytes.size())};
 
-  llvm::SmallString<64> line_string;
+  llvm::SmallString<512> line_string;
   llvm::raw_svector_ostream line_stream{line_string};
 
   std::vector<DisassemblyEntry> asm_lines;
@@ -186,19 +186,26 @@ std::vector<DisassemblyEntry> disassemble(nonstd::span<gb::u8> bytes,
     llvm::MCInst inst;
     auto status = disassembler->getInstruction(inst, size, bytes_ref.slice(i),
                                                i, llvm::nulls(), llvm::nulls());
+    if (instruction_size == 2 && status == llvm::MCDisassembler::Fail &&
+        bytes_ref.size() == 2) {
+      // Try to disassemble a BL instruction
+      llvm::ArrayRef<gb::u8> bl_ref{bytes.data(), 4};
+
+      status = disassembler->getInstruction(inst, size, bl_ref.slice(i), i,
+                                            llvm::nulls(), llvm::nulls());
+    }
 
     switch (status) {
-      case llvm::MCDisassembler::SoftFail:
-        break;
       case llvm::MCDisassembler::Fail:
         if (size == 0) {
           size = instruction_size;
         }
-
+        asm_lines.emplace_back("invalid", i);
         break;
+      case llvm::MCDisassembler::SoftFail:
       case llvm::MCDisassembler::Success:
 
-        stream->AddComment(std::string{"Offset: "} + std::to_string(i));
+        // stream->AddComment(std::string{"Offset: "} + std::to_string(i));
         stream->EmitInstruction(inst, *subtarget_info);
         asm_lines.emplace_back(
             std::string(asm_string.begin(), asm_string.end()), i);

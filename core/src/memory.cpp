@@ -1,15 +1,16 @@
+#include "memory.h"
 #include <algorithm>
 #include <iostream>
 #include "gpu.h"
 #include "input.h"
 #include "lcd.h"
-#include "memory.h"
 #include "registers/cgb.h"
 #include "registers/dmg.h"
 #include "sound.h"
 #include "timers.h"
 
 namespace gb {
+
 std::pair<u16, nonstd::span<u8>> Memory::select_storage(u16 addr) {
   if (addr >= 0 && addr <= 0x3fff) {
     const int start_addr = SIXTEEN_KB * mbc.lower_rom_bank_selected();
@@ -22,7 +23,7 @@ std::pair<u16, nonstd::span<u8>> Memory::select_storage(u16 addr) {
   }
 
   if (mbc.in_ram_range(addr)) {
-    return {mbc.relative_ram_address(addr),
+    return {Mbc::relative_ram_address(addr),
             {&save_ram[mbc.absolute_ram_offset()], 8192}};
   }
 

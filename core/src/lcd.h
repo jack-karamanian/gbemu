@@ -34,8 +34,8 @@ class Lcd {
   }
 
   void set_enabled(bool value) {
-    controller_enabled = value;
-    if (!controller_enabled) {
+    if (controller_enabled != value) {
+      controller_enabled = value;
       scanlines = 0;
       mode = 2;
       lcd_ticks = 0;

@@ -1,14 +1,17 @@
-cmake_minimum_required(VERSION 3.8)
+cmake_minimum_required(VERSION 3.9)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
-project(cpu_experiments)
+add_compile_options(
+  -fdiagnostics-color=always
+)
 
+project(cpu_experiments)
 
 find_package(SDL2 CONFIG REQUIRED)
 find_package(doctest CONFIG REQUIRED)
 find_package(LLVM CONFIG REQUIRED)
 find_package(fmt CONFIG REQUIRED)
-find_package(folly CONFIG REQUIRED)
+find_package(GLEW REQUIRED)
 
 add_subdirectory(../core ./gbemu_core_build)
 
@@ -30,24 +33,25 @@ set(SRCS
 )
 
 add_executable(cpu_experiments ${SRCS})
-set_target_properties(cpu_experiments PROPERTIES CXX_STANDARD 17)
+set_target_properties(cpu_experiments PROPERTIES
+  CXX_STANDARD 17
+  INTERPROCEDURAL_OPTIMIZATION TRUE
+)
+
+llvm_map_components_to_libnames(llvm_libs core support mcdisassembler AllTargetsAsmPrinters AllTargetsAsmParsers AllTargetsDisassemblers AllTargetsInfos AllTargetsCodeGens)
 
 target_link_libraries(cpu_experiments PRIVATE
-  SDL2::SDL2-static
-  GLEW
+  SDL2::SDL2
+  GLEW::GLEW
   GL
-  LLVM
   gbemu_core
   fmt::fmt
-  fmt::fmt-header-only
-  Folly::folly
-  Folly::folly_deps
+  ${llvm_libs}
 )
 
 target_include_directories(cpu_experiments 
   PRIVATE $<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/src/imgui>
   $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/../external/span-lite/include>
-
 )
 
 target_compile_definitions(cpu_experiments PRIVATE
@@ -56,7 +60,7 @@ target_compile_definitions(cpu_experiments PRIVATE
   span_CONFIG_CONTRACT_VIOLATION_THROWS
 )
 
-target_link_options(${PROJECT_NAME} PRIVATE -fuse-ld=lld)
+target_link_options(${PROJECT_NAME} PRIVATE )
 
 target_compile_options(${PROJECT_NAME} PRIVATE
  -Wall
@@ -65,6 +69,5 @@ target_compile_options(${PROJECT_NAME} PRIVATE
  -Wpedantic
  -Wdouble-promotion
  -Wunused
- -Wold-style-cast
- -ggdb3
+ -g
  )

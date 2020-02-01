@@ -19,6 +19,7 @@ auto call(Func func, gb::Cpu* ptr, Args... args) {
 
 namespace gb {
 
+#if 0
 static std::array<Instruction, 256> bind_instructions(Cpu* cpu) {
   std::array<Instruction, 256> instructions = {{
       {"NOP", 1, 4, call(&Cpu::noop, cpu)},                        // 0x0
@@ -554,5 +555,6 @@ InstructionTable::InstructionTable(Cpu& cpu)
     inst.cycles -= 4;
   }
 }
+#endif
 
 }  // namespace gb

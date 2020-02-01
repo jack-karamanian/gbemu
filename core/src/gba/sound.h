@@ -9,9 +9,8 @@ class SoundFifo {
   void write_byte([[maybe_unused]] unsigned int byte, u8 value) {
     if (m_sample_buffer.size() >= m_sample_buffer.capacity()) {
       m_sample_buffer.next();
-    } else {
-      m_sample_buffer.push_back(value);
     }
+    m_sample_buffer.push_back(value);
   }
 
   [[nodiscard]] std::size_t size_bytes() const noexcept { return 4; }

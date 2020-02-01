@@ -249,6 +249,10 @@ class ObjAttribute1 : public Integer<u16> {
   using Integer::Integer;
   [[nodiscard]] unsigned int x() const { return m_value & 0b1'1111'1111; }
 
+  [[nodiscard]] int affine_parameter_group() const {
+    return (m_value >> 9) & 0b11111;
+  }
+
   [[nodiscard]] bool horizontal_flip() const { return test_bit(12); }
 
   [[nodiscard]] bool vertical_flip() const { return test_bit(13); }

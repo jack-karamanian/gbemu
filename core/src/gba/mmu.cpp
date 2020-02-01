@@ -183,8 +183,6 @@ void Mmu::copy_memory(AddrParam source,
     u32 resolved_dest_addr = dest_addr;
     for (u32 i = 0; i < count; ++i) {
       for (u32 j = 0; j < type_size; ++j) {
-        // fmt::printf("%08x\n", resolved_source_addr + j);
-
         set<u8>(resolved_dest_addr + (dest_stride == 0 ? 0 : j),
                 at<u8>(resolved_source_addr + j));
       }
@@ -197,7 +195,7 @@ void Mmu::copy_memory(AddrParam source,
 
     for (u32 i = 0; i < count; ++i) {
       for (u32 j = 0; j < type_size; ++j) {
-        dest_storage[resolved_dest_addr + j] =
+        dest_storage[resolved_dest_addr + (dest_stride == 0 ? 0 : j)] =
             source_storage[resolved_source_addr + j];
       }
       resolved_source_addr += source_stride;
@@ -250,7 +248,7 @@ void Mmu::set_hardware_bytes(u32 addr, nonstd::span<const u8> bytes) {
 }
 
 void Mmu::print_bios_warning() const {
-#if 1
+#if 0
   fmt::printf(
       "WARNING: BIOS memory access at %08x\n",
       hardware.cpu->reg(Register::R15) - hardware.cpu->prefetch_offset());
@@ -473,7 +471,6 @@ IntegerRef Mmu::select_hardware(u32 addr, DataOperation op) {
     case hardware::SOUNDCNT_H:
       return hardware.sound->soundcnt_high;
     case hardware::SOUNDCNT_X:
-      fmt::printf("SOUNDCNT_X\n");
       STUB_ADDR(soundcnt_x);
     case hardware::SOUNDBIAS:
       return hardware.sound->soundbias;

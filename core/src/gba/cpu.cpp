@@ -536,6 +536,8 @@ void data_processing(Cpu& cpu,
       } else {
         cpu.set_carry((invert_carry ? (op2 <= op1) : gb::test_bit(result, 32)));
       }
+    } else {
+      static_cast<void>(carry_override_value);
     }
 
     if (write) {
@@ -1016,7 +1018,6 @@ u32 make_halfword_data_transfer(Cpu& cpu, u32 instruction) {
 
   // const auto transfer_type =
   //    static_cast<TransferType>((instruction & 0x60) >> 5);
-  const auto aligned_addr = addr & ~0b01;
 
   const auto get_transfer_type = [] {
     if constexpr (transfer_type == TransferType::UnsignedHalfword) {
@@ -1034,6 +1035,7 @@ u32 make_halfword_data_transfer(Cpu& cpu, u32 instruction) {
   if constexpr (Load) {
     run_load<Type>(cpu, addr, src_or_dest_reg);
   } else {
+    const auto aligned_addr = addr & ~0b01;
     // Store
     const auto value = ((WriteBack || !Preindex) && base_reg == src_or_dest_reg
                             ? original_dest_value

@@ -1,16 +1,19 @@
-cmake_minimum_required(VERSION 3.8)
+cmake_minimum_required(VERSION 3.9)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 project(gbemu_core)
 
 include(CTest)
 
+set(GBEMU_DISABLE_TESTS OFF CACHE STRING "Disable tests")
+set(GBEMU_DISABLE_BOUNDS_CHECKS ON CACHE STRING "Disable bounds checking") 
 if (NOT EMSCRIPTEN)
-find_package(SDL2  CONFIG REQUIRED)
+  find_package(SDL2 CONFIG REQUIRED)
   find_package(doctest CONFIG REQUIRED)
-  find_package(range-v3 CONFIG REQUIRED)
   find_package(fmt CONFIG REQUIRED)
   find_package(benchmark CONFIG REQUIRED)
+  find_package(span-lite  CONFIG REQUIRED)
+  find_package(range-v3 CONFIG REQUIRED)
 endif()
 
 set(SRCS
@@ -81,8 +84,6 @@ set(SRCS
   src/gba/input.h
   src/gba/thumb_to_arm.h
   src/gba/thumb_to_arm.cpp
-  src/gba/assembler.h
-  src/gba/assembler.cpp
   src/gba/hardware.h
   src/gba/emulator.h
   src/gba/emulator.cpp
@@ -103,31 +104,58 @@ set(SRCS
   src/gba/interrupts.cpp
 )
 
+if (NOT EMSCRIPTEN)
+  set(SRCS
+    ${SRCS}
+    src/gba/assembler.h
+    src/gba/assembler.cpp
+  )
+endif()
+
 
 add_library(${PROJECT_NAME} ${SRCS})
 
-set_target_properties(${PROJECT_NAME} PROPERTIES CXX_STANDARD 17)
+set_target_properties(${PROJECT_NAME} PROPERTIES
+  CXX_STANDARD 17
+  INTERPROCEDURAL_OPTIMIZATION TRUE
+)
 
 target_include_directories(${PROJECT_NAME}
-  PUBLIC $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+  PUBLIC
+  $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
   $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/src>
-  $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/../external/span-lite/include>
 )
 
 target_compile_definitions(${PROJECT_NAME} PRIVATE
   span_FEATURE_MEMBER_AT=1
-  BOOST_RESULT_OF_USE_DECLTYPE=1
+  span_CONFIG_CONTRACT_VIOLATION_THROWS=1
+  $<$<BOOL:${GBEMU_DISABLE_TESTS}>:DOCTEST_CONFIG_DISABLE=1>
+  $<$<BOOL:${GBEMU_DISABLE_BOUNDS_CHECKS}>:span_CONFIG_CONTRACT_LEVEL_OFF=1>
 )
 
-target_link_libraries(${PROJECT_NAME}
-  PRIVATE
-  SDL2::SDL2-static
-  doctest::doctest
-  fmt::fmt
-  fmt::fmt-header-only
-  range-v3
-  ${GBEMU_CORE_EXTRA_LIBS}
-)
+if (NOT EMSCRIPTEN)
+  target_link_libraries(${PROJECT_NAME}
+    PUBLIC
+    SDL2::SDL2-static
+    doctest::doctest
+    fmt::fmt
+    nonstd::span-lite
+    range-v3
+    concepts
+    meta
+  )
+else()
+
+  target_link_libraries(${PROJECT_NAME}
+    PUBLIC
+    ${CONAN_LIBS}
+  )
+
+endif()
+
+if (EMSCRIPTEN)
+  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -s USE_SDL=2 -s LEGACY_GL_EMULATION=1 -s FORCE_FILESYSTEM=1 -s ASYNCIFY=1")
+endif()
 
 target_compile_options(${PROJECT_NAME} PRIVATE
  -Wall
@@ -136,11 +164,40 @@ target_compile_options(${PROJECT_NAME} PRIVATE
  -Wpedantic
  -Wdouble-promotion
  -Wunused
- -Wold-style-cast
- -ggdb3
- )
+ -g
+ -pipe
+ $<$<CONFIG:Release>:-O3>
+)
+
+if (NOT EMSCRIPTEN)
+add_executable(gbemu_benchmark
+  src/gba/benchmark/mmu.cpp
+)
+
+set_target_properties(gbemu_benchmark PROPERTIES
+  CXX_STANDARD 17
+  INTERPROCEDURAL_OPTIMIZATION TRUE
+)
+
+target_link_libraries(gbemu_benchmark PUBLIC
+  ${PROJECT_NAME}
+  doctest::doctest
+  benchmark::benchmark
+  benchmark::benchmark_main
+  LLVM
+)
+target_compile_definitions(gbemu_benchmark PRIVATE
+  span_FEATURE_MEMBER_AT=1
+  BOOST_RESULT_OF_USE_DECLTYPE=1
+)
 
 if (NOT ANDROID)
-  target_link_options(${PROJECT_NAME} PRIVATE -march=native)
+  target_link_options(${PROJECT_NAME} PUBLIC
+  )
+  target_link_options(gbemu_benchmark PRIVATE)
 endif()
+endif()
+
+add_library(${PROJECT_NAME}_libretro SHARED src/libretro.cpp)
+target_link_libraries(${PROJECT_NAME}_libretro PRIVATE ${PROJECT_NAME})
 

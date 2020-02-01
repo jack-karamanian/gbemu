@@ -32,11 +32,7 @@ bool Timer::update(u32 cycles) {
 
     while (m_cycles >= overflow_cycles) {
       m_cycles -= overflow_cycles;
-      if (m_cycles > 10) {
-        fmt::print("cycles {}\n", m_cycles);
-      }
       if (!control.count_up()) {
-        // return increment_counter();
         const bool overflow = increment_counter();
         did_overflow = did_overflow || overflow;
       }

@@ -24,7 +24,7 @@ class LengthMod {
     }
   }
 
-  u8 update(u8 volume) const { return enabled ? volume : 0; }
+  [[nodiscard]] u8 update(u8 volume) const { return volume & (15 * enabled); }
 
   void set_length(int length) { length_counter = DefaultLength - length; }
 

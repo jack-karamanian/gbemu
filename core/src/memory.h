@@ -3,12 +3,12 @@
 #include <cassert>
 #include <functional>
 #include <iostream>
+#include <nonstd/span.hpp>
 #include <optional>
 #include <unordered_map>
 #include <utility>
 #include <vector>
 #include "mbc.h"
-#include "nonstd/span.hpp"
 #include "registers/interrupt_enabled.h"
 #include "registers/interrupt_request.h"
 #include "registers/lcd_stat.h"
@@ -164,7 +164,7 @@ class Memory {
       std::generate(
           bytes.begin(), bytes.end(),
           [storage, normalized_addr, offset = sizeof(T) - 1]() mutable {
-            return storage.at(normalized_addr + offset--);
+            return storage[normalized_addr + offset--];
           });
       return convert_bytes<T>(bytes);
     }

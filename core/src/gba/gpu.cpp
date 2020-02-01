@@ -374,7 +374,8 @@ void Gpu::render_background(Background background, unsigned int scanline) {
       // midpoint created by scroll y
       ((scanline % TileSize) > (7 - (background.scroll.y % TileSize)) ? 1 : 0);
 
-  const auto get_byte = [get_tile_byte, tile_x, tile_scroll_offset](int i) {
+  const auto get_byte = [get_tile_byte, tile_x,
+                         tile_scroll_offset](unsigned int i) {
     return get_tile_byte(tile_x, tile_scroll_offset, i);
   };
 

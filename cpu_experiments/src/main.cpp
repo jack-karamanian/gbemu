@@ -1,11 +1,8 @@
 #include <GL/glew.h>
 #include <SDL2/SDL.h>
+#include <SDL_audio.h>
 #include <fmt/ostream.h>
-#include <folly/executors/CPUThreadPoolExecutor.h>
-#include <folly/futures/Future.h>
-#include <folly/init/Init.h>
 #include <charconv>
-#include <range/v3/all.hpp>
 #include <string>
 #include <vector>
 #define DOCTEST_CONFIG_IMPLEMENT
@@ -41,7 +38,9 @@ class NumberInput {
  public:
   constexpr explicit NumberInput(const char* name, int id = 0)
 
-      : m_name{name}, m_button_id{id} {};
+      : m_name{name}, m_button_id{id} {
+    m_value.fill('\0');
+  };
 
   template <typename Func>
 
@@ -56,8 +55,9 @@ class NumberInput {
       try {
         u32 number_value = 0;
 
-        auto res = std::from_chars(
-            m_value.data(), m_value.data() + m_value.size(), number_value, 16);
+        auto res = std::from_chars(m_value.data(),
+                                   m_value.data() + std::strlen(m_value.data()),
+                                   number_value, 16);
 
         if (res.ec == std::errc{}) {
           callback(number_value);
@@ -136,7 +136,6 @@ void run_emulator_and_debugger(std::string_view rom_path) {
     std::cerr << SDL_GetError() << '\n';
     return;
   }
-  folly::CPUThreadPoolExecutor executor{std::thread::hardware_concurrency()};
 
   SDL_SetHint(SDL_HINT_VIDEO_X11_NET_WM_BYPASS_COMPOSITOR, "0");
 
@@ -153,7 +152,8 @@ void run_emulator_and_debugger(std::string_view rom_path) {
       "CPU Experiments", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, 1920,
       1080, SDL_WINDOW_OPENGL | SDL_WINDOW_RESIZABLE);
 
-  SDL_AudioSpec want, have;
+  SDL_AudioSpec want;
+  SDL_AudioSpec have;
 
   memset(&want, 0, sizeof(want));
   want.freq = 44100;
@@ -163,10 +163,11 @@ void run_emulator_and_debugger(std::string_view rom_path) {
   want.callback = nullptr;
 
   SDL_AudioDeviceID audio_device;
-  if ((audio_device = SDL_OpenAudioDevice(nullptr, 0, &want, &have, 0)) < 0) {
-    fmt::print(std::cerr, "Failed to open audio\n");
+  if ((audio_device = SDL_OpenAudioDevice(nullptr, 0, &want, &have, 0)) == 0) {
+    fmt::print(std::cerr, "Failed to open audio {}\n", SDL_GetError());
     return;
   }
+
   SDL_PauseAudioDevice(audio_device, 0);
 
   SDL_GLContext gl_context = SDL_GL_CreateContext(window);
@@ -181,93 +182,13 @@ void run_emulator_and_debugger(std::string_view rom_path) {
   ImGui_ImplSDL2_InitForOpenGL(window, gl_context);
   ImGui_ImplOpenGL3_Init("#version 410 core");
 
-  auto bytes = experiments::assemble("mov r5, #12");
-
   Mmu mmu;
 
-  // mmu.load_rom(load_file("/home/jack/Downloads/CPUTest.gba"));
   mmu.load_rom(load_file(rom_path));
 
-  DisassemblyInfo disassembly;
+  DisassemblyInfo arm_disassembly;
   DisassemblyInfo thumb_disassembly;
   DisassemblyInfo iwram_disassembly;
-
-  const auto make_handler_for = [](DisassemblyInfo& disassembly_info) {
-    return [&disassembly_info](auto&& res) {
-      auto& addr_to_index = disassembly_info.addr_to_index;
-
-      std::transform(res.begin(), res.end(),
-                     std::inserter(addr_to_index, addr_to_index.begin()),
-                     [i = 0](auto& entry) mutable -> std::pair<u32, u32> {
-                       return {entry.loc, i++};
-                     });
-      disassembly_info.disassembly =
-          std::forward<std::decay_t<decltype(res)>>(res);
-    };
-  };
-
-  folly::via(&executor, [&mmu]() {
-    return experiments::disassemble(mmu.rom());
-  }).thenValue(make_handler_for(disassembly));
-
-  folly::via(&executor, [&mmu]() {
-    auto res = experiments::disassemble(mmu.rom(), "thumb");
-#if 1
-    std::ofstream file{"disasm.asm"};
-
-    for (auto& entry : res) {
-      fmt::print(file, "{} {}\n", entry.loc, entry.text.c_str());
-    }
-#endif
-    return res;
-  }).thenValue(make_handler_for(thumb_disassembly));
-
-#if 0
-  {
-    nonstd::span rom_span = mmu.rom();
-    const auto num_threads = std::thread::hardware_concurrency();
-    const auto slice_size = rom_span.size() / num_threads;
-
-    std::vector<folly::Future<std::vector<experiments::DisassemblyEntry>>>
-        futures;
-
-    fmt::print("{} {}\n", num_threads, rom_span.size());
-
-    auto range = ranges::view::ints(0u, num_threads);
-    std::transform(
-        range.begin(), range.end(), std::back_inserter(futures),
-        [slice_size, rom_span, &executor](unsigned int i) {
-          auto fut = folly::via(&executor, [rom_span, i, slice_size]() {
-            const u32 offset_begin = i * slice_size;
-
-            auto subspan = rom_span.subspan(offset_begin, slice_size);
-            auto entries = experiments::disassemble(subspan, "thumb");
-
-            for (auto& entry : entries) {
-              entry.loc += offset_begin;
-            }
-            return entries;
-          });
-          return fut;
-        });
-
-    folly::collectAll(futures)
-        .then(&executor,
-              [rom_span](auto&& final_futures) {
-                std::vector<experiments::DisassemblyEntry> all_entries;
-                all_entries.reserve(rom_span.size());
-                fmt::print("{} {}\n", final_futures.size(),
-                           std::this_thread::get_id());
-                for (auto& entries_try : final_futures) {
-                  auto& entries = entries_try.value();
-                  std::move(entries.begin(), entries.end(),
-                            std::back_inserter(all_entries));
-                }
-                return all_entries;
-              })
-        .thenValue(make_handler_for(thumb_disassembly));
-  }
-#endif
 
   Cpu cpu{mmu};
   ProgramStatus program_status = cpu.program_status();
@@ -284,7 +205,7 @@ void run_emulator_and_debugger(std::string_view rom_path) {
       [audio_device](nonstd::span<Sound::SampleType> samples) {
         if (SDL_QueueAudio(audio_device, samples.data(),
                            sizeof(Sound::SampleType) * samples.size()) < 0) {
-          fmt::print(std::cerr, SDL_GetError());
+          fmt::print(std::cerr, "{}\n", SDL_GetError());
         }
       };
 
@@ -297,13 +218,11 @@ void run_emulator_and_debugger(std::string_view rom_path) {
   mmu.hardware = hardware;
 
   cpu.set_reg(Register::R15, 0x08000000);
-  // cpu.set_reg(Register::R13, gb::advance::Mmu::IWramEnd - 0x100);
+  cpu.set_reg(Register::R13, 0x03007f00);
 
   HardwareThread hardware_thread{hardware};
 
   bool running = true;
-
-  std::string assembler_string;
 
   GLuint texture;
   glGenTextures(1, &texture);
@@ -440,17 +359,6 @@ void run_emulator_and_debugger(std::string_view rom_path) {
       }
 
       {
-        ImGui::Begin("Editor");
-
-        ImGui::InputTextMultiline("Assembly", &assembler_string,
-                                  ImVec2{400, 900},
-                                  ImGuiInputTextFlags_AllowTabInput);
-
-        if (ImGui::Button("Assemble")) {
-        }
-        ImGui::End();
-      }
-      {
         ImGui::Begin("Memory");
 
         static MemoryEditor memory_editor;
@@ -467,12 +375,23 @@ void run_emulator_and_debugger(std::string_view rom_path) {
         static DisassemblyView arm_disassembly_view{"ARM Disassembly"};
         static DisassemblyView thumb_disassembly_view{"Thumb Disassembly"};
         static DisassemblyView iwram_disassembly_view{"IWRam Disassembly"};
-        arm_disassembly_view.render(gb::advance::Mmu::RomRegion0Begin, cpu,
-                                    disassembly);
-        thumb_disassembly_view.render(gb::advance::Mmu::RomRegion0Begin, cpu,
+
+        arm_disassembly_view.render(gb::advance::Mmu::RomRegion0Begin, 4, cpu,
+                                    arm_disassembly);
+        thumb_disassembly_view.render(gb::advance::Mmu::RomRegion0Begin, 2, cpu,
                                       thumb_disassembly);
+#if 0
+        if (arm_disassembly_task.ready()) {
+          arm_disassembly_view.render(gb::advance::Mmu::RomRegion0Begin, cpu,
+                                      disassembly);
+        }
+        if (thumb_disassembly_task.ready()) {
+          thumb_disassembly_view.render(gb::advance::Mmu::RomRegion0Begin, cpu,
+                                        thumb_disassembly);
+        }
         iwram_disassembly_view.render(gb::advance::Mmu::IWramBegin, cpu,
                                       iwram_disassembly);
+#endif
       }
       {
         ImGui::Begin("VRAM");
@@ -492,9 +411,6 @@ void run_emulator_and_debugger(std::string_view rom_path) {
         ImGui::RadioButton("Thumb", &arch_index, 1);
 
         if (ImGui::Button("Disassemble")) {
-          folly::via(&executor, [&mmu]() {
-            return experiments::disassemble(mmu.iwram(), arches[arch_index]);
-          }).thenValue(make_handler_for(iwram_disassembly));
         }
 
         static MemoryEditor memory_editor;
@@ -543,22 +459,6 @@ void run_emulator_and_debugger(std::string_view rom_path) {
         ImGui::End();
       }
       {
-#if 0
-      nonstd::span<gb::u16> pixels{
-          reinterpret_cast<gb::u16*>(mmu.vram.data()),
-          static_cast<long>(mmu.vram.size() / sizeof(gb::u16))};
-
-      for (int i = 0; i < 240 * 160; ++i) {
-        u8 color_index = mmu.vram[i];
-        u16 color = mmu.palette_ram[color_index * 2];
-
-        framebuffer[i] = {
-            static_cast<u8>(convert_space<32, 255>(color & 0x1f)),
-            static_cast<u8>(convert_space<32, 255>((color >> 5) & 0x1f)),
-            static_cast<u8>(convert_space<32, 255>((color >> 10) & 0x1f)), 255};
-      }
-#endif
-
         glBindTexture(GL_TEXTURE_2D, texture);
         glPixelStorei(GL_UNPACK_ROW_LENGTH, 0);
         glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, 240, 160, 0, GL_RGBA,
@@ -598,7 +498,6 @@ void run_emulator_and_debugger(std::string_view rom_path) {
 }  // namespace gb::advance
 
 int main(int argc, char** argv) {
-  folly::init(&argc, &argv);
   doctest::Context context;
 
   context.setOption("abort-after", 5);

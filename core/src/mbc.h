@@ -1,18 +1,7 @@
 #pragma once
-#include <doctest/doctest.h>
-#include <cstddef>
 #include "types.h"
 
 namespace gb {
-template <typename T>
-T max_bits(T val) {
-  T res{0};
-  while (--val > 0) {
-    res |= val;
-  }
-
-  return res;
-}
 class Mbc {
  public:
   enum class Type {
@@ -36,7 +25,10 @@ class Mbc {
 
   bool mbc1_rom_mode = false;
 
+  // std::size_t relative_ram_address(u16 addr) const { return addr - 0xa000; }
+
  public:
+  static std::size_t relative_ram_address(u16 addr) { return addr - 0xa000; }
   Mbc(Type mbc_type, u16 max_rom_banks, u16 max_ram_banks)
       : type{mbc_type},
         max_bank_mask{max_rom_banks},
@@ -48,16 +40,11 @@ class Mbc {
 
   bool handle_memory_write(u16 addr, u8 value);
 
-  bool in_lower_write_range(u16 addr) const;
-  bool in_upper_write_range(u16 addr) const;
-
   u16 lower_rom_bank_selected() const;
   u16 rom_bank_selected() const;
 
   void set_ram_bank(u8 val);
 
-  bool in_ram_enable_range(u16 addr) const;
-  bool in_ram_bank_write_range(u16 addr) const;
   bool in_ram_range(u16 addr) const;
 
   bool save_ram_enabled() const { return enable_save_ram; }
@@ -71,14 +58,12 @@ class Mbc {
     return ram_bank % max_ram_bank_mask;
   }
 
-  std::size_t relative_ram_address(u16 addr) const { return addr - 0xa000; }
+  std::size_t absolute_ram_address(u16 addr) const {
+    return absolute_ram_offset() + relative_ram_address(addr);
+  }
 
   std::size_t absolute_ram_offset() const {
     return 0x2000 * ram_bank_selected();
-  }
-
-  std::size_t absolute_ram_address(u16 addr) const {
-    return absolute_ram_offset() + relative_ram_address(addr);
   }
 };
 }  // namespace gb

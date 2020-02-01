@@ -1,13 +1,20 @@
 
 #include "disassembly_view.h"
-#include <cstdlib>
 #include "gba/cpu.h"
 #include "imgui.h"
 
 namespace gb::advance {
-void DisassemblyView::render(gb::u32 base,
+void DisassemblyView::render(u32 base,
+                             int instr_size,
                              const Cpu& cpu,
-                             const DisassemblyInfo& disassembly_info) {
+                             DisassemblyInfo& disassembly_info) {
+  if (instr_size != m_prev_instr_size) {
+    m_prev_instr_size = instr_size;
+    auto begin = disassembly_info.disassembly_cache.begin();
+    auto end = disassembly_info.disassembly_cache.end();
+    std::fill(begin, end, std::string{});
+  }
+
   ImGui::Begin(m_name);
 
   std::optional<u32> target_addr;
@@ -26,10 +33,17 @@ void DisassemblyView::render(gb::u32 base,
   }
 
   ImGui::BeginChild("Inner");
-  ImGuiListClipper clipper(disassembly_info.disassembly.size(),
+  const u32 current_pc = (cpu.reg(gb::advance::Register::R15) - instr_size);
+  const auto storage = cpu.mmu()->select_storage(current_pc).storage;
+  if (m_prev_size != storage.size()) {
+    m_prev_size = storage.size();
+    m_num_potential_instructions = storage.size() / instr_size;
+    disassembly_info.disassembly_cache.resize(m_num_potential_instructions);
+  }
+
+  ImGuiListClipper clipper(m_num_potential_instructions,
                            ImGui::GetTextLineHeightWithSpacing());
-  const gb::u32 offset =
-      (cpu.reg(gb::advance::Register::R15) - cpu.prefetch_offset()) - base;
+  const gb::u32 offset = current_pc - base;
 
   if (offset != m_prev_offset) {
     go_to_address(offset);
@@ -37,23 +51,32 @@ void DisassemblyView::render(gb::u32 base,
   }
 
   if (target_addr) {
-    const auto index = disassembly_info.addr_to_index.find(*target_addr);
-    if (index != disassembly_info.addr_to_index.end()) {
-      const float adjusted_offset =
-          ImGui::GetCursorStartPos().y +
-          index->second * (ImGui::GetTextLineHeightWithSpacing());
-      ImGui::SetScrollFromPosY(adjusted_offset);
-    }
+    const auto target_index = *target_addr / instr_size;
+    const float adjusted_offset =
+        ImGui::GetCursorStartPos().y +
+        target_index * (ImGui::GetTextLineHeightWithSpacing());
+    ImGui::SetScrollFromPosY(adjusted_offset);
   }
 
   while (clipper.Step()) {
     for (int i = clipper.DisplayStart; i < clipper.DisplayEnd; ++i) {
-      const auto& entry = disassembly_info.disassembly[i];
+      const u32 instr_index = i * instr_size;
+      const auto& text = [&] {
+        auto& entry = disassembly_info.disassembly_cache[i];
+        if (entry.empty()) {
+          auto res =
+              experiments::disassemble(storage.subspan(instr_index, instr_size),
+                                       instr_size == 2 ? "thumb" : "arm");
+          assert(res.size() == 1);
+          return disassembly_info.disassembly_cache[i] = std::move(res[0].text);
+        }
+        return entry;
+      }();
 
-      if (entry.loc == offset) {
-        ImGui::Text("-> %08x %s", entry.loc + base, entry.text.c_str());
+      if (instr_index == offset) {
+        ImGui::Text("-> %08x %s", instr_index + base, text.c_str());
       } else {
-        ImGui::Text("%08x %s", entry.loc + base, entry.text.c_str());
+        ImGui::Text("%08x %s", instr_index + base, text.c_str());
       }
     }
   }

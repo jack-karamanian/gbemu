@@ -236,12 +236,12 @@ class FunctionRef<Ret(Args...)> {
   template <typename F>
   FunctionRef(F&& func) noexcept : m_impl{&func} {
     m_func_ptr = [](void* impl, Args... args) -> Ret {
-      return (*reinterpret_cast<std::decay_t<F>*>(impl))(
+      return (*reinterpret_cast<std::add_pointer_t<F>>(impl))(
           std::forward<Args>(args)...);
     };
   }
 
-  Ret operator()(Args... args) const noexcept {
+  Ret operator()(Args... args) const {
     return m_func_ptr(m_impl, std::forward<Args>(args)...);
   }
 

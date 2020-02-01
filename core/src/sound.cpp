@@ -1,10 +1,14 @@
-#include <SDL2/SDL.h>
-#include <array>
-#include <iostream>
-#include <numeric>
-#include "memory.h"
 #include "registers/sound.h"
+#include <SDL2/SDL.h>
+#include <fmt/ostream.h>
+#include <array>
+#include <numeric>
+#include <thread>
+#include "memory.h"
 #include "sound.h"
+#ifdef __EMSCRIPTEN__
+#include <emscripten/emscripten.h>
+#endif
 
 namespace gb {
 static float dac_output(u8 volume) {
@@ -51,7 +55,7 @@ float Sound::mix_samples(const AudioFrame& frame,
                        reinterpret_cast<const Uint8*>(&noise_sample),
                        AUDIO_F32SYS, sizeof(float), output_volume);
   }
-  return mixed_sample * 0.016f;
+  return mixed_sample * 0.032f;
 }
 
 u8 Sound::handle_memory_read(u16 addr) const {
@@ -82,7 +86,7 @@ void Sound::handle_memory_write(u16 addr, u8 value) {
       break;
     case Registers::Sound::Square1::NR11::Address:
     case Registers::Sound::Square2::NR21::Address:
-      square.source.set_duty_cycle((value & 0xC0) >> 6);
+      square.source.set_duty_cycle((value & 0xc0) >> 6);
       square.dispatch(SetLengthCommand{value & 0x3f});
       break;
     case Registers::Sound::Square1::NR12::Address:
@@ -117,6 +121,7 @@ void Sound::handle_memory_write(u16 addr, u8 value) {
       if (((value & 0xf8)) == 0) {
         wave_channel.disable();
       }
+      break;
 
     case Registers::Sound::Wave::NR31::Address:
       wave_channel.dispatch(SetLengthCommand{value});
@@ -220,17 +225,22 @@ void Sound::update(int ticks) {
     sample_buffer.push_back(left_sample);
     sample_buffer.push_back(right_sample);
 
-    if (sample_buffer.size() >= 4096) {
-      while (SDL_GetQueuedAudioSize(audio_device) > 4096 * sizeof(float)) {
-        SDL_Delay(1);
-      }
+    if (sample_buffer.size() >= SOUND_SAMPLE_BUFFER_SIZE * 2 &&
+        SDL_GetQueuedAudioSize(audio_device) <
+            SOUND_SAMPLE_BUFFER_SIZE * sizeof(float) / 2) {
       if (SDL_QueueAudio(audio_device, sample_buffer.data(),
                          sample_buffer.size() * sizeof(float))) {
         std::cout << "SDL Error: " << SDL_GetError() << std::endl;
       }
       sample_buffer.clear();
+      while (SDL_GetQueuedAudioSize(audio_device) >
+             SOUND_SAMPLE_BUFFER_SIZE * sizeof(float) * 2) {
+        std::this_thread::yield();
+      }
     }
   });
+#if 1
+#endif
 
   sequencer_task.run(ticks, [&]() {
     square1.clock(sequencer_step);
