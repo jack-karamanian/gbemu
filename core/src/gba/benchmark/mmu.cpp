@@ -118,12 +118,13 @@ BENCHMARK(bench_set_sequential);
 int main(int argc, char** argv) {
   std::vector<char*> args(argv, argv + argc);
 
-  for (auto i = args.begin(); i != args.end(); ++i) {
-    if (std::strcmp(*i, "--rom-file") == 0 && (i + 1) != args.end()) {
-      g_rom_file = *(i + 1);
-      args.erase(i, i + 1);
-      break;
-    }
+  auto rom_arg = std::find_if(args.begin(), args.end(), [](const char* arg) {
+    return std::strcmp(arg, "--rom-file") == 0;
+  });
+
+  if (rom_arg != args.end() && (rom_arg + 1) != args.end()) {
+    g_rom_file = *(rom_arg + 1);
+    args.erase(rom_arg, rom_arg + 1);
   }
 
   int arg_count = args.size();
