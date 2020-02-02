@@ -1561,7 +1561,17 @@ static int popcount(int num) {
 }
 
 static int ctz(int num) {
+#ifdef __GNUC__
   return __builtin_ctz(num);
+#else
+  int i = 0;
+  for (; i < 8 * sizeof(int); ++i) {
+    if (test_bit(num, i)) {
+      return i;
+    }
+  }
+  return i;
+#endif
 }
 
 template <bool load, Register base_reg>
