@@ -131,4 +131,3 @@ int main(int argc, char** argv) {
   benchmark::Initialize(&arg_count, args.data());
   benchmark::RunSpecifiedBenchmarks();
 }
-// BENCHMARK(bench_set_erasure_sequential);
