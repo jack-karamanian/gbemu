@@ -112,11 +112,9 @@ BENCHMARK(bench_integration)
 BENCHMARK(copy_memory);
 BENCHMARK(bench_at);
 BENCHMARK(bench_at_sequential);
-// BENCHMARK(erasure_bench_at);
-// BENCHMARK(erasure_bench_at_sequential);
 BENCHMARK(bench_set);
-// BENCHMARK(bench_set_erasure);
 BENCHMARK(bench_set_sequential);
+
 int main(int argc, char** argv) {
   std::vector<char*> args(argv, argv + argc);
 
