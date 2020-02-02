@@ -9,7 +9,6 @@
 #include "error_handling.h"
 #include "interrupts.h"
 #include "mmu.h"
-#include "thumb_to_arm.h"
 #include "types.h"
 #include "utils.h"
 

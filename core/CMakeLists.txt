@@ -82,8 +82,6 @@ set(SRCS
   src/gba/lcd.h
   src/gba/lcd.cpp
   src/gba/input.h
-  src/gba/thumb_to_arm.h
-  src/gba/thumb_to_arm.cpp
   src/gba/hardware.h
   src/gba/emulator.h
   src/gba/emulator.cpp
@@ -183,8 +181,6 @@ target_link_libraries(gbemu_benchmark PUBLIC
   ${PROJECT_NAME}
   doctest::doctest
   benchmark::benchmark
-  benchmark::benchmark_main
-  LLVM
 )
 target_compile_definitions(gbemu_benchmark PRIVATE
   span_FEATURE_MEMBER_AT=1
