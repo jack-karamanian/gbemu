@@ -11,10 +11,13 @@ jobs:
             python: python3
             cxx: g++-9
             cc: gcc-9
+            cmake_generator: Ninja
           - os: macos-latest
             python: python3
+            cmake_generator: Ninja
           - os: windows-latest
             python: python
+            cmake_generator: Visual Studio 16 2019
 
     runs-on: ${{ matrix.config.os }}
 
@@ -50,7 +53,7 @@ jobs:
       - name: Configure CMake
         run: |
           mkdir build
-          cmake cpu_experiments -DCMAKE_TOOLCHAIN_FILE="$PWD/vcpkg/scripts/buildsystems/vcpkg.cmake" -DCMAKE_BUILD_TYPE=Release -G Ninja -B build
+          cmake cpu_experiments -DCMAKE_TOOLCHAIN_FILE="$PWD/vcpkg/scripts/buildsystems/vcpkg.cmake" -DCMAKE_BUILD_TYPE=Release -G ${{ matrix.config.cmake_generator }} -B build
       - name: Build
         run: cmake --build build
 
