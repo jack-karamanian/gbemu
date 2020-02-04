@@ -8,12 +8,15 @@ jobs:
       matrix:
         config:
           - os: ubuntu-latest
+            python: python3
           - os: macos-latest
+            python: python3
           - os: windows-latest
+            python: python
 
     runs-on: ${{ matrix.config.os }}
 
     steps:
       - uses: actions/checkout@v2
       - name: Install dependencies
-        run: python install-deps.py
+        run: ${{ matrix.config.python }} install-deps.py
