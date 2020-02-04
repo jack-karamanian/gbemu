@@ -18,12 +18,19 @@ jobs:
 
     steps:
       - uses: actions/checkout@v2
+      - run: sudo apt update && sudo apt install ninja-build
+        if: matrix.config.os == 'ubuntu-latest'
+      - run: choco install ninja
+        if: matrix.config.os == 'windows-latest'
+      - run: brew install ninja
+        if: matrix.config.os == 'macos-latest'
       - name: Install dependencies
         run: ${{ matrix.config.python }} install-deps.py
       - name: Configure CMake
         run: |
           mkdir build
-          cmake cpu_experiments -DCMAKE_TOOLCHAIN_FILE=./vcpkg/scripts/buildsystems/vcpkg.cmake -DCMAKE_BUILD_TYPE=Release -G Ninja -B build
+          cmake cpu_experiments -DCMAKE_TOOLCHAIN_FILE=$PWD/vcpkg/scripts/buildsystems/vcpkg.cmake -DCMAKE_BUILD_TYPE=Release -G Ninja -B build
+        shell: bash
       - name: Build
         run: cmake --build build
 
