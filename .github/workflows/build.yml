@@ -16,4 +16,4 @@ jobs:
     steps:
       - uses: actions/checkout@v2
       - name: Install dependencies
-        run: python3 install-deps.py
+        run: python install-deps.py
