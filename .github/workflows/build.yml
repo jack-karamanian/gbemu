@@ -41,8 +41,7 @@ jobs:
       - name: Configure CMake
         run: |
           mkdir build
-          cmake cpu_experiments -DCMAKE_TOOLCHAIN_FILE=$PWD/vcpkg/scripts/buildsystems/vcpkg.cmake -DCMAKE_BUILD_TYPE=Release -G Ninja -B build
-        shell: bash
+          cmake cpu_experiments -DCMAKE_TOOLCHAIN_FILE="$PWD/vcpkg/scripts/buildsystems/vcpkg.cmake" -DCMAKE_BUILD_TYPE=Release -G Ninja -B build
       - name: Build
         run: cmake --build build
 
