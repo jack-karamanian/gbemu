@@ -10,7 +10,7 @@ project(cpu_experiments)
 find_package(SDL2 CONFIG REQUIRED)
 find_package(doctest CONFIG REQUIRED)
 find_package(fmt CONFIG REQUIRED)
-find_package(GLEW REQUIRED)
+find_package(glad REQUIRED)
 
 add_subdirectory(../core ./gbemu_core_build)
 
@@ -37,13 +37,14 @@ set_target_properties(cpu_experiments PROPERTIES
   INTERPROCEDURAL_OPTIMIZATION TRUE
 )
 
+find_library(capstone_lib capstone)
+
 target_link_libraries(cpu_experiments PRIVATE
   SDL2::SDL2
-  GLEW::GLEW
-  GL
+  glad::glad
   gbemu_core
   fmt::fmt
-  capstone
+  ${capstone_lib}
 )
 
 target_include_directories(cpu_experiments 
@@ -52,7 +53,7 @@ target_include_directories(cpu_experiments
 )
 
 target_compile_definitions(cpu_experiments PRIVATE
-  IMGUI_IMPL_OPENGL_LOADER_CUSTOM=<GL/glew.h> 
+  IMGUI_IMPL_OPENGL_LOADER_GLAD
   span_FEATURE_MEMBER_AT=1
   span_CONFIG_CONTRACT_VIOLATION_THROWS
 )

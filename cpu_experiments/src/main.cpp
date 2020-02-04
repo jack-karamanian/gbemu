@@ -1,14 +1,14 @@
-#include <GL/glew.h>
 #include <SDL2/SDL.h>
 #include <SDL_audio.h>
 #include <fmt/ostream.h>
+#include <glad/glad.h>
 #include <charconv>
 #include <string>
 #include <vector>
 #define DOCTEST_CONFIG_IMPLEMENT
 #include <doctest/doctest.h>
 // clang-format off
-#define IMGUI_IMPL_OPENGL_LOADER_CUSTOM <GL/glew.h>
+#define IMGUI_IMPL_OPENGL_LOADER_GLAD
 #include "imgui/imgui.h"
 #include "imgui/misc/cpp/imgui_stdlib.h"
 #include "imgui/examples/imgui_impl_sdl.h"
@@ -172,7 +172,7 @@ void run_emulator_and_debugger(std::string_view rom_path) {
 
   SDL_GLContext gl_context = SDL_GL_CreateContext(window);
 
-  glewInit();
+  gladLoadGL();
 
   IMGUI_CHECKVERSION();
 
@@ -468,7 +468,6 @@ void run_emulator_and_debugger(std::string_view rom_path) {
 
         if (error != GL_NO_ERROR) {
           std::cerr << "gl error \n";
-          std::cerr << glewGetErrorString(error);
         }
       }
     }
