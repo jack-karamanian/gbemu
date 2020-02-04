@@ -9,6 +9,8 @@ jobs:
         config:
           - os: ubuntu-latest
             python: python3
+            cxx: g++-9
+            cc: gcc-9
           - os: macos-latest
             python: python3
           - os: windows-latest
@@ -31,6 +33,11 @@ jobs:
         if: matrix.config.os == 'macos-latest'
       - name: Install dependencies
         run: ${{ matrix.config.python }} install-deps.py
+      - name: Setup environment
+        if: runner.os == 'Linux'
+        run: |
+          echo "::set-env name=CC::${{ matrix.config.cc }}"
+          echo "::set-env name=CXX::${{ matrix.config.cxx }}"
       - name: Configure CMake
         run: |
           mkdir build
