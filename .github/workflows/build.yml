@@ -18,6 +18,7 @@ jobs:
 
     steps:
       - uses: actions/checkout@v2
+      - run: git submodule update --init --recursive
       - run: sudo apt update && sudo apt install ninja-build
         if: matrix.config.os == 'ubuntu-latest'
       - run: choco install ninja
