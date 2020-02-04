@@ -51,9 +51,15 @@ jobs:
             echo ::set-env name=$name::$value
           }
       - name: Configure CMake
+        if: runner.os != 'Windows'
         run: |
           mkdir build
           cmake cpu_experiments -DCMAKE_TOOLCHAIN_FILE="$PWD/vcpkg/scripts/buildsystems/vcpkg.cmake" -DCMAKE_BUILD_TYPE=Release -G "${{ matrix.config.cmake_generator }}" -B build
+      - name: Configure CMake Windows
+        if: runner.os == 'Windows'
+        run: |
+          mkdir build
+          cmake cpu_experiments -DCMAKE_TOOLCHAIN_FILE="$PWD/vcpkg/scripts/buildsystems/vcpkg.cmake" -DCMAKE_BUILD_TYPE=Release -G "${{ matrix.config.cmake_generator }}" -DVCPKG_TARGET_TRIPLET=x64-windows-static -B build
       - name: Build
         run: cmake --build build
 
