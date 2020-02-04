@@ -61,11 +61,11 @@ target_compile_definitions(cpu_experiments PRIVATE
 target_link_options(${PROJECT_NAME} PRIVATE )
 
 target_compile_options(${PROJECT_NAME} PRIVATE
- -Wall
- -Wextra
- -Wshadow
- -Wpedantic
- -Wdouble-promotion
- -Wunused
- -g
+  # -Wall
+  #-Wextra
+  #-Wshadow
+  #-Wpedantic
+  #-Wdouble-promotion
+  #-Wunused
+  #-g
  )

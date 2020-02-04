@@ -144,54 +144,46 @@ if (NOT EMSCRIPTEN)
   )
 else()
 
-  target_link_libraries(${PROJECT_NAME}
-    PUBLIC
-    ${CONAN_LIBS}
-  )
-
-endif()
-
-if (EMSCRIPTEN)
   set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -s USE_SDL=2 -s LEGACY_GL_EMULATION=1 -s FORCE_FILESYSTEM=1 -s ASYNCIFY=1")
 endif()
 
 target_compile_options(${PROJECT_NAME} PRIVATE
- -Wall
- -Wextra
- -Wshadow
- -Wpedantic
- -Wdouble-promotion
- -Wunused
- -g
- -pipe
- $<$<CONFIG:Release>:-O3>
+#-Wall
+# -Wextra
+# -Wshadow
+# -Wpedantic
+# -Wdouble-promotion
+# -Wunused
+# -g
+# -pipe
+# $<$<CONFIG:Release>:-O3>
 )
 
-if (NOT EMSCRIPTEN)
-add_executable(gbemu_benchmark
-  src/gba/benchmark/mmu.cpp
-)
-
-set_target_properties(gbemu_benchmark PROPERTIES
-  CXX_STANDARD 17
-  INTERPROCEDURAL_OPTIMIZATION TRUE
-)
-
-target_link_libraries(gbemu_benchmark PUBLIC
-  ${PROJECT_NAME}
-  doctest::doctest
-  benchmark::benchmark
-)
-target_compile_definitions(gbemu_benchmark PRIVATE
-  span_FEATURE_MEMBER_AT=1
-  BOOST_RESULT_OF_USE_DECLTYPE=1
-)
-
-if (NOT ANDROID)
-  target_link_options(${PROJECT_NAME} PUBLIC
+if (TRUE )
+  add_executable(gbemu_benchmark
+    src/gba/benchmark/mmu.cpp
   )
-  target_link_options(gbemu_benchmark PRIVATE)
-endif()
+
+  set_target_properties(gbemu_benchmark PROPERTIES
+    CXX_STANDARD 17
+    INTERPROCEDURAL_OPTIMIZATION TRUE
+  )
+
+  target_link_libraries(gbemu_benchmark PUBLIC
+    ${PROJECT_NAME}
+    doctest::doctest
+    benchmark::benchmark
+  )
+  target_compile_definitions(gbemu_benchmark PRIVATE
+    span_FEATURE_MEMBER_AT=1
+    BOOST_RESULT_OF_USE_DECLTYPE=1
+  )
+
+  if (NOT ANDROID)
+    target_link_options(${PROJECT_NAME} PUBLIC
+    )
+    target_link_options(gbemu_benchmark PRIVATE)
+  endif()
 endif()
 
 add_library(${PROJECT_NAME}_libretro SHARED src/libretro.cpp)
