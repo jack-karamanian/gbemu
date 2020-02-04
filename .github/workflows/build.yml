@@ -33,11 +33,20 @@ jobs:
         if: matrix.config.os == 'macos-latest'
       - name: Install dependencies
         run: ${{ matrix.config.python }} install-deps.py
-      - name: Setup environment
+      - name: Setup CC and CXX
         if: runner.os == 'Linux'
         run: |
           echo "::set-env name=CC::${{ matrix.config.cc }}"
           echo "::set-env name=CXX::${{ matrix.config.cxx }}"
+      - name: Setup x64
+        if: runner.os == 'Windows'
+        shell: powershell
+        run: |
+          $installationPath = $(& "C:\Program Files (x86)\Microsoft Visual Studio\Installer\vswhere" -latest -property installationPath)
+          & "${env:COMSPEC}" /s /c "`"$installationPath\Common7\Tools\vsdevcmd.bat`" -no_logo -arch=x64 -host_arch=x64 && set" | foreach-object {
+            $name, $value = $_ -split '=', 2
+            echo ::set-env name=$name::$value
+          }
       - name: Configure CMake
         run: |
           mkdir build
