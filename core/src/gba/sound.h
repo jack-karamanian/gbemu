@@ -1,4 +1,5 @@
 #pragma once
+#include <vector>
 #include "io_registers.h"
 #include "ring_buffer.h"
 #include "utils.h"
