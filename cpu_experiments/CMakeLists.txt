@@ -10,12 +10,7 @@ find_package(glad REQUIRED)
 
 add_subdirectory(../core ./gbemu_core_build)
 
-set(SRCS
-  src/main.cpp
-  src/debugger/disassembly_view.h
-  src/debugger/disassembly_view.cpp
-  src/debugger/hardware_thread.h
-  src/debugger/hardware_thread.cpp
+add_library(imgui OBJECT
   src/imgui/examples/imgui_impl_sdl.h
   src/imgui/examples/imgui_impl_sdl.cpp
   src/imgui/examples/imgui_impl_opengl3.cpp
@@ -27,7 +22,31 @@ set(SRCS
   src/imgui/imgui.h
 )
 
-add_executable(cpu_experiments ${SRCS})
+target_include_directories(imgui PRIVATE src/imgui)
+target_link_libraries(imgui PRIVATE
+  SDL2::SDL2
+  glad::glad
+)
+
+target_compile_definitions(imgui PRIVATE
+  IMGUI_IMPL_OPENGL_LOADER_GLAD
+)
+
+set_target_properties(imgui PROPERTIES
+  CXX_STANDARD 17
+  INTERPROCEDURAL_OPTIMIZATION ${GBEMU_ENABLE_LTO}
+)
+
+set(SRCS
+  src/main.cpp
+  src/debugger/disassembly_view.h
+  src/debugger/disassembly_view.cpp
+  src/debugger/hardware_thread.h
+  src/debugger/hardware_thread.cpp
+)
+
+add_executable(cpu_experiments ${SRCS} $<TARGET_OBJECTS:imgui>)
+
 set_target_properties(cpu_experiments PROPERTIES
   CXX_STANDARD 17
   INTERPROCEDURAL_OPTIMIZATION ${GBEMU_ENABLE_LTO}
@@ -50,7 +69,6 @@ target_include_directories(cpu_experiments
 )
 
 target_compile_definitions(cpu_experiments PRIVATE
-  IMGUI_IMPL_OPENGL_LOADER_GLAD
   span_FEATURE_MEMBER_AT=1
   span_CONFIG_CONTRACT_VIOLATION_THROWS
 )
