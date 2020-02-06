@@ -101,7 +101,6 @@ set(SRCS
   src/gba/sound.h
   src/gba/sound.cpp
   src/gba/interrupts.h
-  src/gba/interrupts.cpp
   src/gba/assembler.h
   src/gba/assembler.cpp
 )

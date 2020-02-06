@@ -525,7 +525,7 @@ class Cpu {
   [[nodiscard]] const Debugger& debugger() const { return m_debugger; }
 
   InterruptBucket interrupts_enabled{0};
-  InterruptsRequested interrupts_requested{*this};
+  InterruptsRequested interrupts_requested{};
   InterruptBucket interrupts_waiting{0};
   u32 ime = 0;
 
