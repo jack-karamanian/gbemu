@@ -1,5 +1,5 @@
-#include <iostream>
 #include "sdl_renderer.h"
+#include <iostream>
 
 namespace gb {
 
@@ -39,8 +39,7 @@ void SdlRenderer::clear() {
   SDL_RenderClear(renderer.get());
 }
 
-void SdlRenderer::draw_pixels(Texture texture,
-                              const std::vector<Color>& pixels) {
+void SdlRenderer::draw_pixels(const std::vector<Color>& pixels) {
   SDL_Texture* sdl_texture = this->texture.get();
 
   Uint32* texture_pixels = nullptr;

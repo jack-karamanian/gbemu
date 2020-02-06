@@ -36,7 +36,7 @@ struct Emulator {
   Gpu gpu{mmu};
   Dmas dmas{mmu, cpu};
 
-  Lcd lcd{cpu, mmu, dmas, gpu};
+  Lcd lcd{cpu, dmas, gpu};
   Input input;
   Sound sound{[](auto) {}, dmas};
 

@@ -35,8 +35,8 @@ class Lcd {
  public:
   enum class Mode { Draw, HBlank, VBlank };
 
-  Lcd(Cpu& cpu, Mmu& mmu, Dmas& dmas, Gpu& gpu)
-      : m_cpu{&cpu}, m_mmu{&mmu}, m_dmas{&dmas}, m_gpu{&gpu} {}
+  Lcd(Cpu& cpu, Dmas& dmas, Gpu& gpu)
+      : m_cpu{&cpu}, m_dmas{&dmas}, m_gpu{&gpu} {}
 
   DispStat dispstat{0};
   u32 vcount = 0;
@@ -49,7 +49,6 @@ class Lcd {
   int m_cycles = 0;
   Mode m_mode = Mode::Draw;
   Cpu* m_cpu;
-  Mmu* m_mmu;
   Dmas* m_dmas;
   Gpu* m_gpu;
 };

@@ -381,6 +381,8 @@ class Gpu {
         return bg3.scanline;
       case Dispcnt::BackgroundLayer::Obj:
         return sprite_scanline;
+      default:
+        throw std::runtime_error("invalid layer");
     }
   }
 

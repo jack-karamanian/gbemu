@@ -25,8 +25,6 @@ static constexpr std::array<Color, 4> SPRITE_COLORS = {{
 Gpu::Gpu(Memory& memory, SdlRenderer& sdl_renderer, SpriteFilter filter)
     : memory{&memory},
       renderer{&sdl_renderer},
-      background_texture{
-          renderer->create_texture(SCREEN_WIDTH, SCREEN_HEIGHT, false)},
       sprite_filter{std::move(filter)},
       background_pixels{},
       background_framebuffer(DISPLAY_SIZE) {
@@ -88,11 +86,11 @@ void Gpu::render_sprites(int scanline) {
       const auto selected_colors =
           sprite_palette.colors_for_palette(sprite_palette_number);
 
-      for (int pixel_x :
-           ranges::view::ints(x < 0 ? -x : 0,
-                              x + TILE_SIZE >= SCREEN_WIDTH
-                                  ? TILE_SIZE - ((x + TILE_SIZE) - SCREEN_WIDTH)
-                                  : TILE_SIZE)) {
+      for (int pixel_x : ranges::views::ints(
+               x < 0 ? -x : 0,
+               x + TILE_SIZE >= SCREEN_WIDTH
+                   ? TILE_SIZE - ((x + TILE_SIZE) - SCREEN_WIDTH)
+                   : TILE_SIZE)) {
         const int flipped_pixel_x =
             sprite_attrib.flip_x() ? 7 - pixel_x : pixel_x;
         const int screen_x = x + pixel_x;
@@ -143,7 +141,7 @@ void Gpu::render_background(
 
   // HACK: The real hardware renders 20-22 tiles depending on scroll_x
   // but let's just always render 21 tiles
-  for (int tile : ranges::view::ints(0, 21)) {
+  for (int tile : ranges::views::ints(0, 21)) {
     // Add which tile to be displayed to the last 5 bits of tile_base
     const u16 tile_num_addr =
         (tile_base & ~0x1f) | (((tile_base & 0x1f) + tile) & 0x1f);
@@ -190,7 +188,7 @@ void Gpu::render_background(
                           ? tile_scroll_x
                           : TILE_SIZE;  // Make sure x is < 160
 
-    for (int pixel_x : ranges::view::ints(x_begin, x_end)) {
+    for (int pixel_x : ranges::views::ints(x_begin, x_end)) {
       const u16 x = tile_x + pixel_x - tile_scroll_x + offset_x;
 
       const u8 color_index = render_pixel(
@@ -326,6 +324,6 @@ void Gpu::render_scanline(int scanline) {
 }
 
 void Gpu::render() {
-  renderer->draw_pixels(background_texture, background_framebuffer);
+  renderer->draw_pixels(background_framebuffer);
 }
 }  // namespace gb
