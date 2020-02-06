@@ -43,6 +43,7 @@ set(SRCS
   src/debugger/disassembly_view.cpp
   src/debugger/hardware_thread.h
   src/debugger/hardware_thread.cpp
+  src/imgui_memory_editor.h
 )
 
 add_executable(cpu_experiments ${SRCS} $<TARGET_OBJECTS:imgui>)
@@ -61,6 +62,7 @@ target_link_libraries(cpu_experiments PRIVATE
   gbemu_core
   fmt::fmt
   ${capstone_lib}
+  gbemu_warnings
 )
 
 target_include_directories(cpu_experiments 
@@ -76,11 +78,4 @@ target_compile_definitions(cpu_experiments PRIVATE
 target_link_options(${PROJECT_NAME} PRIVATE )
 
 target_compile_options(${PROJECT_NAME} PRIVATE
-  # -Wall
-  #-Wextra
-  #-Wshadow
-  #-Wpedantic
-  #-Wdouble-promotion
-  #-Wunused
-  #-g
  )

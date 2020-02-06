@@ -9,6 +9,15 @@ set(GBEMU_DISABLE_TESTS OFF CACHE STRING "Disable tests")
 set(GBEMU_DISABLE_BOUNDS_CHECKS ON CACHE STRING "Disable bounds checking") 
 set(GBEMU_ENABLE_LTO OFF CACHE BOOL "Enables LTO")
 
+add_library(gbemu_warnings INTERFACE)
+
+target_compile_options(gbemu_warnings INTERFACE
+  $<$<COMPILE_LANG_AND_ID:CXX,AppleClang,Clang,GNU>:
+    -Wall;-Wextra;-Wshadow;-Wpedantic;-Wdouble-promotion;-Wunused
+  >
+  $<$<COMPILE_LANG_AND_ID:CXX,MSVC>:/W4>
+)
+
 if (NOT EMSCRIPTEN)
   find_package(SDL2 CONFIG REQUIRED)
   find_package(doctest CONFIG REQUIRED)
@@ -128,7 +137,7 @@ target_compile_definitions(${PROJECT_NAME} PRIVATE
 if (NOT EMSCRIPTEN)
   target_link_libraries(${PROJECT_NAME}
     PUBLIC
-    SDL2::SDL2-static
+    SDL2::SDL2
     doctest::doctest
     fmt::fmt
     nonstd::span-lite
@@ -136,20 +145,12 @@ if (NOT EMSCRIPTEN)
     concepts
     meta
   )
+  target_link_libraries(${PROJECT_NAME} PRIVATE gbemu_warnings)
 else()
   set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -s USE_SDL=2 -s LEGACY_GL_EMULATION=1 -s FORCE_FILESYSTEM=1 -s ASYNCIFY=1")
 endif()
 
 target_compile_options(${PROJECT_NAME} PRIVATE
-#-Wall
-# -Wextra
-# -Wshadow
-# -Wpedantic
-# -Wdouble-promotion
-# -Wunused
-# -g
-# -pipe
-# $<$<CONFIG:Release>:-O3>
 )
 
 if (TRUE )
@@ -159,8 +160,7 @@ if (TRUE )
 
   set_target_properties(gbemu_benchmark PROPERTIES
     CXX_STANDARD 17
-    INTERPROCEDURAL_OPTIMIZATION FALSE
-  MSVC_RUNTIME_LIBRARY MultiThreaded
+    INTERPROCEDURAL_OPTIMIZATION ${GBEMU_ENABLE_LTO}
   )
 
   target_link_libraries(gbemu_benchmark PUBLIC
