@@ -498,8 +498,8 @@ class Cpu {
       set_reg(static_cast<Register>(i), 0);
     }
     // R14 = 0
-    m_saved_registers.irq[6] = 0;
-    m_saved_registers.irq[5] = 0x03007fa0;
+    m_saved_registers.irq[1] = 0;
+    m_saved_registers.irq[0] = 0x03007fa0;
 
     set_reg(Register::R13, 0x03007f00);
 
