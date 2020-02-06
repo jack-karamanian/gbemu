@@ -47,10 +47,11 @@ jobs:
           $installationPath = $(& "C:\Program Files (x86)\Microsoft Visual Studio\Installer\vswhere" -latest -property installationPath)
           & "${env:COMSPEC}" /s /c "`"$installationPath\Common7\Tools\vsdevcmd.bat`" -no_logo -arch=x64 -host_arch=x64 && set" | foreach-object {
             $name, $value = $_ -split '=', 2
-            echo ::set-env name=$name::$value
+            echo "::set-env name=$name::$value"
           }
       - name: CMake Build
         if: runner.os != 'Windows'
+        id: build
         run: |
           cmake cpu_experiments \
           -DCMAKE_TOOLCHAIN_FILE="$PWD/vcpkg/scripts/buildsystems/vcpkg.cmake" \
@@ -58,7 +59,9 @@ jobs:
           -G Ninja \
           -B build
           cmake --build build
+          echo "::set-output artifact-path::build/cpu_experiments"
       - name: CMake Build Windows
+        id: build
         if: runner.os == 'Windows'
         run: |
           cmake cpu_experiments `
@@ -69,5 +72,9 @@ jobs:
           -DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded `
           -B build
           cmake --build build --config Release
-
-
+          echo "::set-output artifact-path::build/Release/cpu_experiments.exe"
+      - name: Upload artifact
+        uses: actions/upload-artifact@v1
+        with:
+          name: build-${{ runner.os }}
+          path: ${{ steps.build.outputs.artifact-path }}
