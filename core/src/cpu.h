@@ -22,8 +22,6 @@ struct Instruction {
   size_t size;
   size_t cycles;
   std::function<void()> impl;
-
-  Instruction() = delete;
 };
 
 struct InstructionTable {

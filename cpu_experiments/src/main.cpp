@@ -8,7 +8,6 @@
 #define DOCTEST_CONFIG_IMPLEMENT
 #include <doctest/doctest.h>
 // clang-format off
-#define IMGUI_IMPL_OPENGL_LOADER_GLAD
 #include "imgui/imgui.h"
 #include "imgui/misc/cpp/imgui_stdlib.h"
 #include "imgui/examples/imgui_impl_sdl.h"
@@ -38,9 +37,7 @@ class NumberInput {
  public:
   constexpr explicit NumberInput(const char* name, int id = 0)
 
-      : m_name{name}, m_button_id{id} {
-    m_value.fill('\0');
-  };
+      : m_name{name}, m_button_id{id} {};
 
   template <typename Func>
 
@@ -511,4 +508,5 @@ int main(int argc, char** argv) {
     return res;
   }
   gb::advance::run_emulator_and_debugger(argv[1]);
+  return 0;
 }

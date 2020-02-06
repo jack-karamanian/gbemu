@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.9)
+cmake_minimum_required(VERSION 3.15)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 project(gbemu_core)
@@ -7,6 +7,8 @@ include(CTest)
 
 set(GBEMU_DISABLE_TESTS OFF CACHE STRING "Disable tests")
 set(GBEMU_DISABLE_BOUNDS_CHECKS ON CACHE STRING "Disable bounds checking") 
+set(GBEMU_ENABLE_LTO OFF CACHE BOOL "Enables LTO")
+
 if (NOT EMSCRIPTEN)
   find_package(SDL2 CONFIG REQUIRED)
   find_package(doctest CONFIG REQUIRED)
@@ -100,22 +102,15 @@ set(SRCS
   src/gba/sound.cpp
   src/gba/interrupts.h
   src/gba/interrupts.cpp
+  src/gba/assembler.h
+  src/gba/assembler.cpp
 )
-
-if (NOT EMSCRIPTEN)
-  set(SRCS
-    ${SRCS}
-    src/gba/assembler.h
-    src/gba/assembler.cpp
-  )
-endif()
-
 
 add_library(${PROJECT_NAME} ${SRCS})
 
 set_target_properties(${PROJECT_NAME} PROPERTIES
   CXX_STANDARD 17
-  INTERPROCEDURAL_OPTIMIZATION TRUE
+  INTERPROCEDURAL_OPTIMIZATION ${GBEMU_ENABLE_LTO}
 )
 
 target_include_directories(${PROJECT_NAME}
@@ -143,7 +138,6 @@ if (NOT EMSCRIPTEN)
     meta
   )
 else()
-
   set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -s USE_SDL=2 -s LEGACY_GL_EMULATION=1 -s FORCE_FILESYSTEM=1 -s ASYNCIFY=1")
 endif()
 
@@ -166,7 +160,8 @@ if (TRUE )
 
   set_target_properties(gbemu_benchmark PROPERTIES
     CXX_STANDARD 17
-    INTERPROCEDURAL_OPTIMIZATION TRUE
+    INTERPROCEDURAL_OPTIMIZATION FALSE
+  MSVC_RUNTIME_LIBRARY MultiThreaded
   )
 
   target_link_libraries(gbemu_benchmark PUBLIC

@@ -28,7 +28,7 @@ void DisassemblyView::render(u32 base,
   ImGui::SameLine();
   if (ImGui::Button("Goto")) {
     char* end = nullptr;
-    const u32 addr = std::strtol(m_number_buffer.begin(), &end, 16);
+    const u32 addr = std::strtol(m_number_buffer.data(), &end, 16);
     go_to_address(addr - base);
   }
 

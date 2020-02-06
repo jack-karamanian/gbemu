@@ -11,13 +11,10 @@ jobs:
             python: python3
             cxx: g++-9
             cc: gcc-9
-            cmake_generator: Ninja
           - os: macos-latest
             python: python3
-            cmake_generator: Ninja
           - os: windows-latest
             python: python
-            cmake_generator: Visual Studio 16 2019
 
     runs-on: ${{ matrix.config.os }}
 
@@ -29,6 +26,8 @@ jobs:
           sudo add-apt-repository "deb http://dk.archive.ubuntu.com/ubuntu/ xenial universe"
           sudo apt update
           sudo apt install ninja-build g++-9
+          curl -sSL  https://github.com/Kitware/CMake/releases/download/v3.15.4/cmake-3.15.4-Linux-x86_64.tar.gz - cmake.tar.gz
+          sudo tar xf cmake.tar.gz --strip 1 -C /usr/local
         if: matrix.config.os == 'ubuntu-latest'
       - run: choco install ninja
         if: matrix.config.os == 'windows-latest'
@@ -50,16 +49,25 @@ jobs:
             $name, $value = $_ -split '=', 2
             echo ::set-env name=$name::$value
           }
-      - name: Configure CMake
+      - name: CMake Build
         if: runner.os != 'Windows'
         run: |
-          mkdir build
-          cmake cpu_experiments -DCMAKE_TOOLCHAIN_FILE="$PWD/vcpkg/scripts/buildsystems/vcpkg.cmake" -DCMAKE_BUILD_TYPE=Release -G "${{ matrix.config.cmake_generator }}" -B build
-      - name: Configure CMake Windows
+          cmake cpu_experiments \
+          -DCMAKE_TOOLCHAIN_FILE="$PWD/vcpkg/scripts/buildsystems/vcpkg.cmake" \
+          -DCMAKE_BUILD_TYPE=Release \
+          -G Ninja \
+          -B build
+          cmake --build build
+      - name: CMake Build Windows
         if: runner.os == 'Windows'
         run: |
-          mkdir build
-          cmake cpu_experiments -DCMAKE_TOOLCHAIN_FILE="$PWD/vcpkg/scripts/buildsystems/vcpkg.cmake" -DCMAKE_BUILD_TYPE=Release -G "${{ matrix.config.cmake_generator }}" -DVCPKG_TARGET_TRIPLET=x64-windows-static -B build
-      - name: Build
-        run: cmake --build build
+          cmake cpu_experiments `
+          -DCMAKE_TOOLCHAIN_FILE="$PWD/vcpkg/scripts/buildsystems/vcpkg.cmake" `
+          -DCMAKE_BUILD_TYPE=Release `
+          -G Ninja `
+          -DVCPKG_TARGET_TRIPLET=x64-windows-static `
+          -DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded `
+          -B build
+          cmake --build build --config Release
+
 

@@ -1665,11 +1665,14 @@ u32 long_branch_with_link(Cpu& cpu, u16 instruction) {
 }  // namespace thumb
 
 using ThumbInstFunc = u32 (*)(Cpu&, u16);
+
 static constexpr std::array<ThumbInstFunc, 1024> thumb_lookup_table = [] {
   std::array<ThumbInstFunc, 1024> res{};
-  for_static<1024>([&](auto i) {
-    const u16 instruction = i << 6;
-    switch ((instruction >> 13) & 0b111) {
+
+  const auto decode_thumb_instruction = [&](auto i) {
+    constexpr u16 instruction = i << 6;
+    const auto prefix = (instruction >> 13) & 0b111;
+    switch (prefix) {
       case 0:
         if (((instruction >> 11) & 0b11) == 0b11) {
           constexpr bool immediate_operand = test_bit(instruction, 10);
@@ -1685,23 +1688,28 @@ static constexpr std::array<ThumbInstFunc, 1024> thumb_lookup_table = [] {
         }
         break;
       case 1: {
-        // Move/compare/add/subtract immediate
-        constexpr auto opcode = [&]() -> Opcode {
-          switch ((instruction >> 11) & 0b11) {
-            case 0:
-              return Opcode::Mov;
-            case 1:
-              return Opcode::Cmp;
-            case 2:
-              return Opcode::Add;
-            case 3:
-              return Opcode::Sub;
-          }
-          throw "Not reachable";
-        }();
-        const auto dest_reg = static_cast<Register>((instruction >> 8) & 0b111);
+        if constexpr (instruction > 0) {
+          // Move/compare/add/subtract immediate
+          constexpr auto decode_opcode = [](u16 instruction) -> Opcode {
+            switch ((instruction >> 11) & 0b11) {
+              case 0:
+                return Opcode::Mov;
+              case 1:
+                return Opcode::Cmp;
+              case 2:
+                return Opcode::Add;
+              case 3:
+                return Opcode::Sub;
+              default:
+                throw "Not reachable";
+            }
+          };
+          constexpr auto opcode = decode_opcode(instruction);
+          const auto dest_reg =
+              static_cast<Register>((instruction >> 8) & 0b111);
 
-        res[i] = thumb::move_compare_add_subtract_immediate<opcode, dest_reg>;
+          res[i] = thumb::move_compare_add_subtract_immediate<opcode, dest_reg>;
+        }
         break;
       }
       case 2:
@@ -1730,20 +1738,13 @@ static constexpr std::array<ThumbInstFunc, 1024> thumb_lookup_table = [] {
             if constexpr (sign_extended) {
               constexpr auto opcode = (((instruction >> 10) & 0b1) << 1) |
                                       ((instruction >> 11) & 0b1);
-              constexpr auto decode_type = [] {
-                if constexpr (opcode <= 0b01) {
-                  return u16{};
-                } else if constexpr (opcode == 0b10) {
-                  return s8{};
-                } else {
-                  return s16{};
-                }
-              };
 
-              using Type = decltype(decode_type());
+              using Type = std::conditional_t<
+                  opcode <= 0b01, u16,
+                  std::conditional_t<opcode == 0b10, s8, s16>>;
+
               constexpr bool load = opcode > 0;
               res[i] = thumb::load_store<load, true, offset_reg, Type>;
-
             } else {
               constexpr bool load = test_bit(instruction, 11);
               using Type =
@@ -1830,176 +1831,188 @@ static constexpr std::array<ThumbInstFunc, 1024> thumb_lookup_table = [] {
         res[i] = thumb::invalid_instruction;
         break;
     }
+  };
+  for_static<2>([&](auto base_index) {
+    for_static<512>([&](auto i) {
+      constexpr auto real_index = (512 * decltype(base_index)::value) + i;
+      decode_thumb_instruction(
+          std::integral_constant<std::size_t, real_index>{});
+    });
   });
   return res;
 }();
 
+static constexpr std::array<InstFunc, 4096> func_lookup_table1 = [] {
+  std::array<InstFunc, 4096> res{};
+
+  const auto decode_arm_instruction = [&res](auto i) {
+    constexpr auto top_index = (i >> 8) & 0b1111;
+    // Bits 4-7
+    constexpr auto lower_bits = i & 0b1111;
+    // Bits 20-23
+    constexpr auto upper_bits = (i >> 4) & 0b1111;
+
+    switch (top_index) {
+      case 0: {
+        switch (lower_bits) {
+          case 0b1001:
+            if constexpr (test_bit(upper_bits, 3)) {
+              res[i] = multiply::make_multiply_long<test_bit(upper_bits, 2),
+                                                    test_bit(upper_bits, 1),
+                                                    test_bit(upper_bits, 0)>;
+            } else {
+              res[i] = multiply::make_multiply<test_bit(upper_bits, 1),
+                                               test_bit(upper_bits, 0)>;
+            }
+            break;
+          case 0b1011:
+          case 0b1101:
+          case 0b1111: {
+            constexpr auto transfer_type =
+                static_cast<TransferType>((lower_bits >> 1) & 0b11);
+            if constexpr (transfer_type != TransferType::Swp) {
+              res[i] = make_halfword_data_transfer<
+                  false, test_bit(upper_bits, 3), test_bit(upper_bits, 2),
+                  test_bit(upper_bits, 1), test_bit(upper_bits, 0),
+                  transfer_type>;
+            } else {
+              res[i] = arm::invalid_instruction;
+            }
+
+          }
+          // HalfwordDataTransfer
+          break;
+          default:
+            res[i] = make_data_processing<false,
+                                          static_cast<Opcode>(upper_bits >> 1),
+                                          test_bit(upper_bits, 0)>;
+            break;
+        }
+        break;
+      }
+      case 1: {
+        const bool set_condition_code = test_bit(upper_bits, 0);
+        const u32 opcode = 0b1000 | (upper_bits >> 1);
+        constexpr auto data_processing_instruction =
+            make_data_processing<false, static_cast<Opcode>(opcode),
+                                 test_bit(upper_bits, 0)>;
+        switch (lower_bits) {
+          case 0b1001:
+            // Swap
+            res[i] = make_single_data_swap<test_bit(upper_bits, 2)>;
+            break;
+          case 0b1011:
+          case 0b1101:
+          case 0b1111: {
+            // HalfwordDataTransfer
+            constexpr auto transfer_type =
+                static_cast<TransferType>((lower_bits >> 1) & 0b11);
+            if constexpr (transfer_type != TransferType::Swp) {
+              res[i] = make_halfword_data_transfer<
+                  true, test_bit(upper_bits, 3), test_bit(upper_bits, 2),
+                  test_bit(upper_bits, 1), test_bit(upper_bits, 0),
+                  transfer_type>;
+            } else {
+              res[i] = arm::invalid_instruction;
+            }
+            break;
+          }
+          case 0b0001:
+            if (!set_condition_code && opcode == 0b1001) {
+              res[i] = arm::branch_and_exchange;
+            } else {
+              res[i] = data_processing_instruction;
+            }
+            break;
+          default:
+            if (!set_condition_code && opcode >= 0b1000 && opcode <= 0b1011) {
+              res[i] = make_status_transfer<false, test_bit(upper_bits, 2),
+                                            test_bit(upper_bits, 1)>;
+            } else {
+              res[i] = data_processing_instruction;
+            }
+            break;
+        }
+        break;
+      }
+      case 2: {
+        res[i] =
+            make_data_processing<true, static_cast<Opcode>(upper_bits >> 1),
+                                 test_bit(upper_bits, 0)>;
+        break;
+      }
+      case 3: {
+        constexpr bool set_condition_code = test_bit(upper_bits, 0);
+        constexpr u32 opcode = 0b1000 | (upper_bits >> 1);
+        if constexpr (!set_condition_code && opcode >= 0b1000 &&
+                      opcode <= 0b1011) {
+          res[i] = make_status_transfer<true, test_bit(upper_bits, 2),
+                                        test_bit(upper_bits, 1)>;
+        } else {
+          res[i] = make_data_processing<
+              true, static_cast<Opcode>(0b1000 | (upper_bits >> 1)),
+              test_bit(upper_bits, 0)>;
+        }
+        break;
+      }
+      case 4:
+      case 5:
+      case 6:
+      case 7: {
+        constexpr bool immediate_offset = !test_bit(top_index, 1);
+        constexpr bool preindex = test_bit(top_index, 0);
+        constexpr bool add_offset_to_base = test_bit(upper_bits, 3);
+        constexpr bool word_transfer = !test_bit(upper_bits, 2);
+        constexpr bool write_back = test_bit(upper_bits, 1);
+        constexpr bool load = test_bit(upper_bits, 0);
+
+        res[i] = make_single_data_transfer<immediate_offset, preindex,
+                                           add_offset_to_base, word_transfer,
+                                           write_back, load>;
+        break;
+      }
+      case 8:
+      case 9: {
+        constexpr bool preindex = test_bit(top_index, 0);
+        constexpr bool add_offset_to_base = test_bit(upper_bits, 3);
+        constexpr bool psr_and_user_mode = test_bit(upper_bits, 2);
+        constexpr bool write_back = test_bit(upper_bits, 1);
+        constexpr bool load = test_bit(upper_bits, 0);
+        res[i] = make_block_data_transfer<preindex, add_offset_to_base,
+                                          psr_and_user_mode, write_back, load>;
+        break;
+      }
+      case 10:
+        res[i] = make_branch<false>;
+        break;
+      case 11:
+        res[i] = make_branch<true>;
+        break;
+
+      case 15:
+        res[i] = arm::software_interrupt;
+        break;
+
+      default:
+        res[i] = arm::invalid_instruction;
+        break;
+    }
+  };
+
+  // Workaround for MSVC "parser stack overflow" on for_static
+  for_static<8>([&](auto base_index) {
+    for_static<512>([&](auto i) {
+      constexpr auto real_index = (512 * decltype(base_index)::value) + i;
+      decode_arm_instruction(std::integral_constant<std::size_t, real_index>{});
+    });
+  });
+
+  return res;
+}();
 u32 Cpu::execute() {
   if (interrupts_waiting.data() > 0 || halted) {
     return 1;
   }
-
-  static constexpr std::array<InstFunc, 4096> func_lookup_table1 = [] {
-    std::array<InstFunc, 4096> res{};
-
-    for_static<4096>([&](auto i) {
-      constexpr auto top_index = (i >> 8) & 0b1111;
-      // Bits 4-7
-      constexpr auto lower_bits = i & 0b1111;
-      // Bits 20-23
-      constexpr auto upper_bits = (i >> 4) & 0b1111;
-
-      switch (top_index) {
-        case 0: {
-          switch (lower_bits) {
-            case 0b1001:
-              if constexpr (test_bit(upper_bits, 3)) {
-                res[i] = multiply::make_multiply_long<test_bit(upper_bits, 2),
-                                                      test_bit(upper_bits, 1),
-                                                      test_bit(upper_bits, 0)>;
-              } else {
-                res[i] = multiply::make_multiply<test_bit(upper_bits, 1),
-                                                 test_bit(upper_bits, 0)>;
-              }
-              break;
-            case 0b1011:
-            case 0b1101:
-            case 0b1111: {
-              constexpr auto transfer_type =
-                  static_cast<TransferType>((lower_bits >> 1) & 0b11);
-              if constexpr (transfer_type != TransferType::Swp) {
-                res[i] = make_halfword_data_transfer<
-                    false, test_bit(upper_bits, 3), test_bit(upper_bits, 2),
-                    test_bit(upper_bits, 1), test_bit(upper_bits, 0),
-                    transfer_type>;
-              } else {
-                res[i] = arm::invalid_instruction;
-              }
-
-            }
-            // HalfwordDataTransfer
-            break;
-            default:
-              res[i] =
-                  make_data_processing<false,
-                                       static_cast<Opcode>(upper_bits >> 1),
-                                       test_bit(upper_bits, 0)>;
-              break;
-          }
-          break;
-        }
-        case 1: {
-          const bool set_condition_code = test_bit(upper_bits, 0);
-          const u32 opcode = 0b1000 | (upper_bits >> 1);
-          constexpr auto data_processing_instruction =
-              make_data_processing<false, static_cast<Opcode>(opcode),
-                                   test_bit(upper_bits, 0)>;
-          switch (lower_bits) {
-            case 0b1001:
-              // Swap
-              res[i] = make_single_data_swap<test_bit(upper_bits, 2)>;
-              break;
-            case 0b1011:
-            case 0b1101:
-            case 0b1111: {
-              // HalfwordDataTransfer
-              constexpr auto transfer_type =
-                  static_cast<TransferType>((lower_bits >> 1) & 0b11);
-              if constexpr (transfer_type != TransferType::Swp) {
-                res[i] = make_halfword_data_transfer<
-                    true, test_bit(upper_bits, 3), test_bit(upper_bits, 2),
-                    test_bit(upper_bits, 1), test_bit(upper_bits, 0),
-                    transfer_type>;
-              } else {
-                res[i] = arm::invalid_instruction;
-              }
-              break;
-            }
-            case 0b0001:
-              if (!set_condition_code && opcode == 0b1001) {
-                res[i] = arm::branch_and_exchange;
-              } else {
-                res[i] = data_processing_instruction;
-              }
-              break;
-            default:
-              if (!set_condition_code && opcode >= 0b1000 && opcode <= 0b1011) {
-                res[i] = make_status_transfer<false, test_bit(upper_bits, 2),
-                                              test_bit(upper_bits, 1)>;
-              } else {
-                res[i] = data_processing_instruction;
-              }
-              break;
-          }
-          break;
-        }
-        case 2: {
-          res[i] =
-              make_data_processing<true, static_cast<Opcode>(upper_bits >> 1),
-                                   test_bit(upper_bits, 0)>;
-          break;
-        }
-        case 3: {
-          constexpr bool set_condition_code = test_bit(upper_bits, 0);
-          constexpr u32 opcode = 0b1000 | (upper_bits >> 1);
-          if constexpr (!set_condition_code && opcode >= 0b1000 &&
-                        opcode <= 0b1011) {
-            res[i] = make_status_transfer<true, test_bit(upper_bits, 2),
-                                          test_bit(upper_bits, 1)>;
-          } else {
-            res[i] = make_data_processing<
-                true, static_cast<Opcode>(0b1000 | (upper_bits >> 1)),
-                test_bit(upper_bits, 0)>;
-          }
-          break;
-        }
-        case 4:
-        case 5:
-        case 6:
-        case 7: {
-          constexpr bool immediate_offset = !test_bit(top_index, 1);
-          constexpr bool preindex = test_bit(top_index, 0);
-          constexpr bool add_offset_to_base = test_bit(upper_bits, 3);
-          constexpr bool word_transfer = !test_bit(upper_bits, 2);
-          constexpr bool write_back = test_bit(upper_bits, 1);
-          constexpr bool load = test_bit(upper_bits, 0);
-
-          res[i] = make_single_data_transfer<immediate_offset, preindex,
-                                             add_offset_to_base, word_transfer,
-                                             write_back, load>;
-          break;
-        }
-        case 8:
-        case 9: {
-          constexpr bool preindex = test_bit(top_index, 0);
-          constexpr bool add_offset_to_base = test_bit(upper_bits, 3);
-          constexpr bool psr_and_user_mode = test_bit(upper_bits, 2);
-          constexpr bool write_back = test_bit(upper_bits, 1);
-          constexpr bool load = test_bit(upper_bits, 0);
-          res[i] =
-              make_block_data_transfer<preindex, add_offset_to_base,
-                                       psr_and_user_mode, write_back, load>;
-          break;
-        }
-        case 10:
-          res[i] = make_branch<false>;
-          break;
-        case 11:
-          res[i] = make_branch<true>;
-          break;
-
-        case 15:
-          res[i] = arm::software_interrupt;
-          break;
-
-        default:
-          res[i] = arm::invalid_instruction;
-          break;
-      }
-    });
-
-    return res;
-  }();
 
   const u32 instruction = [this]() -> u32 {
     if (const u32 pc_region = m_regs[15] & 0xff000000;

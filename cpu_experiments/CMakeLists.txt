@@ -1,9 +1,5 @@
-cmake_minimum_required(VERSION 3.9)
+cmake_minimum_required(VERSION 3.15)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
-
-add_compile_options(
-  -fdiagnostics-color=always
-)
 
 project(cpu_experiments)
 
@@ -34,13 +30,14 @@ set(SRCS
 add_executable(cpu_experiments ${SRCS})
 set_target_properties(cpu_experiments PROPERTIES
   CXX_STANDARD 17
-  INTERPROCEDURAL_OPTIMIZATION TRUE
+  INTERPROCEDURAL_OPTIMIZATION ${GBEMU_ENABLE_LTO}
 )
 
 find_library(capstone_lib capstone)
 
 target_link_libraries(cpu_experiments PRIVATE
   SDL2::SDL2
+  SDL2::SDL2main
   glad::glad
   gbemu_core
   fmt::fmt

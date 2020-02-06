@@ -29,7 +29,7 @@ class Mbc {
   // std::size_t relative_ram_address(u16 addr) const { return addr - 0xa000; }
 
  public:
-  static std::size_t relative_ram_address(u16 addr) { return addr - 0xa000; }
+  static u16 relative_ram_address(u16 addr) { return addr - 0xa000; }
   Mbc(Type mbc_type, u16 max_rom_banks, u16 max_ram_banks)
       : type{mbc_type},
         max_bank_mask{max_rom_banks},
