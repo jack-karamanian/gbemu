@@ -64,7 +64,7 @@ jobs:
           cmake cpu_experiments `
           -DCMAKE_TOOLCHAIN_FILE="$PWD/vcpkg/scripts/buildsystems/vcpkg.cmake" `
           -DCMAKE_BUILD_TYPE=Release `
-          -G Ninja `
+          -G "Visual Studio 16 2019" `
           -DVCPKG_TARGET_TRIPLET=x64-windows-static `
           -DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded `
           -B build
