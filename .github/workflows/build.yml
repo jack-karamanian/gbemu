@@ -59,7 +59,6 @@ jobs:
           -G Ninja \
           -B build
           cmake --build build
-          echo "::set-output artifact-path::build/cpu_experiments"
       - name: CMake Build Windows
         id: build
         if: runner.os == 'Windows'
@@ -72,9 +71,15 @@ jobs:
           -DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded `
           -B build
           cmake --build build --config Release
-          echo "::set-output artifact-path::build/Release/cpu_experiments.exe"
       - name: Upload artifact
+        if: runner.os != 'Windows'
         uses: actions/upload-artifact@v1
         with:
           name: build-${{ runner.os }}
-          path: ${{ steps.build.outputs.artifact-path }}
+          path: build/cpu_experiments
+      - name: Upload Windows artifact
+        if: runner.os == 'Windows'
+        uses: actions/upload-artifact@v1
+        with:
+          name: build-${{ runner.os }}
+          path: build/Release/cpu_experiments.exe
