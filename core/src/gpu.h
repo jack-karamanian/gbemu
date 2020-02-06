@@ -67,8 +67,6 @@ class Gpu {
   Memory* memory;
   SdlRenderer* renderer;
 
-  Texture background_texture;
-
   SpriteFilter sprite_filter;
 
   CgbPalette background_palette;

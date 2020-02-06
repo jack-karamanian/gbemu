@@ -23,7 +23,7 @@ class SdlRenderer {
                   renderer);
   Texture create_texture(int width, int height, bool blend);
   void clear();
-  void draw_pixels(Texture texture, const std::vector<Color>& pixels);
+  void draw_pixels(const std::vector<Color>& pixels);
   void present();
 };
 }  // namespace gb

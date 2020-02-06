@@ -195,7 +195,7 @@ void run_emulator_and_debugger(std::string_view rom_path) {
   Gpu gpu{mmu};
   Dmas dmas{mmu, cpu};
 
-  Lcd lcd{cpu, mmu, dmas, gpu};
+  Lcd lcd{cpu, dmas, gpu};
   Input input;
 
   auto sample_callback =
