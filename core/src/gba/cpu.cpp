@@ -241,13 +241,8 @@ u32 SoftwareInterrupt::execute(Cpu& cpu) {
           cpu.m_mmu->select_storage(cpu.reg(Register::R0));
       const auto [dest_storage, dest_addr] =
           cpu.m_mmu->select_storage(cpu.reg(Register::R1));
-#if 0
-      lz77_decompress(source_storage.subspan(source_addr), dest_storage,
-                      dest_addr, 1);
-#else
       lz77_decompress(source_storage.subspan(source_addr),
-                      dest_storage.subspan(dest_addr), dest_addr, 1);
-#endif
+                      dest_storage.subspan(dest_addr), 1);
       break;
     }
     case SoftwareInterruptType::Lz77Vram: {
@@ -257,13 +252,8 @@ u32 SoftwareInterrupt::execute(Cpu& cpu) {
           cpu.m_mmu->select_storage(cpu.reg(Register::R0));
       const auto [dest_storage, dest_addr] =
           cpu.m_mmu->select_storage(cpu.reg(Register::R1) & ~1);
-#if 0
-      lz77_decompress(source_storage.subspan(source_addr), dest_storage,
-                      dest_addr, 2);
-#else
       lz77_decompress(source_storage.subspan(source_addr),
-                      dest_storage.subspan(dest_addr), dest_addr, 2);
-#endif
+                      dest_storage.subspan(dest_addr), 2);
       break;
     }
     case SoftwareInterruptType::MidiKeyToFreq: {

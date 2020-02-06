@@ -39,29 +39,23 @@ s16 arctan2(s16 x, s16 y) noexcept {
 
 void lz77_decompress(nonstd::span<const u8> src,
                      nonstd::span<u8> dest,
-                     u32 dest_addr,
                      u32 type_size) {
   const u32 data_size = (src[3] << 16) | (src[2] << 8) | (src[1] << 0);
-  // fmt::print("data size {}\n", data_size);
 
   u32 source_addr = 0;
-  dest_addr = 0;
+  u32 dest_addr = 0;
 
   auto write_byte = [dest, stored_halfword = 0](u32 addr, u8 value) mutable {
     if ((addr & 1) != 0) {
-      // fmt::print("store\n");
-      // stored_halfword = (stored_halfword & 0x00ff) | (value << 8);
       dest[addr] = value;
       dest[addr - 1] = stored_halfword & 0xff;
     } else {
       stored_halfword = (stored_halfword & 0xff00) | value;
-      // fmt::print("stage\n");
     }
   };
 
   const auto compressed_data = src.subspan(4);
   while (dest_addr < data_size) {
-    // fmt::print("{}\n", dest_addr);
     const u8 flags = compressed_data[source_addr++];
 
     for (u8 mask = 0b1000'0000; mask != 0; mask >>= 1) {
@@ -76,8 +70,6 @@ void lz77_decompress(nonstd::span<const u8> src,
         ++source_addr;
         ++dest_addr;
       } else {
-        // fmt::printf("source addr: %08x dest_addr: %08x\n", source_addr,
-        //            dest_addr);
         const u16 block = (compressed_data[source_addr + 1] << 8) |
                           compressed_data[source_addr];
         const u16 displacement =
@@ -90,11 +82,7 @@ void lz77_decompress(nonstd::span<const u8> src,
             dest[dest_addr] = byte;
             ++dest_addr;
           }
-          // std::copy(&dest[displacement], &dest[displacement + count],
-          //          &dest[dest_addr]);
         } else {
-          // fmt::print("{} {}\n", displacement, dest_addr);
-
           for (u32 i = 0U; i < count + 1; ++i) {
             write_byte(dest_addr + i, dest[displacement + i]);
           }
@@ -119,12 +107,10 @@ TEST_CASE("lz77_decompress should work") {
                                              0x10, 0x06, 0x00, 0x00};
   std::array<u8, 12> output{};
 
-#if 0
   lz77_decompress(compressed, output, 2);
 
   CHECK(std::string_view{reinterpret_cast<char*>(output.data()),
                          output.size() - 1} == expected);
-#endif
 }
 
 }  // namespace gb::advance::hle::bios
