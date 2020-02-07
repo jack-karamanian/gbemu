@@ -149,7 +149,8 @@ void run_emulator_and_debugger(std::string_view rom_path) {
 
   SDL_Window* window = SDL_CreateWindow(
       "CPU Experiments", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, 1920,
-      1080, SDL_WINDOW_OPENGL | SDL_WINDOW_RESIZABLE);
+      1080,
+      SDL_WINDOW_OPENGL | SDL_WINDOW_RESIZABLE | SDL_WINDOW_ALLOW_HIGHDPI);
 
   SDL_AudioSpec want;
   SDL_AudioSpec have;
