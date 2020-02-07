@@ -110,6 +110,8 @@ static void BackgroundDisplay(Gpu::Background background) {
         return "Transparent";
       case Bgcnt::DisplayOverflow::Wraparound:
         return "Wraparound";
+      default:
+        return "Invalid DisplayOverflow";
     }
   }());
   const auto screen_size = control.screen_size().screen_size;

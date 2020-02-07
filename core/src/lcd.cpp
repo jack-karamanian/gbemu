@@ -1,6 +1,6 @@
+#include "lcd.h"
 #include "cpu.h"
 #include "gpu.h"
-#include "lcd.h"
 #include "memory.h"
 #include "registers/lyc.h"
 #include "types.h"
@@ -10,7 +10,7 @@ void Lcd::check_scanlines() {
   if (scanlines == lyc) {
     stat.set_ly_equals_lyc(true);
     if (controller_enabled && stat.ly_equals_lyc_enabled()) {
-      cpu->request_interrupt(Cpu::Interrupt::LcdStat);
+      m_cpu->request_interrupt(Cpu::Interrupt::LcdStat);
     }
   } else {
     stat.set_ly_equals_lyc(false);
@@ -35,10 +35,10 @@ std::tuple<bool, std::optional<Lcd::Mode>> Lcd::update(unsigned int ticks) {
       if (lcd_ticks >= 172) {
         change_mode(Mode::HBlank, [this](const Registers::LcdStat& lcd_stat) {
           if (lcd_stat.hblank_check_enabled()) {
-            cpu->request_interrupt(Cpu::Interrupt::LcdStat);
+            m_cpu->request_interrupt(Cpu::Interrupt::LcdStat);
           }
         });
-        gpu->render_scanline(scanlines);
+        m_gpu->render_scanline(scanlines);
         return {draw_frame, Mode::HBlank};
       }
       break;
@@ -52,19 +52,19 @@ std::tuple<bool, std::optional<Lcd::Mode>> Lcd::update(unsigned int ticks) {
           change_mode(Mode::VBlank, [this](const Registers::LcdStat& lcd_stat) {
             if (lcd_stat.vblank_check_enabled() ||
                 lcd_stat.oam_check_enabled()) {
-              cpu->request_interrupt(Cpu::Interrupt::LcdStat);
+              m_cpu->request_interrupt(Cpu::Interrupt::LcdStat);
             }
           });
           if (controller_enabled) {
-            cpu->request_interrupt(Cpu::Interrupt::VBlank);
-            gpu->render();
+            m_cpu->request_interrupt(Cpu::Interrupt::VBlank);
+            m_gpu->render();
             draw_frame = true;
           }
         } else {
           change_mode(Mode::OAMRead,
                       [this](const Registers::LcdStat& lcd_stat) {
                         if (lcd_stat.oam_check_enabled()) {
-                          cpu->request_interrupt(Cpu::Interrupt::LcdStat);
+                          m_cpu->request_interrupt(Cpu::Interrupt::LcdStat);
                         }
                       });
         }
@@ -80,7 +80,7 @@ std::tuple<bool, std::optional<Lcd::Mode>> Lcd::update(unsigned int ticks) {
           change_mode(Mode::OAMRead,
                       [this](const Registers::LcdStat& lcd_stat) {
                         if (lcd_stat.oam_check_enabled()) {
-                          cpu->request_interrupt(Cpu::Interrupt::LcdStat);
+                          m_cpu->request_interrupt(Cpu::Interrupt::LcdStat);
                         }
                       });
         }

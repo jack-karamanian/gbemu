@@ -729,13 +729,13 @@ auto compute_operand2(const Cpu& cpu, u32 instruction)
   const ShiftResult shift_result =
       shift_value<ImmediateOperand>(cpu, instruction);
   return compute_shifted_operand(shift_result);
-};
+}
 
 namespace arm::cycles {}
 
 template <bool ImmediateOperand, Opcode opcode, bool SetConditionCode>
 constexpr u32 make_data_processing(Cpu& cpu, u32 instruction) {
-  const auto shift_value = [&](const Cpu& cpu) -> ShiftResult {
+  const auto shift_value = [&]() -> ShiftResult {
     if constexpr (ImmediateOperand) {
       const auto shift_amount = static_cast<u8>(((instruction >> 8) & 0xf) * 2);
       const auto shift_operand = instruction & 0xff;
@@ -750,11 +750,11 @@ constexpr u32 make_data_processing(Cpu& cpu, u32 instruction) {
     return compute_shift_value(instruction, cpu);
   };
 
-  const auto compute_operand2 = [&](const Cpu& cpu) -> std::tuple<bool, u32> {
-    const ShiftResult shift_result = shift_value(cpu);
+  const auto compute_operand2 = [&]() -> std::tuple<bool, u32> {
+    const ShiftResult shift_result = shift_value();
     return compute_shifted_operand(shift_result);
   };
-  const auto [shift_carry, operand2] = compute_operand2(cpu);
+  const auto [shift_carry, operand2] = compute_operand2();
   const Register dest_reg = rd(instruction);
 
   const u32 operand1 = cpu.reg(rn(instruction)) +
@@ -943,7 +943,11 @@ constexpr static u32 select_addr(Cpu& cpu,
       run_write_back(cpu, addr, instruction);
     }
     return addr;
+  } else {
+    static_cast<void>(instruction);
+    static_cast<void>(offset);
   }
+
   return base_value;
 }
 
@@ -1275,7 +1279,8 @@ namespace arm {
 u32 branch_and_exchange(Cpu& cpu, u32 instruction) {
   common::branch_and_exchange(cpu, static_cast<Register>(instruction & 0xf));
   return 3;
-};
+}
+
 u32 software_interrupt(Cpu& cpu, u32 instruction) {
   return SoftwareInterrupt{instruction}.execute(cpu);
 }
@@ -1323,27 +1328,6 @@ u32 move_compare_add_subtract_immediate(Cpu& cpu, u16 instruction) {
 
 template <u32 opcode>
 u32 alu_operation(Cpu& cpu, u16 instruction) {
-  // clang-format off
-  static constexpr std::array opcode_table = {
-      Opcode::And,
-      Opcode::Eor,
-      Opcode::Mov, // LSL
-      Opcode::Mov, // LSR
-      Opcode::Mov, // ASR
-      Opcode::Adc,
-      Opcode::Sbc,
-      Opcode::Mov, // ROR
-      Opcode::Tst,
-      Opcode::Rsb,
-      Opcode::Cmp,
-      Opcode::Cmn,
-      Opcode::Orr,
-      Opcode::Mov, // MUL
-      Opcode::Bic,
-      Opcode::Mvn,
-  };
-  // clang-format on
-
   const auto dest_reg = static_cast<Register>(instruction & 0b111);
   const auto src_reg = static_cast<Register>((instruction >> 3) & 0b111);
 
@@ -1373,6 +1357,26 @@ u32 alu_operation(Cpu& cpu, u16 instruction) {
     common::run_shift(cpu, shift_type, dest_reg, cpu.reg(dest_reg),
                       cpu.reg(src_reg), true);
   } else {
+    // clang-format off
+    static constexpr std::array opcode_table = {
+        Opcode::And,
+        Opcode::Eor,
+        Opcode::Mov, // LSL
+        Opcode::Mov, // LSR
+        Opcode::Mov, // ASR
+        Opcode::Adc,
+        Opcode::Sbc,
+        Opcode::Mov, // ROR
+        Opcode::Tst,
+        Opcode::Rsb,
+        Opcode::Cmp,
+        Opcode::Cmn,
+        Opcode::Orr,
+        Opcode::Mov, // MUL
+        Opcode::Bic,
+        Opcode::Mvn,
+    };
+    // clang-format on
     constexpr auto translated_opcode = opcode_table[opcode];
     static_assert(translated_opcode != Opcode::Mov);
 
@@ -1388,19 +1392,18 @@ u32 alu_operation(Cpu& cpu, u16 instruction) {
 
 template <int opcode, bool hi_dest, bool hi_src>
 u32 hi_register_operation(Cpu& cpu, u16 instruction) {
-  static constexpr std::array opcode_table = {Opcode::Add, Opcode::Cmp,
-                                              Opcode::Mov};
-
-  const auto dest_reg =
-      static_cast<Register>((instruction & 0b111) + hi_dest * 8);
   const auto src_reg =
       static_cast<Register>(((instruction >> 3) & 0b111) + hi_src * 8);
-
   if constexpr (opcode == 0b11) {
     // BX
     common::branch_and_exchange(cpu, src_reg);
+    static_cast<void>(instruction);
     return 3;
   } else {
+    const auto dest_reg =
+        static_cast<Register>((instruction & 0b111) + hi_dest * 8);
+    static constexpr std::array opcode_table = {Opcode::Add, Opcode::Cmp,
+                                                Opcode::Mov};
     constexpr auto translated_opcode = opcode_table[opcode];
 
     common::data_processing<translated_opcode,
@@ -1680,8 +1683,8 @@ static constexpr std::array<ThumbInstFunc, 1024> thumb_lookup_table = [] {
       case 1: {
         if constexpr (instruction > 0) {
           // Move/compare/add/subtract immediate
-          constexpr auto decode_opcode = [](u16 instruction) -> Opcode {
-            switch ((instruction >> 11) & 0b11) {
+          constexpr auto decode_opcode = [](u16 inst) -> Opcode {
+            switch ((inst >> 11) & 0b11) {
               case 0:
                 return Opcode::Mov;
               case 1:
@@ -2036,13 +2039,13 @@ u32 Cpu::execute() {
     return arm_instruction;
   }();
 
-  const auto execute_arm_instruction = [&](u32 instruction) -> u32 {
+  const auto execute_arm_instruction = [&](u32 arm_instruction) -> u32 {
     const auto inst_func =
-        func_lookup_table1[(((instruction >> 20) & 0xff) << 4) |
-                           ((instruction >> 4) & 0b1111)];
+        func_lookup_table1[(((arm_instruction >> 20) & 0xff) << 4) |
+                           ((arm_instruction >> 4) & 0b1111)];
 
-    if (should_execute(instruction, m_current_program_status)) {
-      return inst_func(*this, instruction);
+    if (should_execute(arm_instruction, m_current_program_status)) {
+      return inst_func(*this, arm_instruction);
     }
     return 0;
   };

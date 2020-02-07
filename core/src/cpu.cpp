@@ -1,15 +1,15 @@
+#include "cpu.h"
 #include <array>
 #include <functional>
 #include <iomanip>
 #include <iostream>
 #include <sstream>
 #include <string>
-#include "cpu.h"
 #include "instruction_table.h"
 
 namespace gb {
 Cpu::Cpu(Memory& memory)
-    : memory{&memory},
+    : m_memory{&memory},
       regs{0x0,  0x00, 0x56, 0xff, 0xd,
            0x00, 0x80, 0x11},  // TODO: allow choice of CGB or DMG registers
                                //: regs{0x13, 0x00, 0xd8, 0x00, 0x4d,
@@ -28,13 +28,13 @@ Ticks Cpu::fetch_and_decode() {
     queue_interrupts_enabled = false;
   }
 
-  current_opcode = memory->at(pc);
+  current_opcode = m_memory->at(pc);
 
   if (debug) {
     std::cout << instruction_names[current_opcode] << '\n';
   }
   if (current_opcode == 0xcb) {
-    current_opcode = memory->at(pc + 1);
+    current_opcode = m_memory->at(pc + 1);
     execute_cb_opcode(current_opcode);
     if (debug) {
       std::cout << cb_instruction_names[current_opcode] << '\n';
@@ -114,31 +114,32 @@ void Cpu::set_half_carry_subtract(const u8 a, const u8 b) {
 }
 
 u8 Cpu::get_interrupts_register() const {
-  return memory->at(MemoryRegister::InterruptRequest);
+  return m_memory->at(MemoryRegister::InterruptRequest);
 }
 
 bool Cpu::interrupt_enabled(u8 interrupt) const {
-  const u8 interrupts = memory->get_interrupts_enabled();
+  const u8 interrupts = m_memory->get_interrupts_enabled();
   return (interrupts & interrupt) != 0;
 }
 
 bool Cpu::has_interrupt(u8 interrupt) const {
-  return (memory->get_interrupts_request() & interrupt) != 0;
+  return (m_memory->get_interrupts_request() & interrupt) != 0;
 }
 
 void Cpu::request_interrupt(Interrupt interrupt) {
-  const u8 interrupts = memory->get_ram(MemoryRegister::InterruptRequest);
-  memory->set_ram(MemoryRegister::InterruptRequest, interrupts | interrupt);
+  const u8 interrupts = m_memory->get_ram(MemoryRegister::InterruptRequest);
+  m_memory->set_ram(MemoryRegister::InterruptRequest, interrupts | interrupt);
 }
 
 void Cpu::clear_interrupt(const u8 interrupt) const {
-  const u8 interrupts = memory->get_ram(0xff0f);
-  memory->set_ram(0xff0f, interrupts & ~interrupt);
+  const u8 interrupts = m_memory->get_ram(0xff0f);
+  m_memory->set_ram(0xff0f, interrupts & ~interrupt);
 }
 
 void Cpu::invalid() const {
   std::ostringstream s;
-  s << "invalid instruction: " << std::hex << +memory->at(pc - 1) << std::endl;
+  s << "invalid instruction: " << std::hex << +m_memory->at(pc - 1)
+    << std::endl;
   throw std::runtime_error(s.str());
 }
 
@@ -179,7 +180,7 @@ void Cpu::add(u8& dest, const u8 a, const u8 b) {
 void Cpu::add_carry_a_hl() {
   u8& a = regs[Register::A];
   const u16 hl = get_r16(Register::HL);
-  const u8 val = memory->at(hl);
+  const u8 val = m_memory->at(hl);
 
   carried_add(a, a, val);
 }
@@ -212,7 +213,7 @@ void Cpu::add_a_r8(Register reg) {
 void Cpu::add_a_hl() {
   u8& a = regs[Register::A];
   const u16 addr = get_r16(Register::HL);
-  const u8 val = memory->at(addr);
+  const u8 val = m_memory->at(addr);
 
   add(a, a, val);
 }
@@ -298,7 +299,7 @@ void Cpu::and_a_r8(Register reg) {
 // AND A,[HL]
 void Cpu::and_a_hl() {
   const u16 addr = get_r16(Register::HL);
-  const u8 val = memory->at(addr);
+  const u8 val = m_memory->at(addr);
 
   and_a(val);
 }
@@ -332,7 +333,7 @@ void Cpu::bit_r8(u8 bit_num, Register reg) {
 // BIT u3,[HL]
 void Cpu::bit_hl(u8 bit_num) {
   const u16 addr = get_r16(Register::HL);
-  const u8 val = memory->at(addr);
+  const u8 val = m_memory->at(addr);
   bit(bit_num, val);
 }
 
@@ -342,8 +343,8 @@ void Cpu::call() {
   // u16 next_op = pc + 2;
   // u8 pc_low = (next_op & 0xff00) >> 8;
   // bu8 pc_high = (next_op & 0x00ff);
-  // bmemory->set(--sp, pc_high);
-  // memory->set(--sp, pc_low);
+  // bm_memory->set(--sp, pc_high);
+  // m_memory->set(--sp, pc_low);
   push(pc);
   pc = addr;
 }
@@ -619,23 +620,23 @@ void Cpu::ld_r16_d16(Register dst) {
 // LD [HL],r8
 void Cpu::ld_hl_r8(Register reg) {
   const u16 hl = get_r16(Register::HL);
-  // u8* val = memory->at(hl);
+  // u8* val = m_memory->at(hl);
   //*val = regs[reg];
-  memory->set(hl, regs[reg]);
+  m_memory->set(hl, regs[reg]);
 }
 
 // LD [HL],n8
 void Cpu::ld_hl_d8() {
   const u16 hl = get_r16(Register::HL);
-  // u8* val = memory->at(hl);
+  // u8* val = m_memory->at(hl);
   //*val = read_operand();
-  memory->set(hl, read_operand());
+  m_memory->set(hl, read_operand());
 }
 
 // LD r8,[HL]
 void Cpu::ld_r8_hl(Register reg) {
   const u16 hl = get_r16(Register::HL);
-  const u8 val = memory->at(hl);
+  const u8 val = m_memory->at(hl);
   regs[reg] = val;
 }
 
@@ -643,19 +644,19 @@ void Cpu::ld_r8_hl(Register reg) {
 void Cpu::ld_r16_a(Register reg) {
   // u8& val = value_at_r16(reg);
   // val = regs[Register::A];
-  memory->set(get_r16(reg), regs[Register::A]);
+  m_memory->set(get_r16(reg), regs[Register::A]);
 }
 
 // LD [n16],A
 void Cpu::ld_d16_a() {
   const u16 addr = read_operand<u16>();
-  // u8* val = memory->at(addr);
+  // u8* val = m_memory->at(addr);
   //*val = regs[Register::A];
-  memory->set(addr, regs[Register::A]);
+  m_memory->set(addr, regs[Register::A]);
 }
 
 void Cpu::load_offset(const u8 offset, const u8 val) {
-  memory->set(0xff00 + offset, val);
+  m_memory->set(0xff00 + offset, val);
 }
 
 // LD [$FF00 + n8],A
@@ -678,12 +679,12 @@ void Cpu::ld_a_r16(Register reg) {
 // LD A,[n16]
 void Cpu::ld_a_d16() {
   const u16 addr = read_operand<u16>();
-  const u8 val = memory->at(addr);
+  const u8 val = m_memory->at(addr);
   regs[Register::A] = val;
 }
 
 void Cpu::read_offset_from_memory(const u8 offset, u8& dest) {
-  const u8 val = memory->at(0xff00 + offset);
+  const u8 val = m_memory->at(0xff00 + offset);
   dest = val;
 }
 
@@ -701,7 +702,7 @@ void Cpu::ld_read_offset_c() {
 // TODO: fix this
 void Cpu::load_hl_a() {
   const u16 hl = get_r16(Register::HL);
-  memory->set(hl, regs[Register::A]);
+  m_memory->set(hl, regs[Register::A]);
 }
 
 void Cpu::load_a_hl() {
@@ -743,8 +744,8 @@ void Cpu::ld_sp_d16() {
 void Cpu::ld_d16_sp() {
   const u16 addr = read_operand<u16>();
 
-  memory->set(addr, sp & 0xff);
-  memory->set(addr + 1, sp >> 8);
+  m_memory->set(addr, sp & 0xff);
+  m_memory->set(addr + 1, sp >> 8);
 }
 
 // LD HL,SP+e8
@@ -795,8 +796,8 @@ void Cpu::or_a_d8() {
 }
 
 void Cpu::pop(u16& reg) {
-  const u8 low = memory->at(sp + 1);
-  const u8 high = memory->at(sp);
+  const u8 low = m_memory->at(sp + 1);
+  const u8 high = m_memory->at(sp);
   sp += 2;
 
   reg = ((static_cast<u16>(low)) << 8) | high;
@@ -821,8 +822,8 @@ void Cpu::push(const u16 val) {
   u8 low = (val & 0xff00) >> 8;
   u8 high = val & 0xff;
 
-  memory->set(--sp, low);
-  memory->set(--sp, high);
+  m_memory->set(--sp, low);
+  m_memory->set(--sp, high);
 }
 
 // PUSH AF
@@ -984,7 +985,7 @@ void Cpu::rr_r8(Register reg) {
 void Cpu::rr_hl() {
   u8 val = value_at_r16(Register::HL);
   rotate_zero(val, false);
-  memory->set(get_r16(Register::HL), val);
+  m_memory->set(get_r16(Register::HL), val);
 }
 
 // RRA
@@ -1004,7 +1005,7 @@ void Cpu::rrc_r8(Register reg) {
 void Cpu::rrc_hl() {
   u8 val = value_at_r16(Register::HL);
   rotate_carry_zero(val, false);
-  memory->set(get_r16(Register::HL), val);
+  m_memory->set(get_r16(Register::HL), val);
 }
 
 // RRCA
@@ -1076,7 +1077,7 @@ void Cpu::set_u3_r8(const u8 bit, Register reg) {
 void Cpu::set_u3_hl(const u8 bit) {
   u8 val = value_at_r16(Register::HL);
   set_bit(val, bit, true);
-  memory->set(get_r16(Register::HL), val);
+  m_memory->set(get_r16(Register::HL), val);
 }
 
 void Cpu::shift_arithmetic(u8& val, bool left) {
@@ -1110,7 +1111,7 @@ void Cpu::sla_r8(Register reg) {
 void Cpu::sla_hl() {
   u8 val = value_at_r16(Register::HL);
   shift_arithmetic(val);
-  memory->set(get_r16(Register::HL), val);
+  m_memory->set(get_r16(Register::HL), val);
 }
 
 // SRA r8
@@ -1122,7 +1123,7 @@ void Cpu::sra_r8(Register reg) {
 void Cpu::sra_hl() {
   u8 val = value_at_r16(Register::HL);
   shift_arithmetic(val, false);
-  memory->set(get_r16(Register::HL), val);
+  m_memory->set(get_r16(Register::HL), val);
 }
 
 void Cpu::shift(u8& val) {
@@ -1150,16 +1151,16 @@ void Cpu::srl_r8(Register reg) {
 void Cpu::srl_hl() {
   u8 val = value_at_r16(Register::HL);
   shift(val);
-  memory->set(get_r16(Register::HL), val);
+  m_memory->set(get_r16(Register::HL), val);
 }
 
 // STOP
 void Cpu::stop() {
-  const u8 speed_switch = memory->get_ram(0xff4d);
-  memory->set_ram(0xff41, memory->get_ram(0xff41) & ~0x80);
+  const u8 speed_switch = m_memory->get_ram(0xff4d);
+  m_memory->set_ram(0xff41, m_memory->get_ram(0xff41) & ~0x80);
   if ((speed_switch & 0x1) != 0) {
     double_speed = !double_speed;
-    memory->set_ram(0xff4d, ~speed_switch & 0x80);
+    m_memory->set_ram(0xff4d, ~speed_switch & 0x80);
     ticks = (128 * 1024) - 76;
   } else {
     stopped = true;
@@ -1244,7 +1245,7 @@ void Cpu::xor_a_d8() {
 
 void Cpu::load_reg_to_addr(Register dst, Register src) {
   const u16 addr = regs[dst];
-  memory->set(addr, src);
+  m_memory->set(addr, src);
 }
 
 u16 Cpu::get_r16(Register reg) {
@@ -1258,19 +1259,19 @@ void Cpu::set_r16(Register reg, u16 value) {
 
 u8 Cpu::value_at_r16(Register reg) {
   const u16 addr = get_r16(reg);
-  return memory->at(addr);
+  return m_memory->at(addr);
 }
 
 #define GB_INSTRUCTION(op, size, cycles, function)                       \
   case op: {                                                             \
     constexpr int operands_size = size - 1;                              \
     if constexpr (operands_size == 1) {                                  \
-      current_operand = memory->at(pc + 1);                              \
+      current_operand = m_memory->at(pc + 1);                            \
       if (debug) {                                                       \
         std::cout << std::hex << +std::get<u8>(current_operand) << '\n'; \
       }                                                                  \
     } else if constexpr (operands_size == 2) {                           \
-      current_operand = memory->at<u16>(pc + 1);                         \
+      current_operand = m_memory->at<u16>(pc + 1);                       \
       if (debug) {                                                       \
         std::cout << std::hex << std::get<u16>(current_operand) << '\n'; \
       }                                                                  \

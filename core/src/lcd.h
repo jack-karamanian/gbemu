@@ -14,7 +14,7 @@ class Lcd {
     OAMRead = 2,
     OAMVramRead = 3,
   };
-  Lcd(Cpu& cpu, Gpu& gpu) : cpu{&cpu}, gpu{&gpu} {}
+  Lcd(Cpu& cpu, Gpu& gpu) : m_cpu{&cpu}, m_gpu{&gpu} {}
 
   [[nodiscard]] Registers::LcdStat get_lcd_stat() const { return stat; }
 
@@ -47,8 +47,8 @@ class Lcd {
   std::tuple<bool, std::optional<Lcd::Mode>> update(unsigned int ticks);
 
  private:
-  Cpu* cpu;
-  Gpu* gpu;
+  Cpu* m_cpu;
+  Gpu* m_gpu;
 
   int mode = 2;
   unsigned int lcd_ticks = 0;

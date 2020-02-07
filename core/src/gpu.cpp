@@ -2,6 +2,7 @@
 #include <doctest/doctest.h>
 #include <range/v3/view/iota.hpp>
 #include "constants.h"
+#include "error_handling.h"
 #include "memory.h"
 #include "registers/lcdc.h"
 #include "sdl_renderer.h"
@@ -23,8 +24,8 @@ static constexpr std::array<Color, 4> SPRITE_COLORS = {{
 }};
 
 Gpu::Gpu(Memory& memory, SdlRenderer& sdl_renderer, SpriteFilter filter)
-    : memory{&memory},
-      renderer{&sdl_renderer},
+    : m_memory{&memory},
+      m_renderer{&sdl_renderer},
       sprite_filter{std::move(filter)},
       background_pixels{},
       background_framebuffer(DISPLAY_SIZE) {
@@ -47,8 +48,8 @@ u8 Gpu::render_pixel(const u8 byte1, const u8 byte2, const u8 pixel_x) const {
 }
 
 void Gpu::render_sprites(int scanline) {
-  const Registers::Lcdc lcdc{memory->get_ram(Registers::Lcdc::Address)};
-  auto sprite_attribs = memory->get_sprite_attributes();
+  const Registers::Lcdc lcdc{m_memory->get_ram(Registers::Lcdc::Address)};
+  auto sprite_attribs = m_memory->get_sprite_attributes();
 
   const int sprite_height = [lcdc] {
     switch (lcdc.sprite_size()) {
@@ -57,6 +58,7 @@ void Gpu::render_sprites(int scanline) {
       case Registers::Lcdc::SpriteMode::EightBySixteen:
         return 16;
     }
+    GB_UNREACHABLE();
   }();
 
   for (int i = static_cast<int>(sprite_attribs.size()) - 4; i >= 0; i -= 4) {
@@ -79,7 +81,7 @@ void Gpu::render_sprites(int scanline) {
       // to the sprite's Y
       const int tile_addr =
           (16 * sprite_attrib.tile_index) + (2 * (sprite_offset));
-      const auto vram = memory->get_vram(sprite_attrib.vram_bank());
+      const auto vram = m_memory->get_vram(sprite_attrib.vram_bank());
       const u8 byte1 = vram[tile_addr];
       const u8 byte2 = vram[tile_addr + 1];
       const int x = sprite_attrib.x - 8;
@@ -120,7 +122,7 @@ void Gpu::render_background(
     u8 scroll_y,
     int offset_x,  // TODO: figure out what to do with this
     int offset_y) {
-  const Registers::Lcdc lcdc{memory->get_ram(Registers::Lcdc::Address)};
+  const Registers::Lcdc lcdc{m_memory->get_ram(Registers::Lcdc::Address)};
 
   const bool is_signed = lcdc.is_tile_map_signed();
 
@@ -129,7 +131,7 @@ void Gpu::render_background(
   const int tile_y = ((scanline + scroll_y) % 8);
 
   const auto tile_data_range = lcdc.bg_tile_data_range();
-  const auto tile_data = memory->get_range(tile_data_range);
+  const auto tile_data = m_memory->get_range(tile_data_range);
 
   const int tile_map_range_size = tile_map_range.size();
 
@@ -168,7 +170,7 @@ void Gpu::render_background(
 
     const auto tile_vram =
         tile_attrib.vram_bank() == 1
-            ? nonstd::span<const u8>{&memory->get_vram(1)[0] +
+            ? nonstd::span<const u8>{&m_memory->get_vram(1)[0] +
                                          (tile_data_range.first - 0x8000),
                                      4096}
             : tile_data;
@@ -223,7 +225,7 @@ void Gpu::render_background_pixels(int scanline,
                                    u8 scroll_y,
                                    int offset_x,
                                    int offset_y) {
-  const auto tile_map_range = memory->get_range(tile_map);
+  const auto tile_map_range = m_memory->get_range(tile_map);
   render_background(scanline, tile_map.first, tile_map_range, tile_attribs,
                     scroll_x, scroll_y, offset_x, offset_y);
 }
@@ -304,16 +306,16 @@ TEST_CASE("read_color_at_index should read the same color that was written") {
 #endif
 
 void Gpu::render_scanline(int scanline) {
-  const Registers::Lcdc lcdc{memory->get_ram(Registers::Lcdc::Address)};
+  const Registers::Lcdc lcdc{m_memory->get_ram(Registers::Lcdc::Address)};
 
   if (lcdc.bg_on()) {
     const auto range = lcdc.bg_tile_map_range();
-    const auto tile_attribs = memory->get_tile_atributes(range.first);
+    const auto tile_attribs = m_memory->get_tile_atributes(range.first);
     render_background_pixels(scanline, range, tile_attribs, scx, scy, 0, 0);
     if (lcdc.window_on() && scanline >= window_y) {
       const auto window_range = lcdc.window_tile_map_range();
       const auto window_tile_attribs =
-          memory->get_tile_atributes(window_range.first);
+          m_memory->get_tile_atributes(window_range.first);
       render_background_pixels(scanline, window_range, window_tile_attribs, 0,
                                0, window_x - 7, -window_y);
     }
@@ -324,6 +326,6 @@ void Gpu::render_scanline(int scanline) {
 }
 
 void Gpu::render() {
-  renderer->draw_pixels(background_framebuffer);
+  m_renderer->draw_pixels(background_framebuffer);
 }
 }  // namespace gb

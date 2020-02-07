@@ -98,8 +98,8 @@ struct FlashMemory {
   }
 
   bool push_byte(u32 addr, u8 value) {
-    const auto expect_value = [this](u8 expected, u8 value) {
-      count = expected == value ? count + 1 : 0;
+    const auto expect_value = [this](u8 expected, u8 val) {
+      count = expected == val ? count + 1 : 0;
     };
     switch (count) {
       case 0:

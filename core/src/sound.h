@@ -43,7 +43,7 @@ class Sound {
   using SamplesCallback = std::function<void(const std::vector<float>&)>;
   using SquareChannel = Channel<SquareSource, LengthMod<64>, EnvelopeMod>;
 
-  Memory* memory;
+  Memory* m_memory;
 
   Task samples_task{CLOCK_FREQUENCY / SOUND_SAMPLE_FREQUENCY};
   Task sequencer_task{8192};

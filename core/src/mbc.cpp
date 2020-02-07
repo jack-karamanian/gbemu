@@ -38,6 +38,7 @@ static bool in_ram_bank_write_range(u16 addr, Mbc::Type type, u8 ram_bank) {
       if (ram_bank > 3) {
         return false;
       }
+      [[fallthrough]];
     case Mbc::Type::MBC1:
     case Mbc::Type::MBC5:
       return addr >= 0x4000 && addr <= 0x5fff;

@@ -60,7 +60,7 @@ class Cpu {
     LcdControl = 0xff40,
   };
 
-  Memory* memory;
+  Memory* m_memory;
   std::array<u8, 8> regs;
 
   u16 sp;
@@ -595,7 +595,7 @@ class Cpu {
   void mutate(Register reg, F f, Args... args) {
     u8 val = value_at_r16(reg);
     (this->*f)(val, args...);
-    memory->set(get_r16(reg), val);
+    m_memory->set(get_r16(reg), val);
   }
 };
 }  // namespace gb

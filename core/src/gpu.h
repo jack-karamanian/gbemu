@@ -64,8 +64,8 @@ class SdlRenderer;
 
 class Gpu {
   using SpriteFilter = std::function<SpriteAttribute(SpriteAttribute)>;
-  Memory* memory;
-  SdlRenderer* renderer;
+  Memory* m_memory;
+  SdlRenderer* m_renderer;
 
   SpriteFilter sprite_filter;
 

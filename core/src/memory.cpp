@@ -12,16 +12,15 @@
 namespace gb {
 
 std::pair<u16, nonstd::span<u8>> Memory::select_storage(u16 addr) {
-  if (addr >= 0 && addr <= 0x3fff) {
-    const u16 start_addr = SIXTEEN_KB * mbc.lower_rom_bank_selected();
-    const u16 effective_addr = addr - start_addr;
-    return {effective_addr, {&rom.at(start_addr), SIXTEEN_KB}};
+  if (addr <= 0x3fff) {
+    const int start_addr = SIXTEEN_KB * mbc.lower_rom_bank_selected();
+    return {static_cast<u16>(addr - start_addr),
+            {&rom.at(start_addr), SIXTEEN_KB}};
   }
 
   if (addr >= 0x4000 && addr <= 0x7fff) {
-    const u16 start_addr = SIXTEEN_KB * mbc.rom_bank_selected();
-    const u16 effective_addr = addr - 0x4000;
-    return {effective_addr, {&rom.at(start_addr), SIXTEEN_KB}};
+    const int start_addr = SIXTEEN_KB * mbc.rom_bank_selected();
+    return {static_cast<u16>(addr - 0x4000), {&rom.at(start_addr), SIXTEEN_KB}};
   }
 
   if (mbc.in_ram_range(addr)) {
@@ -37,13 +36,11 @@ std::pair<u16, nonstd::span<u8>> Memory::select_storage(u16 addr) {
   if (addr >= 0xd000 && addr <= 0xdfff) {
     const u8 ram_bank = memory[Registers::Cgb::Svbk::Address] & 0x7;
     const int start_addr = 4096 * ((ram_bank == 0 ? 1 : ram_bank) - 1);
-    const u16 effective_addr = addr - 0xd000;
-    return {effective_addr, {&extended_ram[start_addr], 4096}};
+    return {static_cast<u16>(addr - 0xd000), {&extended_ram[start_addr], 4096}};
   }
   if (addr >= 0x8000 && addr <= 0x9fff) {
     if ((memory[Registers::Cgb::Vbk::Address] & 1) != 0) {
-      const u16 effective_addr = addr - 0x8000;
-      return {effective_addr, {vram_bank1}};
+      return {static_cast<u16>(addr - 0x8000), {vram_bank1}};
     }
   }
 

@@ -16,7 +16,7 @@ static float dac_output(u8 volume) {
 }
 
 Sound::Sound(Memory& memory, SDL_AudioDeviceID device)
-    : memory{&memory},
+    : m_memory{&memory},
       square1{{true}},
       square2{{false}},
       wave_channel{{memory.get_range({0xff30, 0xff3f})}},
@@ -100,14 +100,14 @@ void Sound::handle_memory_write(u16 addr, u8 value) {
       break;
     case Registers::Sound::Square1::NR13::Address:
     case Registers::Sound::Square2::NR23::Address: {
-      const u16 frequency = (memory->get_ram(addr + 1) & 0x07) << 8 | value;
+      const u16 frequency = (m_memory->get_ram(addr + 1) & 0x07) << 8 | value;
       square.source.set_timer_base(frequency);
       break;
     }
     case Registers::Sound::Square1::NR14::Address:
     case Registers::Sound::Square2::NR24::Address: {
       const u16 lsb_addr = addr - 1;
-      const u16 frequency = (value & 0x07) << 8 | memory->get_ram(lsb_addr);
+      const u16 frequency = (value & 0x07) << 8 | m_memory->get_ram(lsb_addr);
       square.source.set_timer_base(frequency);
       square.dispatch(SetLengthEnabledCommand{(value & 0x40) != 0});
       if ((value & 0x80) != 0) {
@@ -130,13 +130,13 @@ void Sound::handle_memory_write(u16 addr, u8 value) {
       wave_channel.dispatch(VolumeShiftCommand{(value & 0x60) >> 5});
       break;
     case Registers::Sound::Wave::NR33::Address: {
-      const u16 frequency = (memory->get_ram(addr + 1) & 0x07) << 8 | value;
+      const u16 frequency = (m_memory->get_ram(addr + 1) & 0x07) << 8 | value;
       wave_channel.source.set_timer_base(frequency);
       break;
     }
     case Registers::Sound::Wave::NR34::Address: {
       const u16 lsb_addr = addr - 1;
-      const u16 frequency = (value & 0x07) << 8 | memory->get_ram(lsb_addr);
+      const u16 frequency = (value & 0x07) << 8 | m_memory->get_ram(lsb_addr);
       wave_channel.source.set_timer_base(frequency);
       wave_channel.dispatch(SetLengthEnabledCommand{(value & 0x40) != 0});
       if ((value & 0x80) != 0) {

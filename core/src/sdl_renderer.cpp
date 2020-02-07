@@ -1,5 +1,6 @@
 #include "sdl_renderer.h"
 #include <iostream>
+#include "constants.h"
 
 namespace gb {
 
@@ -17,6 +18,7 @@ SdlRenderer::SdlRenderer(
   if (!format.get()) {
     std::cout << "SDL error :" << SDL_GetError() << std::endl;
   }
+  create_texture(SCREEN_WIDTH, SCREEN_HEIGHT, false);
 }
 
 Texture SdlRenderer::create_texture(int width, int height, bool blend) {
