@@ -510,6 +510,12 @@ int main(int argc, char** argv) {
   if (context.shouldExit()) {
     return res;
   }
+
+  if (argc < 2) {
+    fmt::print("usage: cpu_experiments <path-to-rom>\n");
+    return 1;
+  }
+
   gb::advance::run_emulator_and_debugger(argv[1]);
   return 0;
 }
