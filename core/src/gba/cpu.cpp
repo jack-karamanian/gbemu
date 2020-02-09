@@ -226,14 +226,23 @@ u32 SoftwareInterrupt::execute(Cpu& cpu) {
       break;
     case SoftwareInterruptType::BgAffineSet:
       break;
-    case SoftwareInterruptType::ObjAffineSet:
+    case SoftwareInterruptType::ObjAffineSet: {
+      const u32 src = cpu.reg(Register::R0);
+
+      const u32 dest = cpu.reg(Register::R1);
+
+      const u32 count = cpu.reg(Register::R2);
+      const u32 stride = cpu.reg(Register::R3);
+
+      obj_affine_set(*cpu.mmu(), src, dest, count, stride);
+    }
 #if 0
       fmt::printf(
           "obj affine set source: %08x dest: %08x num: %08x offset: %08x\n",
           cpu.reg(Register::R0), cpu.reg(Register::R1), cpu.reg(Register::R2),
           cpu.reg(Register::R3));
 #endif
-      break;
+    break;
     case SoftwareInterruptType::Lz77Wram: {
       // fmt::printf("source %08x dest %08x\n", cpu.reg(Register::R0),
       // cpu.reg(Register::R1));
@@ -1181,34 +1190,33 @@ u32 make_status_transfer(Cpu& cpu, u32 instruction) {
   return 1;
 }
 
+template <bool AddOffsetToBase>
+std::tuple<std::array<Register, 16>, int> register_list(u32 instruction) {
+  std::array<Register, 16> registers{};
+  int end = 0;
+
+  if constexpr (!AddOffsetToBase) {
+    for (int i = 15; i >= 0; --i) {
+      if (test_bit(instruction, i)) {
+        registers[end++] = static_cast<Register>(i);
+      }
+    }
+  } else {
+    for (int i = 0; i < 16; ++i) {
+      if (test_bit(instruction, i)) {
+        registers[end++] = static_cast<Register>(i);
+      }
+    }
+  }
+  return {registers, end};
+}
+
 template <bool Preindex,
           bool AddOffsetToBase,
           bool LoadPsrAndUserMode,
           bool WriteBack,
           bool Load>
 u32 make_block_data_transfer(Cpu& cpu, u32 instruction) {
-  const auto register_list =
-      [instruction]() -> std::tuple<std::array<Register, 16>, int> {
-    std::array<Register, 16> registers{};
-    int end = 0;
-
-    const auto append_register = [&](int i) {
-      if (test_bit(instruction, i)) {
-        registers[end++] = static_cast<Register>(i);
-      }
-    };
-
-    if constexpr (!AddOffsetToBase) {
-      for (int i = 15; i >= 0; --i) {
-        append_register(i);
-      }
-    } else {
-      for (int i = 0; i < 16; ++i) {
-        append_register(i);
-      }
-    }
-    return {registers, end};
-  };
   const Mode current_mode = cpu.program_status().mode();
   if (LoadPsrAndUserMode) {
     cpu.change_mode(Mode::User);
@@ -1217,9 +1225,11 @@ u32 make_block_data_transfer(Cpu& cpu, u32 instruction) {
   const auto operand_reg = rn(instruction);
   u32 offset = cpu.reg(operand_reg);
 
-  const auto change_offset = AddOffsetToBase ? [](u32 val) { return val + 4; }
-                                             : [](u32 val) { return val - 4; };
-  const auto [registers, registers_end] = register_list();
+  constexpr auto change_offset = AddOffsetToBase
+                                     ? [](u32 val) { return val + 4; }
+                                     : [](u32 val) { return val - 4; };
+  const auto [registers, registers_end] =
+      register_list<AddOffsetToBase>(instruction);
   const nonstd::span<const Register> registers_span{registers.data(),
                                                     registers_end};
 
