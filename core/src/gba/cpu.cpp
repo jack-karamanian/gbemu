@@ -721,13 +721,16 @@ constexpr Register rd(u32 instruction) noexcept {
 }
 
 template <bool ImmediateOperand>
-auto shift_value(const Cpu& cpu, u32 instruction) -> ShiftResult {
+constexpr auto shift_value(const Cpu& cpu, u32 instruction) -> ShiftResult {
   if constexpr (ImmediateOperand) {
+    const auto shift_amount = static_cast<u8>(((instruction >> 8) & 0xf) * 2);
+    const auto shift_operand = instruction & 0xff;
     return {ShiftType::RotateRight,
-            static_cast<u8>(((instruction >> 8) & 0xf) * 2),
-            instruction & 0xff,
+            shift_amount,
+            shift_operand,
             {},
-            cpu.program_status().carry()};
+            shift_amount == 0 ? false
+                              : gb::test_bit(shift_operand, shift_amount - 1)};
   }
   return compute_shift_value(instruction, cpu);
 }
@@ -744,26 +747,9 @@ namespace arm::cycles {}
 
 template <bool ImmediateOperand, Opcode opcode, bool SetConditionCode>
 constexpr u32 make_data_processing(Cpu& cpu, u32 instruction) {
-  const auto shift_value = [&]() -> ShiftResult {
-    if constexpr (ImmediateOperand) {
-      const auto shift_amount = static_cast<u8>(((instruction >> 8) & 0xf) * 2);
-      const auto shift_operand = instruction & 0xff;
-      return {ShiftType::RotateRight,
-              shift_amount,
-              shift_operand,
-              {},
-              shift_amount == 0
-                  ? false
-                  : gb::test_bit(shift_operand, shift_amount - 1)};
-    }
-    return compute_shift_value(instruction, cpu);
-  };
+  const auto [shift_carry, operand2] =
+      compute_operand2<ImmediateOperand>(cpu, instruction);
 
-  const auto compute_operand2 = [&]() -> std::tuple<bool, u32> {
-    const ShiftResult shift_result = shift_value();
-    return compute_shifted_operand(shift_result);
-  };
-  const auto [shift_carry, operand2] = compute_operand2();
   const Register dest_reg = rd(instruction);
 
   const u32 operand1 = cpu.reg(rn(instruction)) +
@@ -1191,7 +1177,8 @@ u32 make_status_transfer(Cpu& cpu, u32 instruction) {
 }
 
 template <bool AddOffsetToBase>
-std::tuple<std::array<Register, 16>, int> register_list(u32 instruction) {
+constexpr std::tuple<std::array<Register, 16>, int> register_list(
+    u32 instruction) {
   std::array<Register, 16> registers{};
   int end = 0;
 
@@ -2076,16 +2063,6 @@ u32 Cpu::execute() {
   }
   return execute_arm_instruction(instruction);
 }  // namespace gb::advance
-namespace tests::cpu {
-constexpr void check(bool condition, std::string_view message) {
-  if (!condition) {
-    throw message;
-  }
-}
-static_assert([]() constexpr->bool {
-  // mov r0, #0
-  return decode_instruction_type(0xe3a00000) == InstructionType::DataProcessing;
-}());
 
 #if 0
 TEST_CASE("mov instructions should move immediate values") {
@@ -2210,8 +2187,4 @@ TEST_CASE("bl instructions should set r14 equal to r15") {
 }
 #endif
 
-static_assert(
-    decode_instruction_type(0b0000'0011'1111'0011'0011'0000'0000'0000) ==
-    InstructionType::DataProcessing);
-}  // namespace tests::cpu
 }  // namespace gb::advance
