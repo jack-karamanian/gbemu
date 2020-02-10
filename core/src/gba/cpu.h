@@ -1,11 +1,7 @@
 #pragma once
 #include <doctest/doctest.h>
-#include <algorithm>
 #include <array>
-#include <functional>
 #include <nonstd/span.hpp>
-#include <optional>
-#include <tuple>
 #include "error_handling.h"
 #include "interrupts.h"
 #include "mmu.h"
