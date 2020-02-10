@@ -306,8 +306,10 @@ class Mmu {
 
   template <typename T>
   T at(u32 addr) {
-    if (m_eeprom_enabled && (addr & 0xff000000) == 0x0d000000) {
-      return 1;
+    if constexpr (std::is_integral_v<T>) {
+      if (m_eeprom_enabled && (addr & 0xff000000) == 0x0d000000) {
+        return 1;
+      }
     }
     if (is_hardware_addr(addr)) {
       T ret{};
