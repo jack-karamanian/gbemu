@@ -13,29 +13,6 @@
 #include "utils.h"
 
 namespace gb::advance {
-// Inspired by
-// https://github.com/lefticus/cpp_box/blob/master/include/cpp_box/arm.hpp
-
-enum class InstructionType {
-  DataProcessing = 0,
-  Mrs,
-  Msr,
-  MsrFlagBits,
-  Multiply,
-  MultiplyLong,
-  SingleDataSwap,
-  BranchAndExchange,
-  HalfwordDataTransferReg,
-  HalfwordDataTransferImm,
-  SingleDataTransfer,
-  Undefined,
-  BlockDataTransfer,
-  Branch,
-  CoprocessorDataTransfer,
-  CoprocessorDataOperation,
-  CoprocessorRegisterTransfer,
-  SoftwareInterrupt,
-};
 
 enum class Opcode : u32 {
   And = 0b0000,
@@ -73,58 +50,6 @@ enum class Register : u32 {
   R13,
   R14,
   R15,
-};
-
-template <typename IntegerType = u32, typename InstType = InstructionType>
-struct InstructionLookupEntry {
-  IntegerType mask = 0;
-  IntegerType expected = 0;
-  InstType type = InstType::Undefined;
-
-  constexpr InstructionLookupEntry(InstType type_) : type{type_} {}
-  constexpr InstructionLookupEntry() = default;
-
-  template <typename... Args>
-  constexpr InstructionLookupEntry& mask_bits(Args... args) {
-    mask |= set_bits<IntegerType>(args...);
-
-    return *this;
-  }
-  constexpr InstructionLookupEntry& mask_bit_range(int begin, int end) {
-    for (int i = begin; i <= end; ++i) {
-      mask |= (1 << i);
-    }
-    return *this;
-  }
-
-  template <typename... Args>
-  constexpr InstructionLookupEntry& expect_bits(Args... args) {
-    expected = set_bits<IntegerType>(args...);
-    return *this;
-  }
-};
-
-using LookupEntry = InstructionLookupEntry<u32, InstructionType>;
-
-template <typename IntegerType, typename InstType, auto GenerateTable>
-class InstructionTable {
- public:
-  constexpr InstructionTable() = default;
-  auto decode_instruction_type(IntegerType instruction) const {
-    const auto decoded_type = constexpr_find(
-        InstructionTable::lookup_table.begin(),
-        InstructionTable::lookup_table.end(),
-        [instruction](
-            const InstructionLookupEntry<IntegerType, InstType>& entry) {
-          return (instruction & entry.mask) == entry.expected;
-        });
-
-    return decoded_type == lookup_table.end() ? InstType::Undefined
-                                              : decoded_type->type;
-  }
-
- private:
-  static constexpr auto lookup_table = GenerateTable();
 };
 
 enum class Mode {
@@ -242,88 +167,6 @@ class Instruction : public Integer<u32> {
     throw std::runtime_error("invalid condition");
   }
 };
-
-constexpr std::array<LookupEntry, 18> generate_lookup_table() {
-  std::array<LookupEntry, 18> lookup_table = {
-      LookupEntry{InstructionType::Multiply}
-          .mask_bit_range(22, 27)
-          .mask_bit_range(4, 7)
-          .expect_bits(7, 4),
-      LookupEntry{InstructionType::Mrs}
-          .mask_bit_range(23, 27)
-          .mask_bit_range(16, 21)
-          .mask_bit_range(0, 11)
-          .expect_bits(24, 19, 18, 17, 16),
-      LookupEntry{InstructionType::Msr}
-          .mask_bit_range(23, 27)
-          .mask_bit_range(4, 21)
-          .expect_bits(24, 21, 19, 16, 15, 14, 13, 12),
-      LookupEntry{InstructionType::MsrFlagBits}
-          .mask_bits(27, 26, 24, 23)
-          .mask_bit_range(12, 21)
-          .expect_bits(24, 21, 19, 15, 14, 13, 12),
-      LookupEntry{InstructionType::DataProcessing}.mask_bits(27, 26),
-      LookupEntry{InstructionType::MultiplyLong}
-          .mask_bit_range(23, 27)
-          .mask_bit_range(4, 7)
-          .expect_bits(23, 7, 4),
-      LookupEntry{InstructionType::SingleDataSwap}
-          .mask_bits(20, 21)
-          .mask_bit_range(23, 27)
-          .mask_bit_range(4, 11)
-          .expect_bits(24, 7, 4),
-      LookupEntry{InstructionType::BranchAndExchange}
-          .mask_bit_range(4, 27)
-          .expect_bits(24, 21, 19, 18, 17, 16, 15, 14, 13, 12, 11, 10, 9, 8, 4),
-      LookupEntry{InstructionType::HalfwordDataTransferReg}
-          .mask_bits(27, 26, 25, 22, 11, 10, 9, 8, 7, 4)
-          .expect_bits(7, 4),
-      LookupEntry{InstructionType::HalfwordDataTransferImm}
-          .mask_bits(27, 26, 25, 22, 7, 4)
-          .expect_bits(22, 7, 4),
-      LookupEntry{InstructionType::SingleDataTransfer}
-          .mask_bits(27, 26)
-          .expect_bits(26),
-      LookupEntry{InstructionType::Undefined}
-          .mask_bits(27, 26, 25, 4)
-          .expect_bits(26, 25, 4),
-      LookupEntry{InstructionType::BlockDataTransfer}
-          .mask_bits(27, 26, 25)
-          .expect_bits(27),
-      LookupEntry{InstructionType::Branch}
-          .mask_bits(27, 26, 25)
-          .expect_bits(27, 25),
-      LookupEntry{InstructionType::CoprocessorDataTransfer}
-          .mask_bits(27, 26, 25)
-          .expect_bits(27, 26),
-      LookupEntry{InstructionType::CoprocessorDataOperation}
-          .mask_bits(27, 26, 25, 24, 4)
-          .expect_bits(27, 26, 25),
-      LookupEntry{InstructionType::CoprocessorRegisterTransfer}
-          .mask_bits(27, 26, 25, 4)
-          .expect_bits(27, 26, 25, 4),
-      LookupEntry{InstructionType::SoftwareInterrupt}
-          .mask_bits(27, 26, 25, 24)
-          .expect_bits(27, 26, 25, 24)};
-
-  constexpr_sort(lookup_table.begin(), lookup_table.end(),
-                 [](LookupEntry a, LookupEntry b) { return b.mask < a.mask; });
-
-  return lookup_table;
-}
-
-constexpr std::array<LookupEntry, 18> lookup_table = generate_lookup_table();
-
-constexpr auto decode_instruction_type(u32 instruction) {
-  const auto decoded_type =
-      constexpr_find(lookup_table.begin(), lookup_table.end(),
-                     [instruction](const LookupEntry& entry) {
-                       return (instruction & entry.mask) == entry.expected;
-                     });
-
-  return decoded_type == lookup_table.end() ? InstructionType::Undefined
-                                            : decoded_type->type;
-}
 
 class Cpu {
  public:
