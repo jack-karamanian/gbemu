@@ -1,6 +1,7 @@
 #pragma once
 #include <doctest/doctest.h>
 #include <array>
+#include <functional>
 #include <nonstd/span.hpp>
 #include "error_handling.h"
 #include "interrupts.h"
