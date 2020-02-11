@@ -1,7 +1,27 @@
 #include "gba/gpu.h"
+#include <doctest/doctest.h>
 #include "gba/mmu.h"
 
 namespace gb::advance {
+
+template <typename T>
+struct Mat2 {
+  std::array<T, 4> data;
+};
+
+template <typename T>
+constexpr Vec2<T> operator*(Mat2<T> mat, Vec2<T> vec) noexcept {
+  return {mat.data[0] * vec.x + mat.data[1] * vec.y,
+          mat.data[2] * vec.x + mat.data[3] * vec.y};
+}
+
+template <typename T>
+constexpr bool operator==(const Mat2<T>& lhs, const Mat2<T>& rhs) noexcept {
+  return lhs.data[0] == rhs.data[0] && lhs.data[1] == rhs.data[1] &&
+         lhs.data[2] == rhs.data[2] && lhs.data[3] == rhs.data[3];
+}
+
+using Mat2f = Mat2<float>;
 
 static constexpr auto make_blend_func(float first_weight, float second_weight) {
   return [first_weight, second_weight](float channel1,
@@ -208,6 +228,48 @@ static void draw_color(nonstd::span<Color> framebuffer,
       static_cast<u8>(convert_space<32, 255>((color >> 10) & 0x1f)), 255};
 }
 
+static void render_tile_pixel_4bpp(nonstd::span<Color> framebuffer,
+                                   nonstd::span<const u8> palette_bank,
+                                   nonstd::span<const u8> tile_pixels,
+                                   Gpu::PerPixelContext& per_pixel_context,
+                                   Dispcnt::BackgroundLayer layer,
+                                   unsigned int priority,
+                                   unsigned int screen_x,
+                                   unsigned int tile_x
+
+) {
+  const auto new_priority =
+      layer == Dispcnt::BackgroundLayer::Obj ? -1 : priority;
+  const auto tile_offset = 32 * (tile_x / TileSize);
+  const u8 pixel = (tile_pixels[tile_offset + ((tile_x % TileSize) / 2)] >>
+                    (4 * (tile_x & 1))) &
+                   0xf;
+
+  const u16 color =
+      palette_bank[pixel * 2] | (palette_bank[pixel * 2 + 1] << 8);
+
+  if (pixel != 0 && screen_x < Gpu::ScreenWidth) {
+    const bool is_higher_priority =
+        priority <= per_pixel_context.priorities[screen_x];
+    draw_color(framebuffer, screen_x, 0, color);
+
+    if (layer == Dispcnt::BackgroundLayer::Obj) {
+      per_pixel_context.sprite_priorities[screen_x] = priority;
+    }
+
+    if (is_higher_priority) {
+      auto& priorities = per_pixel_context.pixel_priorities[screen_x];
+      if (layer != Dispcnt::BackgroundLayer::Obj &&
+          (priorities.size() == 0 || priorities.back().layer != layer)) {
+        priorities.emplace_back(layer, static_cast<int>(priority));
+      }
+      per_pixel_context.priorities[screen_x] = new_priority;
+      per_pixel_context.top_pixels[screen_x] = framebuffer[screen_x];
+    }
+    // draw_color(framebuffer, screen_x, 0, color);
+  }
+}
+
 void Gpu::render_tile_row_4bpp(nonstd::span<Color> framebuffer,
                                nonstd::span<const u8> palette_bank,
                                Vec2<unsigned int> position,
@@ -216,7 +278,9 @@ void Gpu::render_tile_row_4bpp(nonstd::span<Color> framebuffer,
                                nonstd::span<const u8> tile_pixels,
                                Dispcnt::BackgroundLayer layer,
                                PriorityInfo priority_info,
-                               bool horizontal_flip) {
+                               bool horizontal_flip
+
+) {
   const auto [base_index, scanline] = position;
 
   const int pixel_two_offset = horizontal_flip ? -1 : 1;
@@ -308,7 +372,8 @@ void Gpu::render_background(Background background, unsigned int scanline) {
           unsigned int x, unsigned int y, unsigned int offset) {
         const auto y_screen_offset =
             0;  //((y + tile_scanline) / tile_height) % (tile_height / 32);
-        // const auto x_screen_offset = ((x) / tile_width) % (tile_width / 32);
+        // const auto x_screen_offset = ((x) / tile_width) % (tile_width /
+        // 32);
 
         const auto x_screen_offset = 0x7c0 * [screen_size_mode, x, offset] {
           switch (screen_size_mode) {
@@ -352,8 +417,8 @@ void Gpu::render_background(Background background, unsigned int scanline) {
           GB_UNREACHABLE();
         }();
 
-        // The amount to subtract from the end of a row across all backgrounds
-        // to get to the start of the row
+        // The amount to subtract from the end of a row across all
+        // backgrounds to get to the start of the row
         const auto background_row_width = background_row_offset + 0x40;
 
         const auto tile_row_start = (64 * (y % 32));
@@ -425,7 +490,13 @@ void Gpu::render_background(Background background, unsigned int scanline) {
   }
 }
 
+constexpr float lerp(float v0, float v1, float t) {
+  return (1.0F - t) * v0 + t * v1;
+}
+
 void Gpu::render_sprites(unsigned int scanline) {
+  constexpr Mat2f identity{1, 0, 0, 1};
+
   const auto sprite_palette_ram = m_palette_ram.subspan(0x200);
   const auto sprite_tile_data = m_vram.subspan(0x010000);
 
@@ -433,15 +504,17 @@ void Gpu::render_sprites(unsigned int scanline) {
   const float second_weight = bldalpha.second_target_coefficient();
   const auto blend = make_blend_func(first_weight, second_weight);
   // Render sprites backwards to express the priority
-  std::array<Color, TileSize> old_tile;
-  for (std::ptrdiff_t i = m_oam_ram.ssize() - 8; i >= 0; i -= 8) {
+  std::array<Color, 64> old_tile;
+  for (auto i = m_oam_ram.ssize() - 8; i >= 0; i -= 8) {
     const Sprite sprite(m_oam_ram[i + 0] | (m_oam_ram[i + 1] << 8),
                         m_oam_ram[i + 2] | (m_oam_ram[i + 3] << 8),
                         m_oam_ram[i + 4] | (m_oam_ram[i + 5] << 8));
 
-    if (!(scanline >= sprite.attrib0.y())) {
+    const auto mode = sprite.attrib0.mode();
+    if (mode == ObjAttribute0::Mode::Disable || scanline < sprite.attrib0.y()) {
       continue;
     }
+
     const auto bits_per_pixel = sprite.attrib0.bits_per_pixel();
     const auto tile_length = bits_per_pixel * 8;
     const auto tile_row_length = bits_per_pixel;
@@ -450,77 +523,118 @@ void Gpu::render_sprites(unsigned int scanline) {
         sprite_size_index(sprite.attrib0.shape(), sprite.attrib1.obj_size());
 
     const auto sprite_rect = sprite_sizes[sprite_rect_index];
-    // sprite_size(sprite.attrib0.shape(), sprite.attrib1.obj_size());
-    const auto sprite_tile_rect = sprite_tile_sizes[sprite_rect_index];
-    // sprite_rect / TileSize;
 
-    const auto sprite_y = sprite.attrib0.y();
+    const auto palette_ram =
+        sprite_palette_ram.subspan(sprite.attrib2.palette_bank() * 2 * 16);
 
-    const auto sprite_height_scanline = (scanline - sprite_y) / TileSize;
+    const Mat2f matrix = [&]() -> Mat2f {
+      if (mode == ObjAttribute0::Mode::Normal) {
+        return identity;
+      }
+      const auto offset = 0x20 * sprite.attrib1.affine_parameter_group();
+      const s16 pa =
+          m_oam_ram[0x06 + offset] | (m_oam_ram[0x06 + offset + 1] << 8);
+      const s16 pb =
+          m_oam_ram[0x0e + offset] | (m_oam_ram[0x0e + offset + 1] << 8);
+      const s16 pc =
+          m_oam_ram[0x16 + offset] | (m_oam_ram[0x16 + offset + 1] << 8);
+      const s16 pd =
+          m_oam_ram[0x1e + offset] | (m_oam_ram[0x1e + offset + 1] << 8);
 
-    const auto tile_scanline = ((scanline - sprite_y) % TileSize);
-    const auto sprite_2d_offset =
-        dispcnt.obj_vram_mapping() == Dispcnt::ObjVramMapping::TwoDimensional
-            ? (sprite_height_scanline * 32 * tile_length)
-            : sprite_height_scanline * sprite_rect.width * tile_row_length;
-
-    if (scanline < sprite_y + sprite_rect.height) {
-      const auto tile_base_offset = (sprite.attrib2.tile_id() * tile_length);
-
-      const auto render_sprite_tile = [sprite_tile_data, sprite_palette_ram,
-                                       sprite_tile_rect, tile_row_length,
-                                       tile_scanline, tile_length, sprite,
-                                       tile_base_offset, sprite_2d_offset,
-                                       blend, &old_tile,
-                                       this](unsigned int index) {
-        const auto sprite_pixels = sprite_tile_data.subspan(
-            tile_base_offset + sprite_2d_offset +
-                (tile_row_length * tile_scanline) + (tile_length * index),
-
-            tile_row_length);
-
-        const auto base_x =
-            sprite.attrib1.horizontal_flip()
-                ? (sprite.attrib1.x() +
-                   TileSize * (sprite_tile_rect.width - index - 1))
-                : (sprite.attrib1.x() + TileSize * index);
-
-        for (unsigned int x = base_x; x < base_x + TileSize && x < ScreenWidth;
-             ++x) {
-          old_tile[x - base_x] = m_per_pixel_context.top_pixels[x];
-        }
-
-        render_tile_row_4bpp(
-            sprite_scanline,
-            sprite_palette_ram.subspan(sprite.attrib2.palette_bank() * 2 * 16),
-            {base_x, 0}, sprite.attrib2.priority(), m_per_pixel_context,
-            sprite_pixels, Dispcnt::BackgroundLayer::Obj,
-            {Dispcnt::BackgroundLayer::Obj,
-             static_cast<int>(sprite.attrib2.priority())},
-            sprite.attrib1.horizontal_flip());
-
-        if (sprite.attrib0.gfx_mode() ==
-            ObjAttribute0::GfxMode::AlphaBlending) {
-          for (unsigned int x = base_x;
-               x < base_x + TileSize && x < ScreenWidth; ++x) {
-            // Disable any other alpha blending for this pixel
-            // and write the blended sprite
-            m_per_pixel_context.pixel_priorities[x].clear();
-            const Color color_one = m_per_pixel_context.top_pixels[x];
-            const Color color_two = old_tile[x - base_x];
-            m_per_pixel_context.top_pixels[x] =
-                Color(blend(color_one.r, color_two.r),
-                      blend(color_one.g, color_two.g),
-                      blend(color_one.b, color_two.b), 255);
-          }
-        }
+      const auto to_float = [](s16 fixed) {
+        return static_cast<float>(fixed) / (1 << 8);
       };
 
-      // Render a scanline across all tiles
-      for (unsigned int index = 0; index < sprite_tile_rect.width; ++index) {
-        render_sprite_tile(index);
+      return {to_float(pa), to_float(pb), to_float(pc), to_float(pd)};
+    }();
+
+    for (unsigned int x = 0; x < sprite_rect.width; ++x) {
+      // The transform occurs at the center of the sprite
+      const auto [transformed_scanline, transformed_x] =
+          [&]() -> std::tuple<unsigned int, unsigned int> {
+        if (mode == ObjAttribute0::Mode::Normal) {
+          return {scanline, x};
+        }
+        const Vec2<float> vec =
+            matrix *
+            Vec2<float>{
+                lerp(-1.0F, 1.0F, static_cast<float>(x) / sprite_rect.width),
+                lerp(-1.0F, 1.0F,
+                     static_cast<float>(scanline - sprite.attrib0.y()) /
+                         sprite_rect.height)};
+
+        const auto new_scanline =
+            static_cast<unsigned int>((vec.y + 1.0F) * 0.5F *
+                                      static_cast<float>(sprite_rect.height)) +
+            sprite.attrib0.y();
+        const auto new_x = static_cast<unsigned int>(
+            (vec.x + 1.0F) * 0.5F * static_cast<float>(sprite_rect.width));
+
+        return {new_scanline, new_x};
+      }();
+
+      const auto tile_base_offset = (sprite.attrib2.tile_id() * tile_length);
+      const auto sprite_y = static_cast<unsigned int>(sprite.attrib0.y());
+      const auto sprite_height_scanline =
+          (transformed_scanline - sprite_y) / TileSize;
+
+      const auto tile_scanline = ((transformed_scanline - sprite_y) % TileSize);
+
+      if (transformed_scanline < sprite_y) {
+        continue;
+      }
+      if (!(transformed_scanline < sprite_y + sprite_rect.height)) {
+        continue;
+      }
+
+      const auto sprite_2d_offset =
+          dispcnt.obj_vram_mapping() == Dispcnt::ObjVramMapping::TwoDimensional
+              ? (sprite_height_scanline * 32 * tile_length)
+              : (sprite_height_scanline * sprite_rect.width * tile_row_length);
+
+      const auto sprite_pixels =
+          sprite_tile_data.subspan(tile_base_offset + sprite_2d_offset +
+                                   (tile_row_length * tile_scanline)
+
+          );
+
+      const auto base_x = sprite.attrib1.x() + x;
+      const auto reversed_x = sprite.attrib1.horizontal_flip()
+                                  ? sprite_rect.width - transformed_x - 1
+                                  : transformed_x;
+
+      if (reversed_x >= sprite_rect.width) {
+        continue;
+      }
+
+      if (base_x < ScreenWidth) {
+        old_tile[x] = m_per_pixel_context.top_pixels[base_x];
+      }
+      assert(reversed_x < sprite_rect.width);
+
+      render_tile_pixel_4bpp(sprite_scanline, palette_ram, sprite_pixels,
+                             m_per_pixel_context, Dispcnt::BackgroundLayer::Obj,
+                             sprite.attrib2.priority(), base_x, reversed_x);
+
+      if (sprite.attrib0.gfx_mode() == ObjAttribute0::GfxMode::AlphaBlending &&
+          base_x < ScreenWidth) {
+        const Color color_one = m_per_pixel_context.top_pixels[base_x];
+        const Color color_two = old_tile[x];
+        m_per_pixel_context.top_pixels[base_x] = Color(
+            blend(color_one.r, color_two.r), blend(color_one.g, color_two.g),
+            blend(color_one.b, color_two.b), 255);
       }
     }
   }
+}  // namespace gb::advance
+
+TEST_CASE("matrix multiplication") {
+  constexpr Mat2<int> mat{{3, 5, 5, 2}};
+  constexpr Vec2<int> vec{3, 4};
+
+  constexpr auto res = (mat * vec);
+  CAPTURE(res.x);
+  CAPTURE(res.y);
+  CHECK(res == Vec2<int>{29, 23});
 }
 }  // namespace gb::advance
