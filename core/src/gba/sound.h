@@ -101,6 +101,5 @@ class Sound {
   Dmas* m_dmas;
   u32 m_fifo_timer = 0;
   u32 m_master_timer = 0;
-  s16 m_fifo_sample = 0;
 };
 }  // namespace gb::advance

@@ -24,21 +24,19 @@ void Sound::run_dma_transfer(u32 fifo_addr) {
   }
 }
 
+static constexpr u32 MasterCycles = 16777216 / 44100;
+
 void Sound::update(u32 cycles) {
   m_fifo_timer += cycles;
   m_master_timer += cycles;
 
   // TODO: different sample rates
-  if (m_fifo_timer >= 16777216 / 32768) {
-    m_fifo_sample = fifo_a.current_sample();
-    m_fifo_timer -= 16777216 / 32768;
-  }
 
-  if (m_master_timer >= 16777216 / 44100) {
-    m_master_timer -= 16777216 / 44100;
+  if (m_master_timer >= MasterCycles) {
+    m_master_timer -= MasterCycles;
     float mixed_sample = 0;
-    const float sample_a = fifo_a.current_sample() / 1024.0f;
-    const float sample_b = fifo_b.current_sample() / 1024.0f;
+    const float sample_a = fifo_a.current_sample() / 1024.0F;
+    const float sample_b = fifo_b.current_sample() / 1024.0F;
     SDL_MixAudioFormat(reinterpret_cast<Uint8*>(&mixed_sample),
                        reinterpret_cast<const Uint8*>(&sample_a), AUDIO_F32SYS,
                        sizeof(float), 50);
