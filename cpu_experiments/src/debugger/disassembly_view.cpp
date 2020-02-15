@@ -69,7 +69,6 @@ void DisassemblyView::render(u32 base,
               storage.subspan(instr_index, instr_size),
               instr_size == 2 ? experiments::DisassemblyMode::Thumb
                               : experiments::DisassemblyMode::Arm);
-          assert(res.size() == 1);
           if (!res.empty()) {
             return disassembly_info.disassembly_cache[i] =
                        std::move(res[0].text);
