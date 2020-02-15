@@ -16,6 +16,16 @@ constexpr Vec2<T> operator*(Mat2<T> mat, Vec2<T> vec) noexcept {
 }
 
 template <typename T>
+constexpr Mat2<T> operator*(Mat2<T> lhs, Mat2<T> rhs) noexcept {
+  return {
+      lhs.data[0] * rhs.data[0] + lhs.data[1] * rhs.data[2],
+      lhs.data[0] * rhs.data[1] + lhs.data[1] * rhs.data[3],
+      lhs.data[2] * rhs.data[0] + lhs.data[3] * rhs.data[2],
+      lhs.data[2] * rhs.data[1] + lhs.data[3] * rhs.data[3],
+  };
+}
+
+template <typename T>
 constexpr bool operator==(const Mat2<T>& lhs, const Mat2<T>& rhs) noexcept {
   return lhs.data[0] == rhs.data[0] && lhs.data[1] == rhs.data[1] &&
          lhs.data[2] == rhs.data[2] && lhs.data[3] == rhs.data[3];
@@ -62,18 +72,6 @@ static constexpr std::array<Rect<unsigned int>, 12> sprite_sizes = {{
     {64, 32},  // 3, Horizontal
     {32, 64},  // 3, Vertical
 }};
-
-static constexpr std::array<Rect<unsigned int>, 12> sprite_tile_sizes = [] {
-  std::array<Rect<unsigned int>, 12> res{};
-
-  // std::transform
-  for (auto i = 0U; i < sprite_sizes.size(); ++i) {
-    res[i] = {sprite_sizes[i].width / TileSize,
-              sprite_sizes[i].height / TileSize};
-  }
-
-  return res;
-}();
 
 static std::size_t sprite_size_index(ObjAttribute0::Shape shape,
                                      unsigned int size_index) {
@@ -490,13 +488,7 @@ void Gpu::render_background(Background background, unsigned int scanline) {
   }
 }
 
-constexpr float lerp(float v0, float v1, float t) {
-  return (1.0F - t) * v0 + t * v1;
-}
-
 void Gpu::render_sprites(unsigned int scanline) {
-  constexpr Mat2f identity{1, 0, 0, 1};
-
   const auto sprite_palette_ram = m_palette_ram.subspan(0x200);
   const auto sprite_tile_data = m_vram.subspan(0x010000);
 
@@ -504,7 +496,7 @@ void Gpu::render_sprites(unsigned int scanline) {
   const float second_weight = bldalpha.second_target_coefficient();
   const auto blend = make_blend_func(first_weight, second_weight);
   // Render sprites backwards to express the priority
-  std::array<Color, 64> old_tile;
+  std::array<Color, 128> old_tile;
   for (auto i = m_oam_ram.ssize() - 8; i >= 0; i -= 8) {
     const Sprite sprite(m_oam_ram[i + 0] | (m_oam_ram[i + 1] << 8),
                         m_oam_ram[i + 2] | (m_oam_ram[i + 3] << 8),
@@ -522,10 +514,20 @@ void Gpu::render_sprites(unsigned int scanline) {
     const auto sprite_rect_index =
         sprite_size_index(sprite.attrib0.shape(), sprite.attrib1.obj_size());
 
-    const auto sprite_rect = sprite_sizes[sprite_rect_index];
+    const auto sprite_rect = [&sprite,
+                              sprite_rect_index]() -> Rect<unsigned int> {
+      const auto rect = sprite_sizes[sprite_rect_index];
+      if (sprite.attrib0.mode() == ObjAttribute0::Mode::AffineDoubleRendering) {
+        return {rect.width * 2, rect.height * 2};
+      }
+      return rect;
+    }();
 
     const auto palette_ram =
         sprite_palette_ram.subspan(sprite.attrib2.palette_bank() * 2 * 16);
+
+    static constexpr Mat2f identity{1, 0, 0, 1};
+    static constexpr Mat2f scale_half{2, 0, 0, 2};
 
     const Mat2f matrix = [&]() -> Mat2f {
       if (mode == ObjAttribute0::Mode::Normal) {
@@ -545,8 +547,20 @@ void Gpu::render_sprites(unsigned int scanline) {
         return static_cast<float>(fixed) / (1 << 8);
       };
 
-      return {to_float(pa), to_float(pb), to_float(pc), to_float(pd)};
+      return Mat2f{to_float(pa), to_float(pb), to_float(pc), to_float(pd)} *
+             (mode == ObjAttribute0::Mode::AffineDoubleRendering ? scale_half
+                                                                 : identity);
     }();
+
+    const int coord_divisor =
+        static_cast<int>(mode == ObjAttribute0::Mode::AffineDoubleRendering);
+
+    const Rect<unsigned int> half_rect{sprite_rect.width >> coord_divisor,
+                                       sprite_rect.height >> coord_divisor};
+
+    constexpr auto lerp = [](float v0, float v1, float t) -> float {
+      return (1.0F - t) * v0 + t * v1;
+    };
 
     for (unsigned int x = 0; x < sprite_rect.width; ++x) {
       // The transform occurs at the center of the sprite
@@ -560,15 +574,15 @@ void Gpu::render_sprites(unsigned int scanline) {
             Vec2<float>{
                 lerp(-1.0F, 1.0F, static_cast<float>(x) / sprite_rect.width),
                 lerp(-1.0F, 1.0F,
-                     static_cast<float>(scanline - sprite.attrib0.y()) /
+                     static_cast<float>((scanline - sprite.attrib0.y())) /
                          sprite_rect.height)};
 
         const auto new_scanline =
             static_cast<unsigned int>((vec.y + 1.0F) * 0.5F *
-                                      static_cast<float>(sprite_rect.height)) +
+                                      static_cast<float>(half_rect.height)) +
             sprite.attrib0.y();
         const auto new_x = static_cast<unsigned int>(
-            (vec.x + 1.0F) * 0.5F * static_cast<float>(sprite_rect.width));
+            (vec.x + 1.0F) * 0.5F * static_cast<float>(half_rect.width));
 
         return {new_scanline, new_x};
       }();
@@ -583,14 +597,14 @@ void Gpu::render_sprites(unsigned int scanline) {
       if (transformed_scanline < sprite_y) {
         continue;
       }
-      if (!(transformed_scanline < sprite_y + sprite_rect.height)) {
+      if (transformed_scanline >= sprite_y + half_rect.height) {
         continue;
       }
 
       const auto sprite_2d_offset =
           dispcnt.obj_vram_mapping() == Dispcnt::ObjVramMapping::TwoDimensional
               ? (sprite_height_scanline * 32 * tile_length)
-              : (sprite_height_scanline * sprite_rect.width * tile_row_length);
+              : (sprite_height_scanline * half_rect.width * tile_row_length);
 
       const auto sprite_pixels =
           sprite_tile_data.subspan(tile_base_offset + sprite_2d_offset +
@@ -598,12 +612,12 @@ void Gpu::render_sprites(unsigned int scanline) {
 
           );
 
-      const auto base_x = sprite.attrib1.x() + x;
+      const auto base_x = sprite.attrib1.x() + (x);
       const auto reversed_x = sprite.attrib1.horizontal_flip()
-                                  ? sprite_rect.width - transformed_x - 1
-                                  : transformed_x;
+                            ? half_rect.width - transformed_x - 1
+                            : transformed_x;
 
-      if (reversed_x >= sprite_rect.width) {
+      if (reversed_x >= half_rect.width) {
         continue;
       }
 
@@ -618,6 +632,9 @@ void Gpu::render_sprites(unsigned int scanline) {
 
       if (sprite.attrib0.gfx_mode() == ObjAttribute0::GfxMode::AlphaBlending &&
           base_x < ScreenWidth) {
+        // Disable any other alpha blending for this pixel
+        // and write the blended sprite
+        m_per_pixel_context.pixel_priorities[x].clear();
         const Color color_one = m_per_pixel_context.top_pixels[base_x];
         const Color color_two = old_tile[x];
         m_per_pixel_context.top_pixels[base_x] = Color(
