@@ -636,7 +636,7 @@ void branch_and_exchange(Cpu& cpu, Register next_pc_reg) {
 
 using InstFunc = u32 (*)(Cpu&, u32);
 
-template <bool Link>
+template <bool link>
 constexpr u32 make_branch(Cpu& cpu, u32 instruction) {
   const bool negative = test_bit(instruction, 23);
 
@@ -648,7 +648,7 @@ constexpr u32 make_branch(Cpu& cpu, u32 instruction) {
 
   const u32 next_pc = cpu.reg(Register::R15) + offset;
 
-  if constexpr (Link) {
+  if constexpr (link) {
     cpu.set_reg(Register::R14, cpu.reg(Register::R15) - 4);
   }
 
@@ -666,9 +666,9 @@ constexpr Register rd(u32 instruction) noexcept {
   return static_cast<Register>((instruction >> 12) & 0xf);
 }
 
-template <bool ImmediateOperand>
+template <bool immediate_operand>
 constexpr auto shift_value(const Cpu& cpu, u32 instruction) -> ShiftResult {
-  if constexpr (ImmediateOperand) {
+  if constexpr (immediate_operand) {
     const auto shift_amount = static_cast<u8>(((instruction >> 8) & 0xf) * 2);
     const auto shift_operand = instruction & 0xff;
     return {ShiftType::RotateRight,
@@ -681,34 +681,34 @@ constexpr auto shift_value(const Cpu& cpu, u32 instruction) -> ShiftResult {
   return compute_shift_value(instruction, cpu);
 }
 
-template <bool ImmediateOperand>
+template <bool immediate_operand>
 auto compute_operand2(const Cpu& cpu, u32 instruction)
     -> std::tuple<bool, u32> {
   const ShiftResult shift_result =
-      shift_value<ImmediateOperand>(cpu, instruction);
+      shift_value<immediate_operand>(cpu, instruction);
   return compute_shifted_operand(shift_result);
 }
 
 namespace arm::cycles {}
 
-template <bool ImmediateOperand, Opcode opcode, bool SetConditionCode>
+template <bool immediate_operand, Opcode opcode, bool set_condition_code>
 constexpr u32 make_data_processing(Cpu& cpu, u32 instruction) {
   const auto [shift_carry, operand2] =
-      compute_operand2<ImmediateOperand>(cpu, instruction);
+      compute_operand2<immediate_operand>(cpu, instruction);
 
   const Register dest_reg = rd(instruction);
 
   const u32 operand1 = cpu.reg(rn(instruction)) +
-                       (!ImmediateOperand && test_bit(instruction, 4) &&
+                       (!immediate_operand && test_bit(instruction, 4) &&
                                 rn(instruction) == Register::R15
                             ? 4
                             : 0);
 
-  common::data_processing<opcode, SetConditionCode>(cpu, dest_reg, operand1,
-                                                    operand2, shift_carry);
+  common::data_processing<opcode, set_condition_code>(cpu, dest_reg, operand1,
+                                                      operand2, shift_carry);
 
   const auto cycles = [instruction]() -> Cycles {
-    const bool register_shift = !ImmediateOperand && test_bit(instruction, 4);
+    const bool register_shift = !immediate_operand && test_bit(instruction, 4);
     if (register_shift && rd(instruction) == Register::R15) {
       return 2_seq + 1_nonseq + 1_intern;
     }
@@ -781,7 +781,7 @@ template <typename T>
 }
 }  // namespace detail
 
-template <bool Accumulate, bool SetConditionCode>
+template <bool accumulate, bool set_condition_code>
 u32 make_multiply(Cpu& cpu, u32 instruction) {
   const auto dest_register = [&]() {
     return static_cast<Register>((instruction >> 16) & 0xf);
@@ -803,19 +803,19 @@ u32 make_multiply(Cpu& cpu, u32 instruction) {
   const u32 res =
       static_cast<u32>(static_cast<u64>(cpu.reg(lhs_register())) *
                            static_cast<u64>(rhs_operand) +
-                       (Accumulate ? cpu.reg(accumulate_register()) : 0));
+                       (accumulate ? cpu.reg(accumulate_register()) : 0));
 
   cpu.set_reg(dest_register(), res);
 
-  if (SetConditionCode) {
+  if (set_condition_code) {
     cpu.set_zero(res == 0);
     cpu.set_negative(gb::test_bit(res, 31));
   }
 
-  return detail::multiply_cycles(rhs_operand, Accumulate).sum();
+  return detail::multiply_cycles(rhs_operand, accumulate).sum();
 }
 
-template <bool IsSigned, bool Accumulate, bool SetConditionCode>
+template <bool is_signed, bool accumulate, bool set_condition_code>
 u32 make_multiply_long(Cpu& cpu, u32 instruction) {
   const auto lhs_register = [&]() {
     return static_cast<Register>(instruction & 0xf);
@@ -837,7 +837,7 @@ u32 make_multiply_long(Cpu& cpu, u32 instruction) {
   const u32 rhs = cpu.reg(rhs_register());
 
   const auto accumulate_value = [&]() -> u64 {
-    if (!Accumulate) {
+    if (!accumulate) {
       return 0;
     }
 
@@ -845,19 +845,19 @@ u32 make_multiply_long(Cpu& cpu, u32 instruction) {
            static_cast<u64>(cpu.reg(dest_register_low));
   }();
 
-  const u64 res = (IsSigned ? detail::multiply<s64>(static_cast<s32>(lhs),
-                                                    static_cast<s32>(rhs))
-                            : detail::multiply<u64>(lhs, rhs)) +
+  const u64 res = (is_signed ? detail::multiply<s64>(static_cast<s32>(lhs),
+                                                     static_cast<s32>(rhs))
+                             : detail::multiply<u64>(lhs, rhs)) +
                   accumulate_value;
 
   cpu.set_reg(dest_register_high, (res & 0xffffffff00000000) >> 32);
   cpu.set_reg(dest_register_low, res & 0xffffffff);
 
-  if (SetConditionCode) {
+  if (set_condition_code) {
     cpu.set_zero(res == 0);
     cpu.set_negative(gb::test_bit(res, 63));
   }
-  return detail::multiply_long_cycles(rhs, Accumulate, IsSigned).sum();
+  return detail::multiply_long_cycles(rhs, accumulate, is_signed).sum();
 }
 }  // namespace multiply
 
@@ -866,21 +866,22 @@ constexpr void run_write_back(Cpu& cpu, u32 addr, u32 instruction) {
   cpu.set_reg(base_register, addr);
 }
 
-template <bool AddOffsetToBase>
+template <bool add_offset_to_base>
 [[nodiscard]] constexpr u32 calculate_addr(u32 base_value, u32 offset) {
-  const u32 addr = AddOffsetToBase ? offset + base_value : base_value - offset;
+  const u32 addr =
+      add_offset_to_base ? offset + base_value : base_value - offset;
   return addr;
 }
 
-template <bool Preindex, bool AddOffsetToBase, bool WriteBack>
+template <bool preindex, bool add_offset_to_base, bool write_back>
 constexpr static u32 select_addr(Cpu& cpu,
                                  u32 base_value,
                                  u32 offset,
                                  u32 instruction) {
-  if constexpr (Preindex) {
-    const u32 addr = calculate_addr<AddOffsetToBase>(base_value, offset);
+  if constexpr (preindex) {
+    const u32 addr = calculate_addr<add_offset_to_base>(base_value, offset);
 
-    if constexpr (WriteBack) {
+    if constexpr (write_back) {
       run_write_back(cpu, addr, instruction);
     }
     return addr;
@@ -927,11 +928,11 @@ enum class TransferType : u32 {
   SignedHalfword,
 };
 
-template <bool Preindex,
-          bool AddOffsetToBase,
-          bool ImmediateOffset,
-          bool WriteBack,
-          bool Load,
+template <bool preindex,
+          bool add_offset_to_base,
+          bool immediate_offset,
+          bool write_back,
+          bool load,
           TransferType transfer_type>
 u32 make_halfword_data_transfer(Cpu& cpu, u32 instruction) {
   Mmu& mmu = *cpu.mmu();
@@ -939,7 +940,7 @@ u32 make_halfword_data_transfer(Cpu& cpu, u32 instruction) {
   const u32 original_dest_value = cpu.reg(src_or_dest_reg);
 
   const u32 offset = [&cpu, instruction]() {
-    if (ImmediateOffset) {
+    if (immediate_offset) {
       return ((instruction & 0xf00) >> 4) | (instruction & 0xf);
     }
 
@@ -948,7 +949,7 @@ u32 make_halfword_data_transfer(Cpu& cpu, u32 instruction) {
   }();  // offset_value(cpu);
   const Register base_reg = rn(instruction);
   const u32 base_value = cpu.reg(base_reg);
-  const u32 addr = select_addr<Preindex, AddOffsetToBase, WriteBack>(
+  const u32 addr = select_addr<preindex, add_offset_to_base, write_back>(
       cpu, base_value, offset, instruction);
 
   // const auto transfer_type =
@@ -967,31 +968,31 @@ u32 make_halfword_data_transfer(Cpu& cpu, u32 instruction) {
   using Type = decltype(get_transfer_type());
   static_assert(!std::is_same_v<Type, void>, "can't SWP");
 
-  if constexpr (Load) {
+  if constexpr (load) {
     run_load<Type>(cpu, addr, src_or_dest_reg);
   } else {
     const auto aligned_addr = addr & ~0b01;
     // Store
-    const auto value = ((WriteBack || !Preindex) && base_reg == src_or_dest_reg
+    const auto value = ((write_back || !preindex) && base_reg == src_or_dest_reg
                             ? original_dest_value
                             : cpu.reg(src_or_dest_reg));
     mmu.set(aligned_addr, static_cast<Type>(value));
   }
 
-  if constexpr (!Preindex) {
-    if ((Load && base_reg != src_or_dest_reg) || !Load) {
+  if constexpr (!preindex) {
+    if ((load && base_reg != src_or_dest_reg) || !load) {
       const u32 writeback_addr =
-          calculate_addr<AddOffsetToBase>(base_value, offset);
+          calculate_addr<add_offset_to_base>(base_value, offset);
       run_write_back(cpu, writeback_addr, instruction);
     }
   }
 
-  return mmu.wait_cycles(addr, load_store_cycles(rd(instruction), Load));
+  return mmu.wait_cycles(addr, load_store_cycles(rd(instruction), load));
 }
 
-template <bool ByteSwap>
+template <bool byte_swap>
 u32 make_single_data_swap(Cpu& cpu, u32 instruction) {
-  using T = std::conditional_t<ByteSwap, u8, u32>;
+  using T = std::conditional_t<byte_swap, u8, u32>;
   Mmu& mmu = *cpu.mmu();
 
   constexpr Cycles cycles = 1_seq + 2_nonseq + 1_intern;
@@ -1015,16 +1016,16 @@ u32 make_single_data_swap(Cpu& cpu, u32 instruction) {
   return mmu.wait_cycles(base_value, cycles);
 }
 
-template <bool ImmediateOffset,
-          bool Preindex,
-          bool AddOffsetToBase,
-          bool WordTransfer,
-          bool WriteBack,
-          bool Load>
+template <bool immediate_offset,
+          bool preindex,
+          bool add_offset_to_base,
+          bool word_transfer,
+          bool write_back,
+          bool load>
 u32 make_single_data_transfer(Cpu& cpu, u32 instruction) {
   Mmu& mmu = *cpu.mmu();
   const auto calculate_offset = [&]() -> u32 {
-    if constexpr (ImmediateOffset) {
+    if constexpr (immediate_offset) {
       return instruction & 0xfff;
     }
 
@@ -1045,38 +1046,40 @@ u32 make_single_data_transfer(Cpu& cpu, u32 instruction) {
   // The address to be used in the transfer
   const auto [aligned_addr, raw_addr,
               rotate_amount] = [&]() -> std::tuple<u32, u32, u32> {
-    const u32 raw_address = select_addr<Preindex, AddOffsetToBase, WriteBack>(
+    const u32 raw_address =
+        select_addr<preindex, add_offset_to_base, write_back>(
 
-        cpu, base_value, offset, instruction);
+            cpu, base_value, offset, instruction);
     return {raw_address & ~0b11, raw_address, (raw_address & 0b11) * 8};
   }();
 
-  if constexpr (!Preindex) {
+  if constexpr (!preindex) {
     const u32 writeback_addr =
-        calculate_addr<AddOffsetToBase>(base_value, offset);
+        calculate_addr<add_offset_to_base>(base_value, offset);
     run_write_back(cpu, writeback_addr, instruction);
   }
 
   // const bool word_transfer = word();
 
-  if constexpr (Load) {
-    if constexpr (WordTransfer) {
-      // Load a word
+  if constexpr (load) {
+    if constexpr (word_transfer) {
+      // load a word
       const u32 loaded_value =
           rotate_right(mmu.at<u32>(aligned_addr & ~0b11), rotate_amount);
       cpu.set_reg(dest, loaded_value);
     } else {
-      // Load a byte
+      // load a byte
       const u8 loaded_value = mmu.at<u8>(raw_addr);
       cpu.set_reg(dest, loaded_value);
     }
   } else {
     const u32 stored_value =
         // Unspecified behavior for writeback store with base reg == dest reg
-        ((WriteBack || !Preindex) && base_register == dest ? original_dest_value
-                                                           : cpu.reg(dest)) +
+        ((write_back || !preindex) && base_register == dest
+             ? original_dest_value
+             : cpu.reg(dest)) +
         (dest == Register::R15 ? 4 : 0);
-    if constexpr (WordTransfer) {
+    if constexpr (word_transfer) {
       // Store a word
       mmu.set(aligned_addr, stored_value);
     } else {
@@ -1086,11 +1089,11 @@ u32 make_single_data_transfer(Cpu& cpu, u32 instruction) {
   }
   const auto cycles = [&] {
     // Store
-    if constexpr (!Load) {
+    if constexpr (!load) {
       return 2_nonseq;
     }
 
-    // Load
+    // load
     return dest == Register::R15 ? (2_seq + 2_nonseq + 1_intern)
                                  : (1_seq + 1_nonseq + 1_intern);
   }();
@@ -1098,9 +1101,9 @@ u32 make_single_data_transfer(Cpu& cpu, u32 instruction) {
   return mmu.wait_cycles(aligned_addr, cycles);
 }
 
-template <bool ImmediateOperand, bool UseSpsrDest, bool ToStatus>
+template <bool immediate_operand, bool use_spsr_dest, bool to_status>
 u32 make_status_transfer(Cpu& cpu, u32 instruction) {
-  if constexpr (ToStatus) {
+  if constexpr (to_status) {
     u32 mask = 0;
 
     mask |= test_bit(instruction, 19) ? 0xff000000 : 0;
@@ -1108,27 +1111,28 @@ u32 make_status_transfer(Cpu& cpu, u32 instruction) {
     mask |= test_bit(instruction, 17) ? 0x0000ff00 : 0;
     mask |= test_bit(instruction, 16) ? 0x000000ff : 0;
     const auto [_, operand2] =
-        compute_operand2<ImmediateOperand>(cpu, instruction);
+        compute_operand2<immediate_operand>(cpu, instruction);
     const ProgramStatus next_program_status{operand2 & mask};
-    if constexpr (UseSpsrDest) {
+    if constexpr (use_spsr_dest) {
       cpu.set_saved_program_status(next_program_status);
     } else {
       cpu.set_program_status(next_program_status);
     }
   } else {
-    cpu.set_reg(rd(instruction), UseSpsrDest ? cpu.saved_program_status().data()
-                                             : cpu.program_status().data());
+    cpu.set_reg(rd(instruction), use_spsr_dest
+                                     ? cpu.saved_program_status().data()
+                                     : cpu.program_status().data());
   }
   return 1;
 }
 
-template <bool AddOffsetToBase>
+template <bool add_offset_to_base>
 constexpr std::tuple<std::array<Register, 16>, int> register_list(
     u32 instruction) {
   std::array<Register, 16> registers{};
   int end = 0;
 
-  if constexpr (!AddOffsetToBase) {
+  if constexpr (!add_offset_to_base) {
     for (int i = 15; i >= 0; --i) {
       if (test_bit(instruction, i)) {
         registers[end++] = static_cast<Register>(i);
@@ -1144,41 +1148,41 @@ constexpr std::tuple<std::array<Register, 16>, int> register_list(
   return {registers, end};
 }
 
-template <bool Preindex,
-          bool AddOffsetToBase,
-          bool LoadPsrAndUserMode,
-          bool WriteBack,
-          bool Load>
+template <bool preindex,
+          bool add_offset_to_base,
+          bool load_psr_and_user_mode,
+          bool write_back,
+          bool load>
 u32 make_block_data_transfer(Cpu& cpu, u32 instruction) {
   const Mode current_mode = cpu.program_status().mode();
-  if (LoadPsrAndUserMode) {
+  if (load_psr_and_user_mode) {
     cpu.change_mode(Mode::User);
   }
 
   const auto operand_reg = rn(instruction);
   u32 offset = cpu.reg(operand_reg);
 
-  constexpr auto change_offset = AddOffsetToBase
+  constexpr auto change_offset = add_offset_to_base
                                      ? [](u32 val) { return val + 4; }
                                      : [](u32 val) { return val - 4; };
   const auto [registers, registers_end] =
-      register_list<AddOffsetToBase>(instruction);
+      register_list<add_offset_to_base>(instruction);
   const nonstd::span<const Register> registers_span{registers.data(),
                                                     registers_end};
 
   u32 addr_cycles = 0;
   const u32 absolute_offset = 4 * registers_end;
-  const u32 final_offset =
-      AddOffsetToBase ? (offset + absolute_offset) : (offset - absolute_offset);
+  const u32 final_offset = add_offset_to_base ? (offset + absolute_offset)
+                                              : (offset - absolute_offset);
 
   const bool regs_has_base =
       std::find(registers_span.begin(), registers_span.end(), operand_reg) !=
       registers_span.end();
 
-  constexpr bool load_register = Load;
-  constexpr bool write_back_base = WriteBack;
-  constexpr bool preindex_base = Preindex;
-  constexpr bool add_offset = AddOffsetToBase;
+  constexpr bool load_register = load;
+  constexpr bool write_back_base = write_back;
+  constexpr bool preindex_base = preindex;
+  constexpr bool add_offset = add_offset_to_base;
 
   if (write_back_base) {
     if (load_register) {
@@ -1211,7 +1215,7 @@ u32 make_block_data_transfer(Cpu& cpu, u32 instruction) {
     cpu.set_reg(operand_reg, final_offset);
   }
 
-  if (LoadPsrAndUserMode) {
+  if (load_psr_and_user_mode) {
     cpu.change_mode(current_mode);
   }
 
@@ -1246,16 +1250,16 @@ u32 move_shifted_register(Cpu& cpu, u16 instruction) {
   return 1;
 }
 
-template <bool ImmediateOperand, bool Subtract, u32 RegisterOrValue>
+template <bool immediate_operand, bool subtract, u32 register_or_value>
 u32 add_subtract(Cpu& cpu, u16 instruction) {
   const auto dest_reg = static_cast<Register>(instruction & 0b111);
   const auto src_reg = static_cast<Register>((instruction >> 3) & 0b111);
 
-  const u32 value = ImmediateOperand
-                        ? RegisterOrValue
-                        : cpu.reg(static_cast<Register>(RegisterOrValue));
+  const u32 value = immediate_operand
+                        ? register_or_value
+                        : cpu.reg(static_cast<Register>(register_or_value));
 
-  common::data_processing<Subtract ? Opcode::Sub : Opcode::Add, true>(
+  common::data_processing<subtract ? Opcode::Sub : Opcode::Add, true>(
       cpu, dest_reg, cpu.reg(src_reg), value, cpu.program_status().carry());
   return 1;
 }
