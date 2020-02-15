@@ -5,8 +5,8 @@ project(gbemu_core)
 
 include(CTest)
 
-set(GBEMU_DISABLE_TESTS OFF CACHE STRING "Disable tests")
-set(GBEMU_DISABLE_BOUNDS_CHECKS ON CACHE STRING "Disable bounds checking") 
+set(GBEMU_DISABLE_TESTS OFF CACHE BOOL "Disable tests")
+set(GBEMU_DISABLE_BOUNDS_CHECKS OFF CACHE BOOL "Disable bounds checking") 
 set(GBEMU_ENABLE_LTO OFF CACHE BOOL "Enables LTO")
 
 add_library(gbemu_warnings INTERFACE)
@@ -15,7 +15,8 @@ target_compile_options(gbemu_warnings INTERFACE
   $<$<COMPILE_LANG_AND_ID:CXX,AppleClang,Clang,GNU>:
     -Wall;-Wextra;-Wshadow;-Wpedantic;-Wdouble-promotion;-Wunused
   >
-  $<$<COMPILE_LANG_AND_ID:CXX,MSVC>:/W4>
+  $<$<COMPILE_LANG_AND_ID:CXX,GNU>:-Werror=narrowing>
+  $<$<COMPILE_LANG_AND_ID:CXX,MSVC>:/W3>
 )
 
 if (NOT EMSCRIPTEN)
@@ -153,31 +154,29 @@ endif()
 target_compile_options(${PROJECT_NAME} PRIVATE
 )
 
-if (TRUE )
-  add_executable(gbemu_benchmark
-    src/gba/benchmark/mmu.cpp
-  )
+add_executable(gbemu_benchmark
+  src/gba/benchmark/mmu.cpp
+)
 
-  set_target_properties(gbemu_benchmark PROPERTIES
-    CXX_STANDARD 17
-    INTERPROCEDURAL_OPTIMIZATION ${GBEMU_ENABLE_LTO}
-  )
+set_target_properties(gbemu_benchmark PROPERTIES
+  CXX_STANDARD 17
+  INTERPROCEDURAL_OPTIMIZATION ${GBEMU_ENABLE_LTO}
+)
 
-  target_link_libraries(gbemu_benchmark PUBLIC
-    ${PROJECT_NAME}
-    doctest::doctest
-    benchmark::benchmark
-  )
-  target_compile_definitions(gbemu_benchmark PRIVATE
-    span_FEATURE_MEMBER_AT=1
-    BOOST_RESULT_OF_USE_DECLTYPE=1
-  )
+target_link_libraries(gbemu_benchmark PUBLIC
+  ${PROJECT_NAME}
+  doctest::doctest
+  benchmark::benchmark
+)
+target_compile_definitions(gbemu_benchmark PRIVATE
+  span_FEATURE_MEMBER_AT=1
+  BOOST_RESULT_OF_USE_DECLTYPE=1
+)
 
-  if (NOT ANDROID)
-    target_link_options(${PROJECT_NAME} PUBLIC
-    )
-    target_link_options(gbemu_benchmark PRIVATE)
-  endif()
+if (NOT ANDROID)
+  target_link_options(${PROJECT_NAME} PUBLIC
+  )
+  target_link_options(gbemu_benchmark PRIVATE)
 endif()
 
 add_library(${PROJECT_NAME}_libretro SHARED src/libretro.cpp)
