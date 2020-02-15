@@ -4,9 +4,9 @@
 #include <memory>
 #include <vector>
 #include "color.h"
+#include "constants.h"
 #include "nonstd/span.hpp"
 #include "registers/palette.h"
-#include "renderer.h"
 #include "sprite_attribute.h"
 #include "types.h"
 #include "utils.h"

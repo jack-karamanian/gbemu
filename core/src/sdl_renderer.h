@@ -6,11 +6,15 @@
 #include <nonstd/span.hpp>
 #include <unordered_map>
 #include <vector>
+#include "color.h"
 #include "constants.h"
-#include "renderer.h"
 #include "sdl_utils.h"
 
 namespace gb {
+struct Texture {
+  int handle = -1;
+};
+
 class SdlRenderer {
   std::unique_ptr<SDL_Renderer, std::function<void(SDL_Renderer*)>> renderer;
 

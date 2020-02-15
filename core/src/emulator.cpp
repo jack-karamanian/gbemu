@@ -15,7 +15,6 @@
 #include "registers/div.h"
 #include "registers/palette.h"
 #include "registers/sound.h"
-#include "renderer.h"
 #include "rom_loader.h"
 #include "sdl_renderer.h"
 #include "sound.h"

@@ -42,7 +42,6 @@ set(SRCS
   src/gpu.h
   src/gpu.cpp
   src/color.h
-  src/renderer.h
   src/sdl_renderer.h
   src/sdl_renderer.cpp
   src/sprite_attribute.h
