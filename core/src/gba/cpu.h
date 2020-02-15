@@ -386,13 +386,6 @@ class Cpu {
 
   bool halted = false;
 
-  friend class DataProcessing;
-  friend class SingleDataTransfer;
-  friend class HalfwordDataTransfer;
-  friend class BlockDataTransfer;
-  friend class SingleDataSwap;
-  friend class SoftwareInterrupt;
-
   [[nodiscard]] Mmu* mmu() const noexcept { return m_mmu; }
 
  private:
