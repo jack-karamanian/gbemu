@@ -1,4 +1,5 @@
 #include "gba/timer.h"
+#include <doctest/doctest.h>
 #include "gba/cpu.h"
 #include "gba/sound.h"
 
@@ -54,4 +55,20 @@ void Timers::update(u32 cycles) {
   did_overflow = handle_count_up(timer2, did_overflow, cycles);
   handle_count_up(timer3, did_overflow, cycles);
 }
+
+TEST_CASE("Timer::Control::cycles() should produce the correct values") {
+  Timer::Control control{0};
+
+  CHECK(control.cycles() == 1);
+
+  control.set_data(1);
+  CHECK(control.cycles() == 64);
+
+  control.set_data(2);
+  CHECK(control.cycles() == 256);
+
+  control.set_data(3);
+  CHECK(control.cycles() == 1024);
+}
+
 }  // namespace gb::advance

@@ -16,17 +16,12 @@ class Timer {
     using Integer::Integer;
 
     [[nodiscard]] u32 cycles() const {
-      switch (m_value & 0b11) {
-        case 0:
-          return 1;
-        case 1:
-          return 64;
-        case 2:
-          return 256;
-        case 3:
-          return 1024;
-      }
-      GB_UNREACHABLE();
+      // 0 -> 1
+      // 1 -> 64
+      // 2 -> 256
+      // 3 -> 1024
+      const auto n = m_value & 0b11;
+      return 1 << ((4 + n * 2) * static_cast<int>(n > 0));
     }
 
     [[nodiscard]] bool count_up() const { return test_bit(2); }
