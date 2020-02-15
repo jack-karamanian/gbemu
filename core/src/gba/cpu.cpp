@@ -689,43 +689,37 @@ auto compute_operand2(const Cpu& cpu, u32 instruction)
   return compute_shifted_operand(shift_result);
 }
 
-namespace arm::cycles {}
+static constexpr Cycles load_store_cycles(Register dest_reg, bool load) {
+  if (!load) {
+    return 2_nonseq;
+  }
 
-template <bool immediate_operand, Opcode opcode, bool set_condition_code>
-constexpr u32 make_data_processing(Cpu& cpu, u32 instruction) {
-  const auto [shift_carry, operand2] =
-      compute_operand2<immediate_operand>(cpu, instruction);
-
-  const Register dest_reg = rd(instruction);
-
-  const u32 operand1 = cpu.reg(rn(instruction)) +
-                       (!immediate_operand && test_bit(instruction, 4) &&
-                                rn(instruction) == Register::R15
-                            ? 4
-                            : 0);
-
-  common::data_processing<opcode, set_condition_code>(cpu, dest_reg, operand1,
-                                                      operand2, shift_carry);
-
-  const auto cycles = [instruction]() -> Cycles {
-    const bool register_shift = !immediate_operand && test_bit(instruction, 4);
-    if (register_shift && rd(instruction) == Register::R15) {
-      return 2_seq + 1_nonseq + 1_intern;
-    }
-    if (register_shift) {
-      return 1_seq + 1_intern;
-    }
-    if (rd(instruction) == Register::R15) {
-      return 2_seq + 1_nonseq;
-    }
-    return 1_seq;
-  };
-
-  return cycles().sum();
+  // Load
+  return dest_reg == Register::R15 ? (2_seq + 2_nonseq + 1_intern)
+                                   : (1_seq + 1_nonseq + 1_intern);
 }
-namespace multiply {
 
-namespace detail {
+template <typename T>
+constexpr void run_load(Cpu& cpu, u32 addr, Register dest_reg) {
+  constexpr auto mask = sizeof(T) - 1;
+  const auto aligned_addr = addr & ~mask;
+  const auto rotate_amount = (addr & mask) * 8;
+
+  const auto value = [&] {
+    if constexpr (std::is_same_v<T, s16>) {
+      if ((addr & mask) != 0) {
+        return static_cast<s16>(cpu.mmu()->at<s8>(addr));
+      }
+    }
+    return cpu.mmu()->at<T>(aligned_addr);
+  }();
+  cpu.set_reg(dest_reg,
+              static_cast<std::conditional_t<std::is_signed_v<T>, s32, u32>>(
+                  rotate_right(value, rotate_amount)));
+}
+
+namespace multiply::detail {
+
 [[nodiscard]] constexpr Cycles multiply_cycles(u32 rhs_operand,
                                                bool accumulate) {
   const u32 multiply_cycles = [&]() -> u32 {
@@ -779,8 +773,10 @@ template <typename T>
 
   return lhs * rhs;
 }
-}  // namespace detail
 
+}  // namespace multiply::detail
+
+namespace arm {
 template <bool accumulate, bool set_condition_code>
 u32 make_multiply(Cpu& cpu, u32 instruction) {
   const auto dest_register = [&]() {
@@ -812,7 +808,7 @@ u32 make_multiply(Cpu& cpu, u32 instruction) {
     cpu.set_negative(gb::test_bit(res, 31));
   }
 
-  return detail::multiply_cycles(rhs_operand, accumulate).sum();
+  return multiply::detail::multiply_cycles(rhs_operand, accumulate).sum();
 }
 
 template <bool is_signed, bool accumulate, bool set_condition_code>
@@ -845,9 +841,9 @@ u32 make_multiply_long(Cpu& cpu, u32 instruction) {
            static_cast<u64>(cpu.reg(dest_register_low));
   }();
 
-  const u64 res = (is_signed ? detail::multiply<s64>(static_cast<s32>(lhs),
-                                                     static_cast<s32>(rhs))
-                             : detail::multiply<u64>(lhs, rhs)) +
+  const u64 res = (is_signed ? multiply::detail::multiply<s64>(
+                                   static_cast<s32>(lhs), static_cast<s32>(rhs))
+                             : multiply::detail::multiply<u64>(lhs, rhs)) +
                   accumulate_value;
 
   cpu.set_reg(dest_register_high, (res & 0xffffffff00000000) >> 32);
@@ -857,10 +853,41 @@ u32 make_multiply_long(Cpu& cpu, u32 instruction) {
     cpu.set_zero(res == 0);
     cpu.set_negative(gb::test_bit(res, 63));
   }
-  return detail::multiply_long_cycles(rhs, accumulate, is_signed).sum();
+  return multiply::detail::multiply_long_cycles(rhs, accumulate, is_signed)
+      .sum();
 }
-}  // namespace multiply
+template <bool immediate_operand, Opcode opcode, bool set_condition_code>
+constexpr u32 make_data_processing(Cpu& cpu, u32 instruction) {
+  const auto [shift_carry, operand2] =
+      compute_operand2<immediate_operand>(cpu, instruction);
 
+  const Register dest_reg = rd(instruction);
+
+  const u32 operand1 = cpu.reg(rn(instruction)) +
+                       (!immediate_operand && test_bit(instruction, 4) &&
+                                rn(instruction) == Register::R15
+                            ? 4
+                            : 0);
+
+  common::data_processing<opcode, set_condition_code>(cpu, dest_reg, operand1,
+                                                      operand2, shift_carry);
+
+  const auto cycles = [instruction]() -> Cycles {
+    const bool register_shift = !immediate_operand && test_bit(instruction, 4);
+    if (register_shift && rd(instruction) == Register::R15) {
+      return 2_seq + 1_nonseq + 1_intern;
+    }
+    if (register_shift) {
+      return 1_seq + 1_intern;
+    }
+    if (rd(instruction) == Register::R15) {
+      return 2_seq + 1_nonseq;
+    }
+    return 1_seq;
+  };
+
+  return cycles().sum();
+}
 constexpr void run_write_back(Cpu& cpu, u32 addr, u32 instruction) {
   const Register base_register = rn(instruction);
   cpu.set_reg(base_register, addr);
@@ -893,34 +920,6 @@ constexpr static u32 select_addr(Cpu& cpu,
   return base_value;
 }
 
-template <typename T>
-constexpr void run_load(Cpu& cpu, u32 addr, Register dest_reg) {
-  constexpr auto mask = sizeof(T) - 1;
-  const auto aligned_addr = addr & ~mask;
-  const auto rotate_amount = (addr & mask) * 8;
-
-  const auto value = [&] {
-    if constexpr (std::is_same_v<T, s16>) {
-      if ((addr & mask) != 0) {
-        return static_cast<s16>(cpu.mmu()->at<s8>(addr));
-      }
-    }
-    return cpu.mmu()->at<T>(aligned_addr);
-  }();
-  cpu.set_reg(dest_reg,
-              static_cast<std::conditional_t<std::is_signed_v<T>, s32, u32>>(
-                  rotate_right(value, rotate_amount)));
-}
-
-constexpr Cycles load_store_cycles(Register dest_reg, bool load) {
-  if (!load) {
-    return 2_nonseq;
-  }
-
-  // Load
-  return dest_reg == Register::R15 ? (2_seq + 2_nonseq + 1_intern)
-                                   : (1_seq + 1_nonseq + 1_intern);
-}
 enum class TransferType : u32 {
   Swp = 0,
   UnsignedHalfword,
@@ -1222,7 +1221,6 @@ u32 make_block_data_transfer(Cpu& cpu, u32 instruction) {
   return addr_cycles + (1_nonseq + 1_intern).sum();
 }
 
-namespace arm {
 u32 branch_and_exchange(Cpu& cpu, u32 instruction) {
   common::branch_and_exchange(cpu, static_cast<Register>(instruction & 0xf));
   return 3;
@@ -1783,6 +1781,7 @@ static constexpr std::array<ThumbInstFunc, 1024> thumb_lookup_table = [] {
 }();
 
 static constexpr std::array<InstFunc, 4096> arm_lookup_table = [] {
+  using namespace arm;
   std::array<InstFunc, 4096> res{};
 
   const auto decode_arm_instruction = [&res](auto i) {
@@ -1797,12 +1796,12 @@ static constexpr std::array<InstFunc, 4096> arm_lookup_table = [] {
         switch (lower_bits) {
           case 0b1001:
             if constexpr (test_bit(upper_bits, 3)) {
-              res[i] = multiply::make_multiply_long<test_bit(upper_bits, 2),
-                                                    test_bit(upper_bits, 1),
-                                                    test_bit(upper_bits, 0)>;
+              res[i] = make_multiply_long<test_bit(upper_bits, 2),
+                                          test_bit(upper_bits, 1),
+                                          test_bit(upper_bits, 0)>;
             } else {
-              res[i] = multiply::make_multiply<test_bit(upper_bits, 1),
-                                               test_bit(upper_bits, 0)>;
+              res[i] = make_multiply<test_bit(upper_bits, 1),
+                                     test_bit(upper_bits, 0)>;
             }
             break;
           case 0b1011:
