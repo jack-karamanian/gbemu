@@ -614,8 +614,8 @@ void Gpu::render_sprites(unsigned int scanline) {
 
       const auto base_x = sprite.attrib1.x() + (x);
       const auto reversed_x = sprite.attrib1.horizontal_flip()
-                            ? half_rect.width - transformed_x - 1
-                            : transformed_x;
+                                  ? half_rect.width - transformed_x - 1
+                                  : transformed_x;
 
       if (reversed_x >= half_rect.width) {
         continue;
@@ -652,6 +652,6 @@ TEST_CASE("matrix multiplication") {
   constexpr auto res = (mat * vec);
   CAPTURE(res.x);
   CAPTURE(res.y);
-  CHECK(res == Vec2<int>{29, 23});
+  CHECK((res == Vec2<int>{29, 23}));
 }
 }  // namespace gb::advance
