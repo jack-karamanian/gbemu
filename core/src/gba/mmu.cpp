@@ -44,8 +44,6 @@ u32 Mmu::wait_cycles(u32 addr, Cycles cycles) {
          (cycles.sequential + (cycles.sequential != 0 ? wait_sequential : 0));
 }
 
-// static void eeprom_write(Mmu::AddrParam source, Mmu::AddrParam dest) {}
-//
 static void unpack_bits(nonstd::span<u8> dest, const u64 value) {
   u16 bit_value = 0;
   fmt::printf("%016x\n", value);
@@ -53,7 +51,6 @@ static void unpack_bits(nonstd::span<u8> dest, const u64 value) {
     const u32 shift = 63 - i;
     bit_value = (value & (1ULL << shift)) >> shift;
     fmt::print("{} ", bit_value);
-    // bit_value = (value & ((63 - i) << i)) >> i;
     std::memcpy(&dest[i * 2], &bit_value, sizeof(u16));
   }
   fmt::print("\n");
@@ -66,12 +63,6 @@ void Mmu::eeprom_send_command(nonstd::span<const u8> source_storage,
   const auto resolved_source_storage =
       source_storage.subspan(0, count * type_size);
 
-#if 0
-    if (count == 9) {
-    } else {
-      throw std::runtime_error(fmt::format("got type_size {}", type_size));
-    }
-#endif
   fmt::print("EEPROM DATA ");
   for (unsigned int i = 0; i < count * type_size; ++i) {
     fmt::printf("%02x ", source_storage[i]);
@@ -124,8 +115,6 @@ void Mmu::eeprom_send_command(nonstd::span<const u8> source_storage,
 
     std::memcpy(eeprom_storage, &data, sizeof(u64));
   }
-
-  // for (unsigned int i = 0; i <)
 }
 
 void Mmu::eeprom_read(nonstd::span<u8> dest) {
@@ -149,12 +138,6 @@ void Mmu::copy_memory(AddrParam source,
       throw std::runtime_error("unexpected type size in eeprom write");
     }
 
-    // fmt::printf("%08x %08x %d %d EEPROM WRITE\n", dest_addr, source_addr,
-    // count,
-    //            type_size);
-
-    // hardware.cpu->debugger().stop_execution();
-
     if (!m_eeprom_enabled) {
       m_memory_region_table[0xd] = m_eeprom;
       m_eeprom_enabled = true;
@@ -164,11 +147,8 @@ void Mmu::copy_memory(AddrParam source,
       const auto [source_storage, resolved_source_addr] =
           select_storage(source_addr);
       eeprom_send_command(source_storage.subspan(resolved_source_addr), count);
-      // eeprom_copy(source_addr, dest_addr, count,
-      //            (source_addr & 0x0d000000) == 0x0d000000);
     } else if (memory_region(source_addr) == 0x0d000000) {
       const auto [dest_storage, resolved_dest_addr] = select_storage(dest_addr);
-      // fmt::printf("DEST ADDR %08x\n", dest_addr);
       eeprom_read(dest_storage.subspan(resolved_dest_addr));
     }
     return;
@@ -248,86 +228,13 @@ void Mmu::set_hardware_bytes(u32 addr, nonstd::span<const u8> bytes) {
 }
 
 void Mmu::print_bios_warning() const {
-#if 0
+#if 1
   fmt::printf(
       "WARNING: BIOS memory access at %08x\n",
       hardware.cpu->reg(Register::R15) - hardware.cpu->prefetch_offset());
 #endif
 }
 
-#if 0
-std::tuple<nonstd::span<u8>, u32> Mmu::select_storage(u32 addr) {
-#if 0
-  if (addr >= IWramBegin && addr <= IWramEnd) {
-    return {m_iwram, addr - IWramBegin};
-  }
-
-  if (addr >= EWramBegin && addr <= EWramEnd) {
-    return {m_ewram, addr - EWramBegin};
-  }
-
-  if (addr >= VramBegin && addr <= VramEnd) {
-    return {m_vram, addr - VramBegin};
-  }
-
-  if (addr >= PaletteBegin && addr <= PaletteEnd) {
-    return {m_palette_ram, addr - PaletteBegin};
-  }
-
-  if (addr >= OamBegin && addr <= OamEnd) {
-    return {m_oam_ram, addr - OamBegin};
-  }
-
-  if (addr >= 0x03ffff00 && addr < 0x04000000) {
-    const u32 offset = addr & 0xff;
-    return {m_iwram, 0x7f00 + offset};
-  }
-
-  if (addr >= SramBegin && addr <= SramEnd) {
-    return {m_sram, addr - SramBegin};
-  }
-
-  for (const auto [begin, end] : rom_regions) {
-    if (addr >= begin && addr <= end) {
-      return {m_rom, addr - begin};
-    }
-  }
-
-  // Bios interrupt handler
-  if (addr >= 0x00000128 && addr <= 0x0000013c) {
-    return {bios_interrupt, addr - 0x128};
-  }
-
-  if (addr >= BiosBegin && addr <= BiosEnd) {
-    // fmt::printf(
-    //   "WARNING: BIOS memory access at %08x\n",
-    //   hardware.cpu->reg(Register::R15) - hardware.cpu->prefetch_offset());
-    return {m_bios, addr};
-  }
-#else
-  if (addr >= 0x03ffff00 && addr < 0x04000000) {
-    const u32 offset = addr & 0xff;
-    return {m_iwram, 0x7f00 + offset};
-  }
-
-  if (const u32 addr_region = addr >> 24;
-      addr_region < std::size(m_memory_region_table)) {
-#if 0
-    fmt::printf("%08x %08x %08x %08x %08x\n", addr_region, addr,
-                (addr_region << 24), addr - (addr_region << 24),
-                m_memory_region_table[addr_region].size());
-    assert(addr_region < std::size(m_memory_region_table));
-    assert(addr - (addr_region << 24) <
-           m_memory_region_table[addr_region].size());
-#endif
-    return {m_memory_region_table[addr_region], addr - (addr_region << 24)};
-  }
-#endif
-
-  fmt::printf("unimplemented select_storage addr %08x\n", addr);
-  throw std::runtime_error("unimplemented select storage");
-}
-#endif
 
 class MgbaDebugPrint : public Integer<u16> {
  public:
