@@ -8,10 +8,9 @@
 namespace gb::advance {
 
 bool execute_hardware(Hardware hardware) {
-  bool draw_frame = false;
   u32 cycles = hardware.cpu->execute();
   hardware.cpu->handle_interrupts();
-  draw_frame = hardware.lcd->update(cycles);
+  const bool draw_frame = hardware.lcd->update(cycles);
   hardware.timers->update(cycles);
   hardware.sound->update(cycles);
   return draw_frame;
