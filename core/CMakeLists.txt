@@ -37,7 +37,6 @@ set(SRCS
   src/memory.h
   src/memory.cpp
   src/instruction_table.h
-  src/instruction_table.cpp
   src/lcd.h
   src/lcd.cpp
   src/gpu.h
