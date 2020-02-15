@@ -10,14 +10,6 @@ class NoiseSource {
       FREQUENCY * 2, FREQUENCY,     FREQUENCY / 2, FREQUENCY / 3,
       FREQUENCY / 4, FREQUENCY / 5, FREQUENCY / 6, FREQUENCY / 7,
   };
-  template <typename T>
-  static constexpr auto pow(T i, T n) {
-    if (n == 0) {
-      return 1;
-    } else {
-      return i * pow(i, n - 1);
-    }
-  }
   constexpr static std::array<std::array<int, 14>, 8> timers = [] {
     std::array<std::array<int, 14>, 8> res = {};
 
