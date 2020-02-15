@@ -65,9 +65,10 @@ void DisassemblyView::render(u32 base,
       const auto& text = [&] {
         auto& entry = disassembly_info.disassembly_cache[i];
         if (entry.empty()) {
-          auto res =
-              experiments::disassemble(storage.subspan(instr_index, instr_size),
-                                       instr_size == 2 ? "thumb" : "arm");
+          auto res = experiments::disassemble(
+              storage.subspan(instr_index, instr_size),
+              instr_size == 2 ? experiments::DisassemblyMode::Thumb
+                              : experiments::DisassemblyMode::Arm);
           assert(res.size() == 1);
           if (!res.empty()) {
             return disassembly_info.disassembly_cache[i] =

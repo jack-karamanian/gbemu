@@ -7,12 +7,12 @@
 namespace experiments {
 
 std::vector<DisassemblyEntry> disassemble(nonstd::span<gb::u8> bytes,
-                                          std::string_view arch) {
+                                          DisassemblyMode arch) {
   std::vector<DisassemblyEntry> asm_lines;
 
   csh handle;
 
-  const auto mode = arch == "arm" ? CS_MODE_ARM : CS_MODE_THUMB;
+  const auto mode = arch == DisassemblyMode::Arm ? CS_MODE_ARM : CS_MODE_THUMB;
 
   if (cs_open(CS_ARCH_ARM, mode, &handle) != CS_ERR_OK) {
     fmt::print(std::cerr, "Failed to open capstone\n");
@@ -29,11 +29,11 @@ std::vector<DisassemblyEntry> disassemble(nonstd::span<gb::u8> bytes,
   }
 
   if (count == 0) {
-    asm_lines.emplace_back("invalid", 0);
+    asm_lines.emplace_back("invalid");
   } else {
     for (std::size_t i = 0; i < count; ++i) {
       asm_lines.emplace_back(
-          fmt::format("{} {}\n", insn[i].mnemonic, insn[i].op_str), 0);
+          fmt::format("{} {}\n", insn[i].mnemonic, insn[i].op_str));
     }
   }
 

@@ -8,12 +8,16 @@ namespace experiments {
 
 struct DisassemblyEntry {
   std::string text;
-  unsigned int loc;
 
-  DisassemblyEntry(std::string text_, unsigned int loc_)
-      : text{std::move(text_)}, loc{loc_} {}
+  explicit DisassemblyEntry(std::string text_) : text{std::move(text_)} {}
 };
 
-std::vector<DisassemblyEntry> disassemble(nonstd::span<gb::u8> bytes,
-                                          std::string_view arch = "arm");
+enum class DisassemblyMode {
+  Arm,
+  Thumb,
+};
+
+std::vector<DisassemblyEntry> disassemble(
+    nonstd::span<gb::u8> bytes,
+    DisassemblyMode arch = DisassemblyMode::Arm);
 }  // namespace experiments
