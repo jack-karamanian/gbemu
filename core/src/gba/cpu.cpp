@@ -2003,6 +2003,6 @@ u32 Cpu::execute() {
     return inst_func(*this, instruction);
   }
   return execute_arm_instruction(instruction);
-}  // namespace gb::advance
+}
 
 }  // namespace gb::advance
