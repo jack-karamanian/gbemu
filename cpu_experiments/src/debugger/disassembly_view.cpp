@@ -58,7 +58,7 @@ void DisassemblyView::render(u32 base,
     ImGui::SetScrollFromPosY(adjusted_offset);
   }
 
-  std::string empty = "empty";
+  static constexpr std::string_view empty = "empty";
   while (clipper.Step()) {
     for (int i = clipper.DisplayStart; i < clipper.DisplayEnd; ++i) {
       const u32 instr_index = i * instr_size;
@@ -74,7 +74,7 @@ void DisassemblyView::render(u32 base,
             return disassembly_info.disassembly_cache[i] =
                        std::move(res[0].text);
           }
-          return empty;
+          return std::string{empty};
         }
         return entry;
       }();
