@@ -32,8 +32,6 @@ class InterruptBucket : public Integer<u16> {
   }
 };
 
-class Cpu;
-
 class InterruptsRequested : public InterruptBucket {
  public:
   InterruptsRequested() : InterruptBucket::InterruptBucket{0} {}
