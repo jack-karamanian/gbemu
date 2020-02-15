@@ -179,11 +179,12 @@ enum class SoftwareInterruptType : u32 {
   NonstdStopExecution = 0xff,
 };
 
-u32 SoftwareInterrupt::execute(Cpu& cpu) {
+static u32 execute_software_interrupt(Cpu& cpu, u32 instruction) {
   using namespace gb::advance::hle::bios;
 
   const auto interrupt_type = static_cast<SoftwareInterruptType>(
-      (m_value & 0x00ffffff) >> (cpu.program_status().thumb_mode() ? 0 : 16));
+      (instruction & 0x00ffffff) >>
+      (cpu.program_status().thumb_mode() ? 0 : 16));
 
   switch (interrupt_type) {
     case SoftwareInterruptType::SoftReset:
@@ -217,11 +218,11 @@ u32 SoftwareInterrupt::execute(Cpu& cpu) {
       break;
     }
     case SoftwareInterruptType::CpuSet:
-      cpu_set(*cpu.m_mmu, cpu.reg(Register::R0), cpu.reg(Register::R1),
+      cpu_set(*cpu.mmu(), cpu.reg(Register::R0), cpu.reg(Register::R1),
               cpu.reg(Register::R2));
       break;
     case SoftwareInterruptType::CpuFastSet:
-      cpu_fast_set(*cpu.m_mmu, cpu.reg(Register::R0), cpu.reg(Register::R1),
+      cpu_fast_set(*cpu.mmu(), cpu.reg(Register::R0), cpu.reg(Register::R1),
                    cpu.reg(Register::R2));
       break;
     case SoftwareInterruptType::BgAffineSet:
@@ -235,39 +236,28 @@ u32 SoftwareInterrupt::execute(Cpu& cpu) {
       const u32 stride = cpu.reg(Register::R3);
 
       obj_affine_set(*cpu.mmu(), src, dest, count, stride);
-    }
-#if 0
-      fmt::printf(
-          "obj affine set source: %08x dest: %08x num: %08x offset: %08x\n",
-          cpu.reg(Register::R0), cpu.reg(Register::R1), cpu.reg(Register::R2),
-          cpu.reg(Register::R3));
-#endif
-    break;
+    } break;
     case SoftwareInterruptType::Lz77Wram: {
-      // fmt::printf("source %08x dest %08x\n", cpu.reg(Register::R0),
-      // cpu.reg(Register::R1));
       const auto [source_storage, source_addr] =
-          cpu.m_mmu->select_storage(cpu.reg(Register::R0));
+          cpu.mmu()->select_storage(cpu.reg(Register::R0));
       const auto [dest_storage, dest_addr] =
-          cpu.m_mmu->select_storage(cpu.reg(Register::R1));
+          cpu.mmu()->select_storage(cpu.reg(Register::R1));
       lz77_decompress(source_storage.subspan(source_addr),
                       dest_storage.subspan(dest_addr), 1);
       break;
     }
     case SoftwareInterruptType::Lz77Vram: {
-      // fmt::printf("source %08x dest %08x\n", cpu.reg(Register::R0),
-      //            cpu.reg(Register::R1));
       const auto [source_storage, source_addr] =
-          cpu.m_mmu->select_storage(cpu.reg(Register::R0));
+          cpu.mmu()->select_storage(cpu.reg(Register::R0));
       const auto [dest_storage, dest_addr] =
-          cpu.m_mmu->select_storage(cpu.reg(Register::R1) & ~1);
+          cpu.mmu()->select_storage(cpu.reg(Register::R1) & ~1);
       lz77_decompress(source_storage.subspan(source_addr),
                       dest_storage.subspan(dest_addr), 2);
       break;
     }
     case SoftwareInterruptType::MidiKeyToFreq: {
       // From mgba
-      auto freq = cpu.m_mmu->at<u32>(cpu.reg(Register::R0) + 4) /
+      auto freq = cpu.mmu()->at<u32>(cpu.reg(Register::R0) + 4) /
                   std::exp2f((180.0F - cpu.reg(Register::R1) -
                               cpu.reg(Register::R2) / 256.0F) /
                              12.0F);
@@ -325,9 +315,7 @@ void Cpu::handle_interrupts() {
 
 [[nodiscard]] bool should_execute(u32 instruction,
                                   ProgramStatus program_status) {
-#if 1
-  const auto condition =
-      static_cast<Instruction::Condition>((instruction >> 28) & 0b1111);
+  const auto condition = static_cast<Condition>((instruction >> 28) & 0b1111);
 
   switch (condition) {
     case Instruction::Condition::EQ:
@@ -363,46 +351,6 @@ void Cpu::handle_interrupts() {
     case Instruction::Condition::AL:
       return true;
   }
-#else
-  constexpr void* table[] = {&&eq, &&ne, &&cs, &&cc,     &&mi, &&pl,
-                             &&vs, &&vc, &&hi, &&ls,     &&ge, &&lt,
-                             &&gt, &&le, &&al, &&invalid};
-
-  goto* table[(instruction >> 28) & 0b1111];
-eq:
-  return program_status.zero();
-ne:
-  return !program_status.zero();
-cs:
-  return program_status.carry();
-cc:
-  return !program_status.carry();
-mi:
-  return program_status.negative();
-pl:
-  return !program_status.negative();
-vs:
-  return program_status.overflow();
-vc:
-  return !program_status.overflow();
-hi:
-  return program_status.carry() && !program_status.zero();
-ls:
-  return !program_status.carry() || program_status.zero();
-ge:
-  return program_status.negative() == program_status.overflow();
-lt:
-  return program_status.negative() != program_status.overflow();
-gt:
-  return !program_status.zero() &&
-         program_status.negative() == program_status.overflow();
-le:
-  return program_status.zero() ||
-         program_status.negative() != program_status.overflow();
-al:
-  return true;
-invalid:
-#endif
   throw std::runtime_error("invalid condition");
 }
 
@@ -432,7 +380,6 @@ ShiftFlags compute_carry(Cpu& cpu,
           }
         } else {
           if (shift_amount == 0) {
-            // return {0, gb::test_bit(reg_value, 31)};
             return {reg_value, cpu.program_status().carry()};
           }
         }
@@ -449,7 +396,6 @@ ShiftFlags compute_carry(Cpu& cpu,
         } else {
           if (shift_amount == 0) {
             return {0, gb::test_bit(reg_value, 31)};
-            // return {reg_value, gb::test_bit(reg_value, 31)};
           }
         }
         return {std::nullopt, std::nullopt};
@@ -1279,7 +1225,7 @@ u32 branch_and_exchange(Cpu& cpu, u32 instruction) {
 }
 
 u32 software_interrupt(Cpu& cpu, u32 instruction) {
-  return SoftwareInterrupt{instruction}.execute(cpu);
+  return execute_software_interrupt(cpu, instruction);
 }
 
 [[noreturn]] u32 invalid_instruction([[maybe_unused]] Cpu& cpu,
@@ -1618,7 +1564,7 @@ u32 conditional_branch(Cpu& cpu, u16 instruction) {
 }
 
 u32 software_interrupt(Cpu& cpu, u16 instruction) {
-  return SoftwareInterrupt{static_cast<u32>(instruction & 0xff)}.execute(cpu);
+  return execute_software_interrupt(cpu, static_cast<u32>(instruction & 0xff));
 }
 
 template <bool is_signed>
@@ -1832,7 +1778,7 @@ static constexpr std::array<ThumbInstFunc, 1024> thumb_lookup_table = [] {
   return res;
 }();
 
-static constexpr std::array<InstFunc, 4096> func_lookup_table1 = [] {
+static constexpr std::array<InstFunc, 4096> arm_lookup_table = [] {
   std::array<InstFunc, 4096> res{};
 
   const auto decode_arm_instruction = [&res](auto i) {
@@ -1999,6 +1945,7 @@ static constexpr std::array<InstFunc, 4096> func_lookup_table1 = [] {
 
   return res;
 }();
+
 u32 Cpu::execute() {
   if (interrupts_waiting.data() > 0 || halted) {
     return 1;
@@ -2008,13 +1955,9 @@ u32 Cpu::execute() {
     if (const u32 pc_region = m_regs[15] & 0xff000000;
         m_current_memory_region != pc_region) {
       const auto [storage, _] = m_mmu->select_storage(reg(Register::R15));
-      // fmt::printf("%08x %08x %08x %d\n", pc_region,
-      // m_current_memory_region,
-      //            reg(Register::R15), storage.size());
       m_current_memory_region = pc_region;
       m_current_memory = storage;
       m_memory_offset = pc_region;
-      // m_memory_offset = pc_region == 0 ? 0x128 : pc_region;
     }
     if (m_current_program_status.thumb_mode()) {
       const u32 pc = reg(Register::R15) - 2;
@@ -2038,8 +1981,8 @@ u32 Cpu::execute() {
 
   const auto execute_arm_instruction = [&](u32 arm_instruction) -> u32 {
     const auto inst_func =
-        func_lookup_table1[(((arm_instruction >> 20) & 0xff) << 4) |
-                           ((arm_instruction >> 4) & 0b1111)];
+        arm_lookup_table[(((arm_instruction >> 20) & 0xff) << 4) |
+                         ((arm_instruction >> 4) & 0b1111)];
 
     if (should_execute(arm_instruction, m_current_program_status)) {
       return inst_func(*this, arm_instruction);
@@ -2057,134 +2000,9 @@ u32 Cpu::execute() {
       return 0;
     }
     const auto inst_func = thumb_lookup_table[(instruction >> 6) & 0x3ff];
-    // if ((instruction & 0b1111'1111'1111'1111'0000'0000'0000'0000) == 0 &&
-    //    inst_func != nullptr) {
     return inst_func(*this, instruction);
   }
   return execute_arm_instruction(instruction);
 }  // namespace gb::advance
-
-#if 0
-TEST_CASE("mov instructions should move immediate values") {
-  Cpu cpu;
-
-  // mov r0, #456
-  DataProcessing inst{0xe3a00f72};
-
-  CHECK(inst.dest_register() == Register::R0);
-
-  CHECK(inst.immediate_operand());
-
-  inst.execute(cpu);
-
-  CHECK(cpu.reg(Register::R0) == 456);
-}
-
-TEST_CASE("mov instructions should move registers") {
-  Cpu cpu;
-  cpu.set_reg(Register::R1, 456);
-
-  // mov r0, r1
-  DataProcessing inst{0xe1a00001};
-  CHECK(inst.dest_register() == Register::R0);
-
-  inst.execute(cpu);
-
-  CHECK(cpu.reg(Register::R0) == 456);
-}
-
-static_assert([]() -> bool {
-  // mrs r0, cpsr
-  const auto type = decode_instruction_type(0xe10f0000);
-  return type == InstructionType::Mrs;
-}());
-
-TEST_CASE(
-    "mrs instructions should transfer the current program status to a "
-    "register") {
-  Cpu cpu;
-  cpu.set_reg(Register::R0, 455);
-
-  cpu.set_carry(true);
-  cpu.set_negative(true);
-
-  // mrs r0, cpsr
-  Mrs mrs{0xe10f0000};
-
-  CHECK(mrs.dest_register() == Register::R0);
-
-  mrs.execute(cpu);
-
-  CHECK(cpu.program_status().data() == cpu.reg(Register::R0));
-}
-
-static_assert(decode_instruction_type(0xe129f000) == InstructionType::Msr);
-
-TEST_CASE(
-    "msr instructions should transfer a register to the current program "
-    "status") {
-  Cpu cpu;
-  cpu.set_reg(Register::R0, static_cast<u32>(Mode::Supervisor));
-
-  // msr cpsr, r0
-  Msr msr{0xe129f000};
-
-  msr.execute(cpu);
-
-  CHECK(cpu.program_status().data() == cpu.reg(Register::R0));
-}
-
-// msr cpsr_flg, r0
-static_assert(decode_instruction_type(0xe128f000) ==
-              InstructionType::MsrFlagBits);
-
-TEST_CASE(
-    "msr instructions should only transfer the upper 4 bits of a register "
-    "when "
-    "specified ") {
-  Cpu cpu;
-
-  cpu.set_reg(Register::R0, 0b1010 << 28);
-
-  // msr cpsr_flg, 0
-  MsrFlagBits msr{0xe128f000};
-
-  msr.execute(cpu);
-  const ProgramStatus program_status = cpu.program_status();
-
-  CHECK(program_status.negative());
-  CHECK(!program_status.zero());
-  CHECK(program_status.carry());
-  CHECK(!program_status.overflow());
-}
-
-static_assert(decode_instruction_type(0xe0010392) == InstructionType::Multiply);
-
-TEST_CASE("multiply instructions should multiply") {
-  Cpu cpu;
-
-  // mul r1, r2, r3
-  Multiply mul{0xe0010392};
-
-  cpu.set_reg(Register::R2, 20);
-  cpu.set_reg(Register::R3, 2);
-
-  mul.execute(cpu);
-
-  CHECK(cpu.reg(Register::R1) == 40);
-}
-
-TEST_CASE("bl instructions should set r14 equal to r15") {
-  Cpu cpu;
-
-  // bl ahead
-  // ahead:
-  Branch branch{0xebffffff};
-
-  branch.execute(cpu);
-
-  // CHECK(cpu.reg(Register::R15) == cpu.reg(Register::R14));
-}
-#endif
 
 }  // namespace gb::advance

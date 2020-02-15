@@ -91,78 +91,22 @@ class ProgramStatus : public Integer<u32> {
   constexpr void set_irq_enabled(bool set) { set_bit(7, !set); }
 };
 
-class Instruction : public Integer<u32> {
- public:
-  enum class Condition : u32 {
-    EQ = 0b0000,  // Z set
-    NE = 0b0001,  // Z clear
-    CS = 0b0010,  // C set
-    CC = 0b0011,  // C clear
-    MI = 0b0100,  // N set
-    PL = 0b0101,  // N clear
-    VS = 0b0110,  // V set
-    VC = 0b0111,  // V clear
-    HI = 0b1000,  // C set and Z clear
-    LS = 0b1001,  // C clear or Z set
-    GE = 0b1010,  // N equals V
-    LT = 0b1011,  // N not equal to V
-    GT = 0b1100,  // Z clear AND (N equals V)
-    LE = 0b1101,  // Z set OR (N not equal to V)
-    AL = 0b1110,  // ignored
-  };
-
-  using Integer::Integer;
-
-  // Rd
-  [[nodiscard]] constexpr Register dest_register() const {
-    return static_cast<Register>((m_value >> 12) & 0xf);
-  }
-  // Rn
-  [[nodiscard]] constexpr Register operand_register() const {
-    return static_cast<Register>((m_value >> 16) & 0xf);
-  }
-  [[nodiscard]] constexpr Condition condition() const {
-    return static_cast<Condition>((m_value >> 28) & 0xf);
-  }
-
-  [[nodiscard]] constexpr bool should_execute(
-      ProgramStatus program_status) const {
-    switch (condition()) {
-      case Condition::EQ:
-        return program_status.zero();
-      case Condition::NE:
-        return !program_status.zero();
-      case Condition::CS:
-        return program_status.carry();
-      case Condition::CC:
-        return !program_status.carry();
-      case Condition::MI:
-        return program_status.negative();
-      case Condition::PL:
-        return !program_status.negative();
-      case Condition::VS:
-        return program_status.overflow();
-      case Condition::VC:
-        return !program_status.overflow();
-      case Condition::HI:
-        return program_status.carry() && !program_status.zero();
-      case Condition::LS:
-        return !program_status.carry() || program_status.zero();
-      case Condition::GE:
-        return program_status.negative() == program_status.overflow();
-      case Condition::LT:
-        return program_status.negative() != program_status.overflow();
-      case Condition::GT:
-        return !program_status.zero() &&
-               program_status.negative() == program_status.overflow();
-      case Condition::LE:
-        return program_status.zero() ||
-               program_status.negative() != program_status.overflow();
-      case Condition::AL:
-        return true;
-    }
-    throw std::runtime_error("invalid condition");
-  }
+enum class Condition : u32 {
+  EQ = 0b0000,  // Z set
+  NE = 0b0001,  // Z clear
+  CS = 0b0010,  // C set
+  CC = 0b0011,  // C clear
+  MI = 0b0100,  // N set
+  PL = 0b0101,  // N clear
+  VS = 0b0110,  // V set
+  VC = 0b0111,  // V clear
+  HI = 0b1000,  // C set and Z clear
+  LS = 0b1001,  // C clear or Z set
+  GE = 0b1010,  // N equals V
+  LT = 0b1011,  // N not equal to V
+  GT = 0b1100,  // Z clear AND (N equals V)
+  LE = 0b1101,  // Z set OR (N not equal to V)
+  AL = 0b1110,  // ignored
 };
 
 class Cpu {
@@ -288,9 +232,7 @@ class Cpu {
 
   constexpr void set_saved_program_status(ProgramStatus program_status) {
     const auto mode = m_current_program_status.mode();
-    if (mode == Mode::User || mode == Mode::System) {
-      // m_current_program_status = program_status;
-    } else {
+    if (mode != Mode::User && mode != Mode::System) {
       m_saved_program_status[index_from_mode(m_current_program_status.mode())] =
           program_status;
     }
@@ -403,17 +345,9 @@ class Cpu {
   constexpr ProgramStatus& get_current_program_status() {
     return m_current_program_status;
   }
-  constexpr void assert_in_user_mode() const {
-    const Mode mode = m_current_program_status.mode();
-    if (mode == Mode::User || mode == Mode::System) {
-      throw std::runtime_error(
-          "saved program status can not be accessed in user mode");
-    }
-  }
 
   [[nodiscard]] static constexpr u32 index_from_mode(Mode mode) {
     return static_cast<u32>(mode) - 1;
-    // return static_cast<u32>(m_current_program_status.mode()) - 1;
   }
   std::array<u32, 16> m_regs = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
 
@@ -428,15 +362,6 @@ class Cpu {
   u32 m_current_memory_region = 0;
   u32 m_memory_offset = 0;
   std::array<u8, 4> m_prefetched_opcode = {0, 0, 0, 0};
-};  // namespace gb::advance
-
-class SoftwareInterrupt : public Instruction {
- public:
-  using Instruction::Instruction;
-
-  u32 execute(Cpu& cpu);
-
- private:
 };
 
 }  // namespace gb::advance
