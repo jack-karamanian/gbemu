@@ -67,7 +67,6 @@ target_link_libraries(cpu_experiments PRIVATE
 
 target_include_directories(cpu_experiments 
   PRIVATE $<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/src/imgui>
-  $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/../external/span-lite/include>
 )
 
 target_compile_definitions(cpu_experiments PRIVATE
