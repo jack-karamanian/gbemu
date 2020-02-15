@@ -101,24 +101,25 @@ void lz77_decompress(nonstd::span<const u8> src,
 }
 
 void obj_affine_set(Mmu& mmu, u32 src, u32 dest, u32 count, u32 stride) {
-  struct InputParams {
-    s16 sx;
-    s16 sy;
-    u16 theta;
-  } input = mmu.at<InputParams>(src);
-
-  const float sx = static_cast<float>(input.sx) / (1 << 8);
-  const float sy = static_cast<float>(input.sy) / (1 << 8);
-  const float theta = static_cast<float>(input.theta) / (1 << 8);
   for (u32 i = 0; i < count; ++i) {
-    mmu.set(dest + 0 * stride,
-            static_cast<s16>((std::cos(theta) * sx) * (1 << 8)));
-    mmu.set(dest + 1 * stride,
-            static_cast<s16>((std::sin(theta) * -sx) * (1 << 8)));
-    mmu.set(dest + 2 * stride,
-            static_cast<s16>((std::sin(theta) * sy) * (1 << 8)));
-    mmu.set(dest + 3 * stride,
-            static_cast<s16>((std::cos(theta) * sy) * (1 << 8)));
+    struct InputParams {
+      s16 sx;
+      s16 sy;
+      u16 theta;
+    } input = mmu.at<InputParams>(src);
+    // Is InputParams aligned by 8?
+    src += 8;
+
+    const float sx = static_cast<float>(input.sx) / (1 << 8);
+    const float sy = static_cast<float>(input.sy) / (1 << 8);
+    const float theta = static_cast<float>(input.theta) / (1 << 8);
+
+    const float cos_theta = std::cos(theta);
+    const float sin_theta = std::sin(theta);
+    mmu.set(dest + 0 * stride, static_cast<s16>((cos_theta * sx) * (1 << 8)));
+    mmu.set(dest + 1 * stride, static_cast<s16>((sin_theta * -sx) * (1 << 8)));
+    mmu.set(dest + 2 * stride, static_cast<s16>((sin_theta * sy) * (1 << 8)));
+    mmu.set(dest + 3 * stride, static_cast<s16>((cos_theta * sy) * (1 << 8)));
     dest += 4 * stride;
   }
 }
