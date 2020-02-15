@@ -318,37 +318,37 @@ void Cpu::handle_interrupts() {
   const auto condition = static_cast<Condition>((instruction >> 28) & 0b1111);
 
   switch (condition) {
-    case Instruction::Condition::EQ:
+    case Condition::EQ:
       return program_status.zero();
-    case Instruction::Condition::NE:
+    case Condition::NE:
       return !program_status.zero();
-    case Instruction::Condition::CS:
+    case Condition::CS:
       return program_status.carry();
-    case Instruction::Condition::CC:
+    case Condition::CC:
       return !program_status.carry();
-    case Instruction::Condition::MI:
+    case Condition::MI:
       return program_status.negative();
-    case Instruction::Condition::PL:
+    case Condition::PL:
       return !program_status.negative();
-    case Instruction::Condition::VS:
+    case Condition::VS:
       return program_status.overflow();
-    case Instruction::Condition::VC:
+    case Condition::VC:
       return !program_status.overflow();
-    case Instruction::Condition::HI:
+    case Condition::HI:
       return program_status.carry() && !program_status.zero();
-    case Instruction::Condition::LS:
+    case Condition::LS:
       return !program_status.carry() || program_status.zero();
-    case Instruction::Condition::GE:
+    case Condition::GE:
       return program_status.negative() == program_status.overflow();
-    case Instruction::Condition::LT:
+    case Condition::LT:
       return program_status.negative() != program_status.overflow();
-    case Instruction::Condition::GT:
+    case Condition::GT:
       return !program_status.zero() &&
              program_status.negative() == program_status.overflow();
-    case Instruction::Condition::LE:
+    case Condition::LE:
       return program_status.zero() ||
              program_status.negative() != program_status.overflow();
-    case Instruction::Condition::AL:
+    case Condition::AL:
       return true;
   }
   throw std::runtime_error("invalid condition");
