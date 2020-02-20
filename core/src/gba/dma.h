@@ -160,7 +160,7 @@ class Dmas {
     return m_dmas[static_cast<u32>(dma_number)];
   }
 
-  [[nodiscard]] nonstd::span<Dma> span() { return m_dmas; }
+  [[nodiscard]] nonstd::span<Dma, 4> span() { return m_dmas; }
 
  private:
   std::array<Dma, 4> m_dmas;
