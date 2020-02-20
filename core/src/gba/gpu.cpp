@@ -599,10 +599,17 @@ void Gpu::render_sprites(unsigned int scanline) {
 
       const auto tile_base_offset = (sprite.attrib2.tile_id() * tile_length);
       const auto sprite_y = static_cast<unsigned int>(sprite.attrib0.y());
-      const auto sprite_height_scanline =
-          (transformed_scanline - sprite_y) / TileSize;
 
-      const auto tile_scanline = ((transformed_scanline - sprite_y) % TileSize);
+      // The scanline in sprite y coordinates
+      const auto scanline_relative_to_sprite =
+          sprite.attrib1.vertical_flip()
+              ? sprite_rect.height - (transformed_scanline - sprite_y) - 1
+              : (transformed_scanline - sprite_y);
+
+      const auto sprite_height_scanline =
+          scanline_relative_to_sprite / TileSize;
+
+      const auto tile_scanline = (scanline_relative_to_sprite % TileSize);
 
       if (transformed_scanline < sprite_y) {
         continue;
