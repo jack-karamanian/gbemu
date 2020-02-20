@@ -15,6 +15,16 @@ class Timer {
    public:
     using Integer::Integer;
 
+    constexpr explicit Control(Timer& timer)
+        : Integer::Integer{0}, m_timer{&timer} {}
+
+    void write_byte(unsigned int byte, u8 value) {
+      if (byte == 0 && !enabled() && gb::test_bit(value, 7)) {
+        m_timer->counter = m_timer->reload_value;
+      }
+      Integer::write_byte(byte, value);
+    }
+
     [[nodiscard]] u32 cycles() const {
       // 0 -> 1
       // 1 -> 64
@@ -29,11 +39,14 @@ class Timer {
     [[nodiscard]] bool interrupt() const { return test_bit(6); }
 
     [[nodiscard]] bool enabled() const { return test_bit(7); }
+
+   private:
+    Timer* m_timer;
   };
 
   u16 counter = 0;
   u16 reload_value = 0;
-  Control control{0};
+  Control control{*this};
 
   Timer(Cpu& cpu, Sound& sound, int timer_number)
       : m_cpu{&cpu},
