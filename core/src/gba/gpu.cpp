@@ -108,6 +108,8 @@ void Gpu::render_scanline(unsigned int scanline) {
       }
       break;
     case BgMode::Three:
+      render_mode3(scanline);
+      break;
     case BgMode::Four:
     case BgMode::Five:
       render_mode4(scanline);
@@ -333,6 +335,14 @@ void Gpu::render_tile_row_4bpp(nonstd::span<Color> framebuffer,
       const auto pixel_two_x = base_index + pixel_two_offset + target_pixel_x;
       render_pixel(color_two, pixel_two_x);
     }
+  }
+}
+
+void Gpu::render_mode3(unsigned int scanline) {
+  for (unsigned int x = 0; x < ScreenWidth; ++x) {
+    const auto color_index = (ScreenWidth * scanline + x) * 2;
+    const auto color = (m_vram[color_index] | (m_vram[color_index + 1] << 8));
+    draw_color(m_per_pixel_context.top_pixels, x, 0, color);
   }
 }
 

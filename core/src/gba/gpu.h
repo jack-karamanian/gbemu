@@ -354,6 +354,7 @@ class Gpu {
   }
 
  private:
+  void render_mode3(unsigned int scanline);
   void render_mode4(unsigned int scanline);
 
   void render_tile_row_4bpp(nonstd::span<Color> framebuffer,
