@@ -49,21 +49,16 @@ class NumberInput {
     ImGui::PushID(m_button_id);
 
     if (ImGui::Button("Set")) {
-      try {
-        u32 number_value = 0;
+      u32 number_value = 0;
 
-        auto res = std::from_chars(m_value.data(),
-                                   m_value.data() + std::strlen(m_value.data()),
-                                   number_value, 16);
+      auto res = std::from_chars(m_value.data(),
+                                 m_value.data() + std::strlen(m_value.data()),
+                                 number_value, 16);
 
-        if (res.ec == std::errc{}) {
-          callback(number_value);
-        } else {
-          fmt::print("Invalid string\n");
-        }
-
-      } catch (std::exception& e) {
-        std::cerr << e.what() << '\n';
+      if (res.ec == std::errc{}) {
+        callback(number_value);
+      } else {
+        fmt::print("Invalid string\n");
       }
     }
 
@@ -131,7 +126,8 @@ static std::vector<gb::u8> load_file(const std::string_view file_name) {
 }
 
 void run_emulator_and_debugger(std::string_view rom_path) {
-  if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO) != 0) {
+  if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO | SDL_INIT_GAMECONTROLLER) !=
+      0) {
     std::cerr << SDL_GetError() << '\n';
     return;
   }
@@ -235,6 +231,8 @@ void run_emulator_and_debugger(std::string_view rom_path) {
                GL_UNSIGNED_BYTE,
                static_cast<const void*>(gpu.framebuffer().data()));
 
+  SDL_GameController* controller = SDL_GameControllerOpen(0);
+
   while (running) {
     {
       SDL_Event event;
@@ -248,7 +246,7 @@ void run_emulator_and_debugger(std::string_view rom_path) {
 
           case SDL_KEYDOWN:
           case SDL_KEYUP: {
-            bool set = event.type == SDL_KEYDOWN;
+            const bool set = event.type == SDL_KEYDOWN;
 
             switch (event.key.keysym.sym) {
               case SDLK_UP:
@@ -286,6 +284,42 @@ void run_emulator_and_debugger(std::string_view rom_path) {
             }
 
             break;
+          }
+          case SDL_CONTROLLERBUTTONDOWN:
+          case SDL_CONTROLLERBUTTONUP: {
+            const bool set = event.type == SDL_CONTROLLERBUTTONDOWN;
+            switch (event.cbutton.button) {
+              case SDL_CONTROLLER_BUTTON_DPAD_UP:
+                input.set_up(set);
+                break;
+              case SDL_CONTROLLER_BUTTON_DPAD_DOWN:
+                input.set_down(set);
+                break;
+              case SDL_CONTROLLER_BUTTON_DPAD_LEFT:
+                input.set_left(set);
+                break;
+              case SDL_CONTROLLER_BUTTON_DPAD_RIGHT:
+                input.set_right(set);
+                break;
+              case SDL_CONTROLLER_BUTTON_A:
+                input.set_b(set);
+                break;
+              case SDL_CONTROLLER_BUTTON_B:
+                input.set_a(set);
+                break;
+              case SDL_CONTROLLER_BUTTON_START:
+                input.set_start(set);
+                break;
+              case SDL_CONTROLLER_BUTTON_BACK:
+                input.set_select(set);
+                break;
+              case SDL_CONTROLLER_BUTTON_LEFTSHOULDER:
+                input.set_l(set);
+                break;
+              case SDL_CONTROLLER_BUTTON_RIGHTSHOULDER:
+                input.set_r(set);
+                break;
+            }
           }
         }
       }
@@ -490,6 +524,7 @@ void run_emulator_and_debugger(std::string_view rom_path) {
   ImGui_ImplSDL2_Shutdown();
   ImGui::DestroyContext();
 
+  SDL_GameControllerClose(controller);
   SDL_GL_DeleteContext(gl_context);
   SDL_DestroyWindow(window);
   SDL_Quit();
