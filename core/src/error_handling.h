@@ -5,12 +5,8 @@
 #else
 #ifdef __GNUC__
 #define GB_UNREACHABLE() __builtin_unreachable()
-#else
-namespace gb::error_handling::detail {
-[[noreturn]] static inline void unreachable() {}
-
-}  // namespace gb::error_handling::detail
-#define GB_UNREACHABLE() gb::error_handling::detail::unreachable()
+#elif defined(_MSC_VER)
+#define GB_UNREACHABLE() __assume(0)
 #endif
 #endif
 
