@@ -320,6 +320,7 @@ void run_emulator_and_debugger(std::string_view rom_path) {
                 input.set_r(set);
                 break;
             }
+            break;
           }
         }
       }
@@ -415,14 +416,6 @@ void run_emulator_and_debugger(std::string_view rom_path) {
         thumb_disassembly_view.render(gb::advance::Mmu::RomRegion0Begin, 2, cpu,
                                       thumb_disassembly);
 #if 0
-        if (arm_disassembly_task.ready()) {
-          arm_disassembly_view.render(gb::advance::Mmu::RomRegion0Begin, cpu,
-                                      disassembly);
-        }
-        if (thumb_disassembly_task.ready()) {
-          thumb_disassembly_view.render(gb::advance::Mmu::RomRegion0Begin, cpu,
-                                        thumb_disassembly);
-        }
         iwram_disassembly_view.render(gb::advance::Mmu::IWramBegin, cpu,
                                       iwram_disassembly);
 #endif
