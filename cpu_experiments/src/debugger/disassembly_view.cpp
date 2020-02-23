@@ -62,7 +62,7 @@ void DisassemblyView::render(u32 base,
   while (clipper.Step()) {
     for (int i = clipper.DisplayStart; i < clipper.DisplayEnd; ++i) {
       const u32 instr_index = i * instr_size;
-      const auto& text = [&] {
+      const std::string_view text = [&]() -> std::string_view {
         auto& entry = disassembly_info.disassembly_cache[i];
         if (entry.empty()) {
           auto res = experiments::disassemble(
@@ -73,15 +73,15 @@ void DisassemblyView::render(u32 base,
             return disassembly_info.disassembly_cache[i] =
                        std::move(res[0].text);
           }
-          return std::string{empty};
+          return empty;
         }
         return entry;
       }();
 
       if (instr_index == offset) {
-        ImGui::Text("-> %08x %s", instr_index + base, text.c_str());
+        ImGui::Text("-> %08x %s", instr_index + base, text.data());
       } else {
-        ImGui::Text("%08x %s", instr_index + base, text.c_str());
+        ImGui::Text("%08x %s", instr_index + base, text.data());
       }
     }
   }
