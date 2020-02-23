@@ -97,7 +97,6 @@ class Sound {
   void read_fifo_sample(SoundFifo& sound_fifo, u32 addr);
   std::vector<SampleType> m_sample_buffer{};
   std::function<void(nonstd::span<SampleType>)> m_sample_callback;
-  std::vector<s8> m_fifo_samples;
   Dmas* m_dmas;
   u32 m_fifo_timer = 0;
   u32 m_master_timer = 0;
