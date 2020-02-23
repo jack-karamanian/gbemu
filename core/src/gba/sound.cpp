@@ -34,17 +34,19 @@ void Sound::update(u32 cycles) {
 
   if (m_master_timer >= MasterCycles) {
     m_master_timer -= MasterCycles;
-    float mixed_sample = 0;
-    const float sample_a = fifo_a.current_sample() / 1024.0F;
-    const float sample_b = fifo_b.current_sample() / 1024.0F;
+    SampleType mixed_sample = 0;
+    const auto sample_a =
+        static_cast<SampleType>(fifo_a.current_sample()) / 1024.0F;
+    const auto sample_b =
+        static_cast<SampleType>(fifo_b.current_sample()) / 1024.0F;
     SDL_MixAudioFormat(reinterpret_cast<Uint8*>(&mixed_sample),
                        reinterpret_cast<const Uint8*>(&sample_a), AUDIO_F32SYS,
-                       sizeof(float), 50);
+                       sizeof(SampleType), 50);
     SDL_MixAudioFormat(reinterpret_cast<Uint8*>(&mixed_sample),
                        reinterpret_cast<const Uint8*>(&sample_b), AUDIO_F32SYS,
-                       sizeof(float), 50);
-    m_sample_buffer.push_back(sample_a);
-    m_sample_buffer.push_back(sample_b);
+                       sizeof(SampleType), 50);
+    m_sample_buffer.push_back(mixed_sample);
+    m_sample_buffer.push_back(mixed_sample);
   }
   if (m_sample_buffer.size() >= 1024) {
     m_sample_callback(m_sample_buffer);
