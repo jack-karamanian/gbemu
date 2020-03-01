@@ -60,7 +60,7 @@ jobs:
           cmake cpu_experiments `
           -DCMAKE_TOOLCHAIN_FILE="$PWD/vcpkg/scripts/buildsystems/vcpkg.cmake" `
           -DCMAKE_BUILD_TYPE=Release `
-          -G "Visual Studio 16 2019" `
+          -G Ninja `
           -DVCPKG_TARGET_TRIPLET=x64-windows-static `
           -DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded `
           -B build
@@ -76,4 +76,4 @@ jobs:
         uses: actions/upload-artifact@v1
         with:
           name: build-${{ runner.os }}
-          path: build/Release/cpu_experiments.exe
+          path: build/cpu_experiments.exe
