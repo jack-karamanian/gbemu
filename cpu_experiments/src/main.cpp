@@ -40,28 +40,22 @@ class NumberInput {
       : m_name{name}, m_button_id{id} {};
 
   template <typename Func>
-
   void render(Func callback) {
     ImGui::InputText(m_name, m_value.data(), m_value.size());
-
     ImGui::SameLine();
-
     ImGui::PushID(m_button_id);
 
     if (ImGui::Button("Set")) {
       u32 number_value = 0;
-
       auto res = std::from_chars(m_value.data(),
                                  m_value.data() + std::strlen(m_value.data()),
                                  number_value, 16);
-
       if (res.ec == std::errc{}) {
         callback(number_value);
       } else {
         fmt::print("Invalid string\n");
       }
     }
-
     ImGui::PopID();
   }
 
@@ -117,10 +111,14 @@ static void BackgroundDisplay(Gpu::Background background) {
 }
 
 static std::vector<gb::u8> load_file(const std::string_view file_name) {
-  std::ifstream file{file_name.data(), std::ios::in | std::ios::binary};
+  std::ifstream file{file_name.data(),
+                     std::ios::in | std::ios::binary | std::ios::ate};
 
-  std::vector<gb::u8> data(std::istreambuf_iterator<char>{file},
-                           std::istreambuf_iterator<char>{});
+  const auto size = file.tellg();
+  file.seekg(0);
+
+  std::vector<gb::u8> data(size);
+  file.read(reinterpret_cast<char*>(data.data()), size);
 
   return data;
 }

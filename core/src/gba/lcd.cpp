@@ -13,7 +13,7 @@ void Lcd::increment_vcount() {
   }
 }
 
-bool Lcd::update(u32 cycles) {
+bool Lcd::update(u32 cycles, int& next_event_cycles) {
   bool draw_frame = false;
   m_cycles += cycles;
 
@@ -22,6 +22,8 @@ bool Lcd::update(u32 cycles) {
       if (m_cycles >= 960) {
         m_mode = Mode::HBlank;
         m_cycles -= 960;
+        // m_next_event_cycles = 272 - m_cycles;
+        m_next_event_cycles = 272;
 
         if (dispstat.enable_hblank_interrupt()) {
           m_cpu->interrupts_requested.set_interrupt(Interrupt::HBlank, true);
@@ -57,9 +59,12 @@ bool Lcd::update(u32 cycles) {
             m_cpu->interrupts_requested.set_interrupt(Interrupt::VBlank, true);
           }
           draw_frame = true;
-
+          // m_next_event_cycles = 1232 - m_cycles;
+          m_next_event_cycles = 1232;
         } else {
           m_mode = Mode::Draw;
+          m_next_event_cycles = 960;
+          // m_next_event_cycles = 960 - m_cycles;
         }
         increment_vcount();
       }
@@ -73,11 +78,17 @@ bool Lcd::update(u32 cycles) {
           dispstat.set_hblank(false);
           dispstat.set_vblank(false);
           m_mode = Mode::Draw;
+          m_next_event_cycles = 960;
+          // m_next_event_cycles = 960 - m_cycles;
           vcount = 0;
+        } else {
+          m_next_event_cycles = 1232;
+          // m_next_event_cycles = 1232 - m_cycles;
         }
       }
       break;
   }
+  next_event_cycles = std::min(next_event_cycles, m_next_event_cycles);
   return draw_frame;
 }
 }  // namespace gb::advance

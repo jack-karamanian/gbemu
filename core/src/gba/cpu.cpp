@@ -48,7 +48,9 @@ constexpr ShiftResult compute_shift_value(u32 value, const Cpu& cpu) {
       // TODO: Is this offset correct?
       (register_specified && reg == Register::R15 ? 4 : 0);  // Rm
 
-  // TODO: Finish shift carry calculation
+  if (shift_amount > 0 && shift_amount < 32) {
+    return {shift_type, shift_amount, reg_value, std::nullopt, std::nullopt};
+  }
   // Allow carry and the result to be overridden
   const auto [error_value, set_carry] =
       [&]() -> std::pair<std::optional<u32>, std::optional<bool>> {
@@ -177,6 +179,7 @@ enum class SoftwareInterruptType : u32 {
   MidiKeyToFreq = 0x1f,
   SoundDriverVSyncOff = 0x28,
   NonstdStopExecution = 0xff,
+  NonstdPrintInt = 0xfe,
 };
 
 static u32 execute_software_interrupt(Cpu& cpu, u32 instruction) {
@@ -269,6 +272,9 @@ static u32 execute_software_interrupt(Cpu& cpu, u32 instruction) {
 
     case SoftwareInterruptType::NonstdStopExecution:
       cpu.debugger().stop_execution();
+      break;
+    case SoftwareInterruptType::NonstdPrintInt:
+      fmt::printf("%d\n", cpu.reg(Register::R0));
       break;
     default:
       throw std::runtime_error("unimplemented swi");
@@ -1950,50 +1956,27 @@ static constexpr std::array<InstFunc, 4096> arm_lookup_table = [] {
 }();
 
 u32 Cpu::execute() {
+#if 0
   if (interrupts_waiting.data() > 0 || halted) {
     return 1;
   }
+#endif
 
-  const u32 instruction = [this]() -> u32 {
-    if (const u32 pc_region = m_regs[15] & 0xff000000;
-        m_current_memory_region != pc_region) {
-      const auto [storage, _] = m_mmu->select_storage(reg(Register::R15));
-      m_current_memory_region = pc_region;
-      m_current_memory = storage;
-      m_memory_offset = pc_region;
-    }
-    if (m_current_program_status.thumb_mode()) {
-      const u32 pc = reg(Register::R15) - 2;
-
-      u16 thumb_instruction;
-      std::memcpy(&thumb_instruction, &m_current_memory[pc - m_memory_offset],
-                  sizeof(u16));
-      set_reg(Register::R15, pc + 2);
-
-      return thumb_instruction;
-    }
-
-    const u32 pc = reg(Register::R15) - 4;
-    // fmt::printf("%08x\n", pc);
-    u32 arm_instruction;
-    std::memcpy(&arm_instruction, &m_current_memory[pc - m_memory_offset],
-                sizeof(u32));
-    set_reg(Register::R15, pc + 4);
-    return arm_instruction;
-  }();
-
-  const auto execute_arm_instruction = [&](u32 arm_instruction) -> u32 {
-    const auto inst_func =
-        arm_lookup_table[(((arm_instruction >> 20) & 0xff) << 4) |
-                         ((arm_instruction >> 4) & 0b1111)];
-
-    if (should_execute(arm_instruction, m_current_program_status)) {
-      return inst_func(*this, arm_instruction);
-    }
-    return 0;
-  };
-
+  if (const u32 pc_region = m_regs[15] & 0xff000000;
+      m_current_memory_region != pc_region) {
+    const auto [storage, _] = m_mmu->select_storage(reg(Register::R15));
+    m_current_memory_region = pc_region;
+    m_current_memory = storage;
+    m_memory_offset = pc_region;
+  }
   if (m_current_program_status.thumb_mode()) {
+    const u32 pc = (m_regs[15] & ~0b1);
+
+    u16 instruction;
+    std::memcpy(&instruction, &m_current_memory[pc - m_memory_offset],
+                sizeof(u16));
+    m_regs[15] = pc + 2;
+
     if (const u32 condition = (instruction >> 8) & 0b1111;
         (instruction & 0b1101'0000'0000'0000) == 0b1101'0000'0000'0000 &&
         ((instruction >> 12) != 0b1111) && condition != 0b1111) {
@@ -2005,7 +1988,20 @@ u32 Cpu::execute() {
     const auto inst_func = thumb_lookup_table[(instruction >> 6) & 0x3ff];
     return inst_func(*this, instruction);
   }
-  return execute_arm_instruction(instruction);
+
+  const u32 pc = (m_regs[15] & ~0b11);
+  u32 arm_instruction;
+  std::memcpy(&arm_instruction, &m_current_memory[pc - m_memory_offset],
+              sizeof(u32));
+  m_regs[15] = pc + 4;
+  const auto inst_func =
+      arm_lookup_table[(((arm_instruction >> 20) & 0xff) << 4) |
+                       ((arm_instruction >> 4) & 0b1111)];
+
+  if (should_execute(arm_instruction, m_current_program_status)) {
+    return inst_func(*this, arm_instruction);
+  }
+  return 0;
 }
 
 }  // namespace gb::advance

@@ -35,6 +35,7 @@ std::vector<DisassemblyEntry> disassemble(nonstd::span<gb::u8> bytes,
       asm_lines.emplace_back(
           fmt::format("{} {}\n", insn[i].mnemonic, insn[i].op_str));
     }
+    cs_free(insn, count);
   }
 
   cs_close(&handle);

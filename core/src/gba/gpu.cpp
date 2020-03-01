@@ -10,13 +10,13 @@ struct Mat2 {
 };
 
 template <typename T>
-constexpr Vec2<T> operator*(Mat2<T> mat, Vec2<T> vec) noexcept {
+constexpr Vec2<T> operator*(const Mat2<T>& mat, const Vec2<T>& vec) noexcept {
   return {mat.data[0] * vec.x + mat.data[1] * vec.y,
           mat.data[2] * vec.x + mat.data[3] * vec.y};
 }
 
 template <typename T>
-constexpr Mat2<T> operator*(Mat2<T> lhs, Mat2<T> rhs) noexcept {
+constexpr Mat2<T> operator*(const Mat2<T>& lhs, const Mat2<T>& rhs) noexcept {
   return {
       lhs.data[0] * rhs.data[0] + lhs.data[1] * rhs.data[2],
       lhs.data[0] * rhs.data[1] + lhs.data[1] * rhs.data[3],
@@ -544,14 +544,16 @@ void Gpu::render_sprites(unsigned int scanline) {
         return identity;
       }
       const auto offset = 0x20 * sprite.attrib1.affine_parameter_group();
-      const s16 pa =
-          m_oam_ram[0x06 + offset] | (m_oam_ram[0x06 + offset + 1] << 8);
-      const s16 pb =
-          m_oam_ram[0x0e + offset] | (m_oam_ram[0x0e + offset + 1] << 8);
-      const s16 pc =
-          m_oam_ram[0x16 + offset] | (m_oam_ram[0x16 + offset + 1] << 8);
-      const s16 pd =
-          m_oam_ram[0x1e + offset] | (m_oam_ram[0x1e + offset + 1] << 8);
+
+      s16 pa;
+      s16 pb;
+      s16 pc;
+      s16 pd;
+
+      std::memcpy(&pa, &m_oam_ram[0x06 + offset], sizeof(s16));
+      std::memcpy(&pb, &m_oam_ram[0x0e + offset], sizeof(s16));
+      std::memcpy(&pc, &m_oam_ram[0x16 + offset], sizeof(s16));
+      std::memcpy(&pd, &m_oam_ram[0x1e + offset], sizeof(s16));
 
       const auto to_float = [](s16 fixed) {
         return static_cast<float>(fixed) / (1 << 8);
@@ -568,10 +570,6 @@ void Gpu::render_sprites(unsigned int scanline) {
     const Rect<unsigned int> half_rect{sprite_rect.width >> coord_divisor,
                                        sprite_rect.height >> coord_divisor};
 
-    constexpr auto lerp = [](float v0, float v1, float t) -> float {
-      return (1.0F - t) * v0 + t * v1;
-    };
-
     for (unsigned int x = 0; x < sprite_rect.width; ++x) {
       // The transform occurs at the center of the sprite
       const auto [transformed_scanline, transformed_x] =
@@ -580,12 +578,10 @@ void Gpu::render_sprites(unsigned int scanline) {
           return {scanline, x};
         }
         const Vec2<float> vec =
-            matrix *
-            Vec2<float>{
-                lerp(-1.0F, 1.0F, static_cast<float>(x) / sprite_rect.width),
-                lerp(-1.0F, 1.0F,
-                     static_cast<float>((scanline - sprite.attrib0.y())) /
-                         sprite_rect.height)};
+            matrix * Vec2<float>{2.0F * float(x) / sprite_rect.width - 1,
+                                 2.0F * float(scanline - sprite.attrib0.y()) /
+                                         sprite_rect.height -
+                                     1};
 
         const auto new_scanline =
             static_cast<unsigned int>((vec.y + 1.0F) * 0.5F *

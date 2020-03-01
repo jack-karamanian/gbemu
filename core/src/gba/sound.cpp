@@ -26,7 +26,7 @@ void Sound::run_dma_transfer(u32 fifo_addr) {
 
 static constexpr u32 MasterCycles = 16777216 / 44100;
 
-void Sound::update(u32 cycles) {
+void Sound::update(u32 cycles, int& next_event_cycles) {
   m_fifo_timer += cycles;
   m_master_timer += cycles;
 
@@ -47,11 +47,13 @@ void Sound::update(u32 cycles) {
                        sizeof(SampleType), 50);
     m_sample_buffer.push_back(mixed_sample);
     m_sample_buffer.push_back(mixed_sample);
+    if (m_sample_buffer.size() >= 1024) {
+      m_sample_callback(m_sample_buffer);
+      m_sample_buffer.clear();
+    }
   }
-  if (m_sample_buffer.size() >= 1024) {
-    m_sample_callback(m_sample_buffer);
-    m_sample_buffer.clear();
-  }
+  next_event_cycles = std::min(next_event_cycles,
+                               static_cast<int>(MasterCycles - m_master_timer));
 }
 
 void Sound::read_fifo_sample(SoundFifo& sound_fifo, u32 addr) {

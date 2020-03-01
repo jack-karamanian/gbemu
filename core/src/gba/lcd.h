@@ -41,12 +41,13 @@ class Lcd {
   DispStat dispstat{0};
   u32 vcount = 0;
 
-  bool update(u32 cycles);
+  bool update(u32 cycles, int& next_event_cycles);
 
  private:
   void increment_vcount();
 
   int m_cycles = 0;
+  int m_next_event_cycles = 960;
   Mode m_mode = Mode::Draw;
   Cpu* m_cpu;
   Dmas* m_dmas;

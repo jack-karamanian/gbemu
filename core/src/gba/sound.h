@@ -91,7 +91,7 @@ class Sound {
   void read_fifo_a_sample() { read_fifo_sample(fifo_a, hardware::FIFO_A); }
   void read_fifo_b_sample() { read_fifo_sample(fifo_b, hardware::FIFO_B); }
 
-  void update(u32 cycles);
+  void update(u32 cycles, int& next_event_cycles);
 
  private:
   void read_fifo_sample(SoundFifo& sound_fifo, u32 addr);
