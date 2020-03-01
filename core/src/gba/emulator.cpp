@@ -7,12 +7,28 @@
 
 namespace gb::advance {
 
+static thread_local int g_next_event_cycles = 1;
+
 bool execute_hardware(const Hardware& hardware) {
-  u32 cycles = hardware.cpu->execute();
+  int next_event = std::numeric_limits<int>::max();
+
+  u32 total_cycles = 0;
+  while (g_next_event_cycles > 0) {
+    if (hardware.cpu->halted || hardware.cpu->interrupts_waiting.data() > 0) {
+      total_cycles = g_next_event_cycles;
+      break;
+    }
+    const u32 cycles = hardware.cpu->execute();
+    total_cycles += cycles;
+    g_next_event_cycles -= cycles;
+  }
+  const bool draw_frame = hardware.lcd->update(total_cycles, next_event);
+
+  hardware.timers->update(total_cycles);
+  hardware.sound->update(total_cycles, next_event);
   hardware.cpu->handle_interrupts();
-  const bool draw_frame = hardware.lcd->update(cycles);
-  hardware.timers->update(cycles);
-  hardware.sound->update(cycles);
+  g_next_event_cycles = next_event;
+
   return draw_frame;
 }
 }  // namespace gb::advance
