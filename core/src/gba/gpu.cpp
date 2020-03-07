@@ -34,9 +34,9 @@ constexpr bool operator==(const Mat2<T>& lhs, const Mat2<T>& rhs) noexcept {
 using Mat2f = Mat2<float>;
 
 static constexpr auto make_blend_func(float first_weight, float second_weight) {
-  return [first_weight, second_weight](float channel1,
-                                       float channel2) -> float {
-    return std::min(255.0F, channel1 * first_weight + channel2 * second_weight);
+  return [first_weight, second_weight](float channel1, float channel2) -> u8 {
+    return static_cast<u8>(
+        std::min(255.0F, channel1 * first_weight + channel2 * second_weight));
   };
 }
 
@@ -117,28 +117,27 @@ void Gpu::render_scanline(unsigned int scanline) {
   }
   render_sprites(scanline);
 
-  {
-    int x = 0;
-
-    for (int priority : m_per_pixel_context.sprite_priorities) {
-      if (priority != -1) {
-        auto& priorities = m_per_pixel_context.pixel_priorities[x];
-        const int insert_index = [&priorities, priority] {
-          for (int i = priorities.size() - 1; i >= 0; --i) {
-            if (priorities[i].priority >= priority) {
-              return i + 1;
-            }
-          }
-          return 0;
-        }();
-        priorities.insert(&priorities[insert_index],
-                          PriorityInfo{Dispcnt::BackgroundLayer::Obj, -1});
-      }
-      ++x;
-    }
-  }
-
   if (bldcnt.mode() == Bldcnt::BlendMode::Alpha) {
+    {
+      int x = 0;
+
+      for (const int priority : m_per_pixel_context.sprite_priorities) {
+        if (priority != -1) {
+          auto& priorities = m_per_pixel_context.pixel_priorities[x];
+          const int insert_index = [&priorities, priority] {
+            for (int i = priorities.size() - 1; i >= 0; --i) {
+              if (priorities[i].priority >= priority) {
+                return i + 1;
+              }
+            }
+            return 0;
+          }();
+          priorities.insert(&priorities[insert_index],
+                            PriorityInfo{Dispcnt::BackgroundLayer::Obj, -1});
+        }
+        ++x;
+      }
+    }
     const float first_weight = bldalpha.first_target_coefficient();
     const float second_weight = bldalpha.second_target_coefficient();
     int x = 0;
@@ -169,19 +168,15 @@ void Gpu::render_scanline(unsigned int scanline) {
                  (first_target + 1) != pixel_layers.rend()) {
         if (pixel_layers.back().layer == first_target->layer &&
             (first_target + 1)->layer == second_target->layer) {
-          const auto blend = [first_weight, second_weight](float channel1,
-                                                           float channel2) {
-            return std::min(255.0F,
-                            channel1 * first_weight + channel2 * second_weight);
-          };
+          const auto blend = make_blend_func(first_weight, second_weight);
           const Color color_one =
               framebuffer_from_layer(first_target->layer)[x];
           const Color color_two =
               framebuffer_from_layer((first_target + 1)->layer)[x];
 
-          m_framebuffer[ScreenWidth * scanline + x] = Color(
+          m_framebuffer[ScreenWidth * scanline + x] = Color{
               blend(color_one.r, color_two.r), blend(color_one.g, color_two.g),
-              blend(color_one.b, color_two.b), 255);
+              blend(color_one.b, color_two.b), 255};
         } else {
           m_framebuffer[ScreenWidth * scanline + x] =
               m_per_pixel_context.top_pixels[x];
@@ -288,20 +283,23 @@ void Gpu::render_tile_row_4bpp(nonstd::span<Color> framebuffer,
 
   const auto render_pixel =
       [framebuffer, priority, priority_info, layer, &per_pixel_context,
-       new_priority = layer == Dispcnt::BackgroundLayer::Obj ? -1 : priority](
+       new_priority =
+           /*layer == Dispcnt::BackgroundLayer::Obj ? -1 : */ priority](
           u16 color, unsigned int x) {
         if (x < Gpu::ScreenWidth) {
           const bool is_higher_priority =
               priority <= per_pixel_context.priorities[x];
           draw_color(framebuffer, x, 0, color);
 
+#if 0
           if (layer == Dispcnt::BackgroundLayer::Obj) {
             per_pixel_context.sprite_priorities[x] = priority;
           }
+#endif
 
           if (is_higher_priority) {
             auto& priorities = per_pixel_context.pixel_priorities[x];
-            if (layer != Dispcnt::BackgroundLayer::Obj &&
+            if (/*layer != Dispcnt::BackgroundLayer::Obj &&*/
                 (priorities.size() == 0 || priorities.back().layer != layer)) {
               priorities.push_back(priority_info);
             }
@@ -472,13 +470,13 @@ void Gpu::render_background(Background background, unsigned int scanline) {
 
     const auto base_index = index * TileSize;
     if (bits_per_pixel == 4) {
-      render_tile_row_4bpp(
-          background.scanline, palette_bank,
-          {base_index - (background.scroll.x % TileSize), 0 /*scanline*/},
-          background.control.priority(), m_per_pixel_context, tile_pixels,
-          background.layer,
-          {background.layer, static_cast<int>(background.control.priority())},
-          entry.horizontal_flip());
+      for (unsigned int x = 0; x < TileSize; ++x) {
+        const auto reversed_x = entry.horizontal_flip() ? TileSize - x - 1 : x;
+        render_tile_pixel_4bpp(
+            background.scanline, palette_bank, tile_pixels, m_per_pixel_context,
+            background.layer, background.control.priority(),
+            base_index - (background.scroll.x % TileSize) + x, reversed_x);
+      }
     } else {
       for (unsigned int pixel_x = 0; pixel_x < tile_pixels.size(); ++pixel_x) {
         const u8 tile_group = tile_pixels[pixel_x];
@@ -650,9 +648,9 @@ void Gpu::render_sprites(unsigned int scanline) {
         m_per_pixel_context.pixel_priorities[x].clear();
         const Color color_one = m_per_pixel_context.top_pixels[base_x];
         const Color color_two = old_tile[x];
-        m_per_pixel_context.top_pixels[base_x] = Color(
+        m_per_pixel_context.top_pixels[base_x] = Color{
             blend(color_one.r, color_two.r), blend(color_one.g, color_two.g),
-            blend(color_one.b, color_two.b), 255);
+            blend(color_one.b, color_two.b), 255};
       }
     }
   }
