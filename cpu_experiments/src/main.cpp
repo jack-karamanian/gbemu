@@ -87,7 +87,7 @@ static void DispntDisplay(Dispcnt dispcnt) {
 }
 
 static void BackgroundDisplay(Gpu::Background background) {
-  const auto [control, _, scroll, scanline] = background;
+  const auto control = background.control;
   ImGui::LabelText("Bits per Pixel", "%d", control.bits_per_pixel());
   ImGui::LabelText("Tile Map Base Block", "%08x", control.tilemap_base_block());
   ImGui::LabelText("Character Base Block", "%08x",
@@ -106,6 +106,8 @@ static void BackgroundDisplay(Gpu::Background background) {
   const auto screen_size = control.screen_size().screen_size;
   ImGui::LabelText("Tile Map Width", "%d", screen_size.width);
   ImGui::LabelText("Tile Map Height", "%d", screen_size.height);
+
+  const auto scroll = background.scroll;
   ImGui::LabelText("X", "%d", scroll.x);
   ImGui::LabelText("Y", "%d", scroll.y);
 }
@@ -123,7 +125,12 @@ static std::vector<gb::u8> load_file(const std::string_view file_name) {
   return data;
 }
 
-void run_emulator_and_debugger(std::string_view rom_path) {
+struct Args {
+  std::string_view rom_path;
+  bool execute = false;
+};
+
+void run_emulator_and_debugger(const Args args) {
   if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO | SDL_INIT_GAMECONTROLLER) !=
       0) {
     std::cerr << SDL_GetError() << '\n';
@@ -178,7 +185,7 @@ void run_emulator_and_debugger(std::string_view rom_path) {
 
   Mmu mmu;
 
-  mmu.load_rom(load_file(rom_path));
+  mmu.load_rom(load_file(args.rom_path));
 
   DisassemblyInfo arm_disassembly;
   DisassemblyInfo thumb_disassembly;
@@ -215,6 +222,7 @@ void run_emulator_and_debugger(std::string_view rom_path) {
   cpu.set_reg(Register::R13, 0x03007f00);
 
   HardwareThread hardware_thread{hardware};
+  hardware_thread.execute = args.execute;
 
   bool running = true;
 
@@ -538,10 +546,24 @@ int main(int argc, char** argv) {
   }
 
   if (argc < 2) {
-    fmt::print("usage: cpu_experiments <path-to-rom>\n");
+    static constexpr const char* usage = R"(
+usage: cpu_experiments <path-to-rom> [--execute]
+  --execute: start the emulator immediately
+)";
+    std::puts(usage);
     return 1;
   }
 
-  gb::advance::run_emulator_and_debugger(argv[1]);
+  gb::advance::Args args{};
+
+  for (int i = 1; i < argc; ++i) {
+    if (std::strcmp(argv[i], "--execute") == 0) {
+      args.execute = true;
+    } else {
+      args.rom_path = argv[i];
+    }
+  }
+
+  gb::advance::run_emulator_and_debugger(args);
   return 0;
 }
