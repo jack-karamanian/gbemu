@@ -198,7 +198,7 @@ void Mmu::set_bytes(u32 addr, nonstd::span<const u8> bytes) {
     subspan[i] = bytes[i];
   }
   if (m_write_handler) {
-    m_write_handler(addr, 0);
+    // m_write_handler(addr, 0);
   }
 }
 
@@ -235,13 +235,12 @@ void Mmu::print_bios_warning() const {
 #endif
 }
 
-
 class MgbaDebugPrint : public Integer<u16> {
  public:
   constexpr MgbaDebugPrint() : Integer::Integer{0} {}
 
   void write_byte([[maybe_unused]] u32 addr, u8 value) {
-    fmt::printf("%c", value);
+    std::putc(value, stdout);
   }
 };
 
@@ -255,8 +254,10 @@ IntegerRef Mmu::select_hardware(u32 addr, DataOperation op) {
       STUB_ADDR(mgba_debug_flags);
     case hardware::mgba::DEBUG_STRING:
       return mgba_debug_print;
-    case hardware::GREENSWAP:
-      STUB_ADDR(greenswap);
+    case hardware::GREENSWAP: {
+      static u16 green_swap = 0;
+      return green_swap;
+    }
     case hardware::DISPCNT:
       return hardware.gpu->dispcnt;
     case hardware::DISPSTAT:
@@ -310,29 +311,29 @@ IntegerRef Mmu::select_hardware(u32 addr, DataOperation op) {
     case hardware::BG3VOFS:
       return hardware.gpu->bg3.scroll.y;
     case hardware::BG2PA:
-      STUB_ADDR(bg2pa);
+      return hardware.gpu->bg2.affine_matrix[0];
     case hardware::BG2PB:
-      STUB_ADDR(bg2pb);
+      return hardware.gpu->bg2.affine_matrix[1];
     case hardware::BG2PC:
-      STUB_ADDR(bg2pc);
+      return hardware.gpu->bg2.affine_matrix[2];
     case hardware::BG2PD:
-      STUB_ADDR(bg2pd);
+      return hardware.gpu->bg2.affine_matrix[3];
     case hardware::BG2X:
-      STUB_ADDR(bg2x);
+      return hardware.gpu->bg2.affine_scroll.x;
     case hardware::BG2Y:
-      STUB_ADDR(bg2y);
+      return hardware.gpu->bg2.affine_scroll.y;
     case hardware::BG3PA:
-      STUB_ADDR(bg3pa);
+      return hardware.gpu->bg3.affine_matrix[0];
     case hardware::BG3PB:
-      STUB_ADDR(bg3pb);
+      return hardware.gpu->bg3.affine_matrix[1];
     case hardware::BG3PC:
-      STUB_ADDR(bg3pc);
+      return hardware.gpu->bg3.affine_matrix[2];
     case hardware::BG3PD:
-      STUB_ADDR(bg3pd);
+      return hardware.gpu->bg3.affine_matrix[3];
     case hardware::BG3X:
-      STUB_ADDR(bg3x);
+      return hardware.gpu->bg3.affine_scroll.x;
     case hardware::BG3Y:
-      STUB_ADDR(bg3y);
+      return hardware.gpu->bg3.affine_scroll.y;
     case hardware::WIN0H:
       STUB_ADDR(win0h);
     case hardware::WIN1H:
@@ -397,8 +398,10 @@ IntegerRef Mmu::select_hardware(u32 addr, DataOperation op) {
       STUB_ADDR(siocnt);
     case hardware::SIODATA8:
       STUB_ADDR(siodata8);
-    case hardware::KEYCNT:
-      STUB_ADDR(keycnt);
+    case hardware::KEYCNT: {
+      static u16 keycnt = 0;
+      return keycnt;
+    }
     case hardware::RCNT:
       STUB_ADDR(rcnt);
     case hardware::JOYCNT:
