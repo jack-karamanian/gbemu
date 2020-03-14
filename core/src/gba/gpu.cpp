@@ -560,9 +560,7 @@ void Gpu::render_mode2(Background& background) {
       const auto color_index = pixel_index * 2;
       const u16 color =
           m_palette_ram[color_index] | (m_palette_ram[color_index + 1] << 8);
-      if (x < ScreenWidth) {
-        draw_color(m_per_pixel_context.top_pixels, x, 0, color);
-      }
+      draw_color(m_per_pixel_context.top_pixels, x, 0, color);
     }
   }
 
