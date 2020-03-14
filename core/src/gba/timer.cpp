@@ -27,10 +27,39 @@ bool Timer::increment_counter() {
 }
 bool Timer::update(u32 cycles) {
   if (control.enabled()) {
-    bool did_overflow = false;
+    // bool did_overflow = false;
     const u32 overflow_cycles = control.cycles();
     m_cycles += cycles;
 
+#if 1
+    if (m_cycles >= overflow_cycles && !control.count_up()) {
+      const auto count =
+          overflow_cycles != 1 ? m_cycles / overflow_cycles : m_cycles;
+      m_cycles -= count * overflow_cycles;
+
+      const u32 next_counter = counter + count;
+      counter = next_counter & 0xffff;
+
+      if (next_counter > std::numeric_limits<u16>::max()) {
+        // TODO: Why does -1 work? Kirby's Nightmare in Dream Land was crackling
+        // without it
+        counter =
+            reload_value + next_counter - std::numeric_limits<u16>::max() - 1;
+        if (control.interrupt()) {
+          m_cpu->interrupts_requested.set_interrupt(m_timer_interrupt, true);
+        }
+
+        if (m_sound->soundcnt_high.dma_sound_a_timer() == m_timer_number) {
+          m_sound->read_fifo_a_sample();
+        }
+        if (m_sound->soundcnt_high.dma_sound_b_timer() == m_timer_number) {
+          m_sound->read_fifo_b_sample();
+        }
+        return true;
+      }
+    }
+
+#else
     while (m_cycles >= overflow_cycles) {
       m_cycles -= overflow_cycles;
       if (!control.count_up()) {
@@ -39,7 +68,7 @@ bool Timer::update(u32 cycles) {
       }
     }
     return did_overflow;
-    //}
+#endif
   }
   return false;
 }
