@@ -76,6 +76,12 @@ struct Vec2 {
   constexpr bool operator==(Vec2<T> rhs) const noexcept {
     return x == rhs.x && y == rhs.y;
   }
+
+  constexpr Vec2<T>& operator+=(Vec2<T> rhs) noexcept {
+    x += rhs.x;
+    y += rhs.y;
+    return *this;
+  }
 };
 
 template <typename T>
