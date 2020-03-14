@@ -100,12 +100,25 @@ void Gpu::render_scanline(unsigned int scanline) {
 
   switch (dispcnt.bg_mode()) {
     case BgMode::Zero:
-    case BgMode::One:
-    case BgMode::Two:
       for (auto background = m_backgrounds.begin();
            background != m_backgrounds_end; ++background) {
         render_background(**background, scanline);
       }
+      break;
+    case BgMode::One:
+
+      if (dispcnt.layer_enabled(Dispcnt::BackgroundLayer::Zero)) {
+        render_background(bg0, scanline);
+      }
+      if (dispcnt.layer_enabled(Dispcnt::BackgroundLayer::One)) {
+        render_background(bg1, scanline);
+      }
+      if (dispcnt.layer_enabled(Dispcnt::BackgroundLayer::Two)) {
+        render_mode2(bg2);
+      }
+
+      break;
+    case BgMode::Two:
       break;
     case BgMode::Three:
       render_mode3(scanline);
@@ -354,7 +367,8 @@ void Gpu::render_mode4(unsigned int scanline) {
   }
 }
 
-void Gpu::render_background(Background background, unsigned int scanline) {
+void Gpu::render_background(const Background background,
+                            unsigned int scanline) {
   const u32 tile_scanline = scanline / TileSize;
   const u16 tile_x = (background.scroll.x & 0b1'1111'1111) / TileSize;
   const u16 tile_y = (background.scroll.y & 0b1'1111'1111) / TileSize;
@@ -426,13 +440,15 @@ void Gpu::render_background(Background background, unsigned int scanline) {
         // The amount to subtract from the end of a row across all
         // backgrounds to get to the start of the row
         const auto background_row_width = background_row_offset + 0x40;
+        static constexpr unsigned int TilesPerRow = 32;
+        static constexpr unsigned int TileRowWidthSize = TilesPerRow * 2;
 
-        const auto tile_row_start = (64 * (y % 32));
+        const auto tile_row_start = (TileRowWidthSize * (y % 32));
         const auto tile_row_end =
-            tile_row_start + background_row_offset /*0x800*/ + 32 * 2;
-        const auto tile_byte_offset = ((32 * (y % 32) + (x % map_width)) * 2) +
-                                      (0x800 * y_screen_offset) +
-                                      x_screen_offset + offset;
+            tile_row_start + background_row_offset + TileRowWidthSize;
+        const auto tile_byte_offset =
+            ((TilesPerRow * (y % TilesPerRow) + (x % map_width)) * 2) +
+            (0x800 * y_screen_offset) + x_screen_offset + offset;
 
         return vram[tile_byte_offset >= tile_row_end
                         ? tile_byte_offset - background_row_width
@@ -494,6 +510,70 @@ void Gpu::render_background(Background background, unsigned int scanline) {
       }
     }
   }
+}
+
+void Gpu::render_mode2(Background& background) {
+  const Bgcnt::ScreenSize screen_size = background.control.screen_size();
+
+  const nonstd::span<const u8> tile_map =
+      m_vram.subspan(background.control.tilemap_base_block());
+
+  const nonstd::span<const u8> tile_pixels =
+      m_vram.subspan(background.control.character_base_block());
+
+  const Mat2f affine_matrix = Mat2f{{
+      float(background.affine_matrix[0]) / (1 << 8),
+      float(background.affine_matrix[1]) / (1 << 8),
+      float(background.affine_matrix[2]) / (1 << 8),
+      float(background.affine_matrix[3]) / (1 << 8),
+  }};
+
+  const Vec2<float> scroll_params{
+      (float(background.internal_affine_scroll.x) / (1 << 8)),
+      (float(background.internal_affine_scroll.y) / (1 << 8))};
+
+  Vec2<float> target{scroll_params.x, scroll_params.y};
+
+  for (u32 x = 0; x < ScreenWidth; ++x, target.x += affine_matrix.data[0],
+           target.y += affine_matrix.data[2]) {
+    const Vec2<u32> transformed_coords{u32(target.x), u32(target.y)};
+    const auto offset_scanline = transformed_coords.y;
+
+    const auto tile_map_offset =
+        (screen_size.rotation_scaling_size.width / TileSize) *
+        (offset_scanline / TileSize);
+
+    if (tile_map_offset >= tile_map.size()) {
+      continue;
+    }
+
+    const auto tile_row =
+        tile_map.subspan(tile_map_offset, ScreenWidth / TileSize);
+
+    if (transformed_coords.x / TileSize >= tile_row.size()) {
+      continue;
+    }
+
+    const u8 tile_index = tile_row[transformed_coords.x / TileSize];
+
+    const auto pixels =
+        tile_pixels.subspan((TileSize * TileSize * tile_index) +
+                                ((offset_scanline % TileSize) * TileSize),
+                            TileSize);
+
+    const int pixel_index = pixels[transformed_coords.x % TileSize];
+
+    if (pixel_index != 0) {
+      const auto color_index = pixel_index * 2;
+      const u16 color =
+          m_palette_ram[color_index] | (m_palette_ram[color_index + 1] << 8);
+      if (x < ScreenWidth) {
+        draw_color(m_per_pixel_context.top_pixels, x, 0, color);
+      }
+    }
+  }
+  background.internal_affine_scroll.x += background.affine_matrix[1];
+  background.internal_affine_scroll.y += background.affine_matrix[3];
 }
 
 void Gpu::render_sprites(unsigned int scanline) {

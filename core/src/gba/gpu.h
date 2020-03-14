@@ -65,6 +65,7 @@ class Bgcnt : public Integer<u16> {
 
   [[nodiscard]] u32 priority() const { return m_value & 0b11; }
 
+  // Tile pixels location
   [[nodiscard]] u32 character_base_block() const {
     return ((m_value >> 2) & 0b11) * 16_kb;
   }
@@ -73,6 +74,7 @@ class Bgcnt : public Integer<u16> {
 
   [[nodiscard]] u32 bits_per_pixel() const { return test_bit(7) ? 8 : 4; }
 
+  // Tile data location
   [[nodiscard]] u32 tilemap_base_block() const {
     return ((m_value >> 8) & 0b11111) * 2_kb;
   }
@@ -310,8 +312,12 @@ class Gpu {
   struct Background {
     Bgcnt control;
     Dispcnt::BackgroundLayer layer;
+    Vec2<int> affine_scroll{0, 0};
+    Vec2<int> internal_affine_scroll{0, 0};
     Vec2<u16> scroll{0, 0};
     nonstd::span<Color> scanline;
+
+    std::array<s16, 4> affine_matrix{0, 0, 0, 0};
 
     [[nodiscard]] int priority() const {
       return (static_cast<int>(layer) >> 8) + control.priority();
@@ -354,6 +360,7 @@ class Gpu {
   }
 
  private:
+  void render_mode2(Background& background);
   void render_mode3(unsigned int scanline);
   void render_mode4(unsigned int scanline);
 
