@@ -521,22 +521,15 @@ void Gpu::render_mode2(Background& background) {
   const nonstd::span<const u8> tile_pixels =
       m_vram.subspan(background.control.character_base_block());
 
-  const Mat2f affine_matrix = Mat2f{{
-      float(background.affine_matrix[0]) / (1 << 8),
-      float(background.affine_matrix[1]) / (1 << 8),
-      float(background.affine_matrix[2]) / (1 << 8),
-      float(background.affine_matrix[3]) / (1 << 8),
-  }};
+  const int dx = background.affine_matrix[0];
+  const int dy = background.affine_matrix[2];
+  const Vec2<int> target_delta{dx, dy};
 
-  const Vec2<float> scroll_params{
-      (float(background.internal_affine_scroll.x) / (1 << 8)),
-      (float(background.internal_affine_scroll.y) / (1 << 8))};
+  Vec2<int> target{background.internal_affine_scroll.x,
+                   background.internal_affine_scroll.y};
 
-  Vec2<float> target{scroll_params.x, scroll_params.y};
-
-  for (u32 x = 0; x < ScreenWidth; ++x, target.x += affine_matrix.data[0],
-           target.y += affine_matrix.data[2]) {
-    const Vec2<u32> transformed_coords{u32(target.x), u32(target.y)};
+  for (u32 x = 0; x < ScreenWidth; ++x, target += target_delta) {
+    const Vec2<u32> transformed_coords{u32(target.x >> 8), u32(target.y >> 8)};
     const auto offset_scanline = transformed_coords.y;
 
     const auto tile_map_offset =
@@ -572,8 +565,10 @@ void Gpu::render_mode2(Background& background) {
       }
     }
   }
-  background.internal_affine_scroll.x += background.affine_matrix[1];
-  background.internal_affine_scroll.y += background.affine_matrix[3];
+
+  const int dmx = background.affine_matrix[1];
+  const int dmy = background.affine_matrix[3];
+  background.internal_affine_scroll += Vec2<int>{dmx, dmy};
 }
 
 void Gpu::render_sprites(unsigned int scanline) {
