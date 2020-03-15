@@ -655,10 +655,10 @@ void Gpu::render_sprites(unsigned int scanline) {
                                      1};
 
         const auto new_scanline =
-            static_cast<unsigned int>((vec.y + 1.0F) * 0.5F *
-                                      static_cast<float>(half_rect.height)) +
+            static_cast<int>((vec.y + 1.0F) * 0.5F *
+                             static_cast<float>(half_rect.height)) +
             sprite.attrib0.y();
-        const auto new_x = static_cast<unsigned int>(
+        const auto new_x = static_cast<int>(
             (vec.x + 1.0F) * 0.5F * static_cast<float>(half_rect.width));
 
         return {new_scanline, new_x};
