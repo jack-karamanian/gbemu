@@ -1565,7 +1565,9 @@ u32 multiple_load_store(Cpu& cpu, u16 instruction) {
 
 u32 conditional_branch(Cpu& cpu, u16 instruction) {
   // The condition is handled externally
-  const u32 offset = static_cast<s32>(static_cast<s8>(instruction & 0xff)) << 1;
+  const u32 offset =
+      static_cast<u32>(static_cast<s32>(static_cast<s8>(instruction & 0xff)))
+      << 1;
 
   cpu.set_reg(Register::R15, cpu.reg(Register::R15) + offset);
   return 1;
