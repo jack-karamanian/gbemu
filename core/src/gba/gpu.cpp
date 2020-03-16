@@ -106,17 +106,14 @@ void Gpu::render_scanline(unsigned int scanline) {
       }
       break;
     case BgMode::One:
-
-      if (dispcnt.layer_enabled(Dispcnt::BackgroundLayer::Zero)) {
-        render_background(bg0, scanline);
+      for (auto background = m_backgrounds.begin();
+           background != m_backgrounds_end; ++background) {
+        if (*background == &bg2) {
+          render_mode2(**background);
+        } else {
+          render_background(**background, scanline);
+        }
       }
-      if (dispcnt.layer_enabled(Dispcnt::BackgroundLayer::One)) {
-        render_background(bg1, scanline);
-      }
-      if (dispcnt.layer_enabled(Dispcnt::BackgroundLayer::Two)) {
-        render_mode2(bg2);
-      }
-
       break;
     case BgMode::Two:
       break;
@@ -205,9 +202,6 @@ void Gpu::render_scanline(unsigned int scanline) {
     const auto end = m_per_pixel_context.top_pixels.cend();
     std::copy(begin, end, &m_framebuffer[ScreenWidth * scanline]);
   }
-  for (auto& layers : m_per_pixel_context.pixel_layers) {
-    layers.clear();
-  }
 }
 
 void Gpu::sort_backgrounds() {
@@ -226,14 +220,40 @@ void Gpu::sort_backgrounds() {
   m_backgrounds_end = i;
 }
 
+static Color draw_color(u16 color) {
+  return {static_cast<u8>(convert_space<32, 255>(color & 0x1f)),
+          static_cast<u8>(convert_space<32, 255>((color >> 5) & 0x1f)),
+          static_cast<u8>(convert_space<32, 255>((color >> 10) & 0x1f)), 255};
+}
+
 static void draw_color(nonstd::span<Color> framebuffer,
                        unsigned int x,
                        unsigned int y,
                        u16 color) {
-  framebuffer[Gpu::ScreenWidth * y + x] = {
-      static_cast<u8>(convert_space<32, 255>(color & 0x1f)),
-      static_cast<u8>(convert_space<32, 255>((color >> 5) & 0x1f)),
-      static_cast<u8>(convert_space<32, 255>((color >> 10) & 0x1f)), 255};
+  framebuffer[Gpu::ScreenWidth * y + x] = draw_color(color);
+}
+
+void Gpu::PerPixelContext::put_pixel(unsigned int screen_x,
+                                     Color color,
+                                     Dispcnt::BackgroundLayer layer,
+                                     unsigned int priority) {
+  const auto new_priority =
+      layer == Dispcnt::BackgroundLayer::Obj ? -1 : priority;
+  const bool is_higher_priority = priority <= priorities[screen_x];
+
+  if (layer == Dispcnt::BackgroundLayer::Obj) {
+    sprite_priorities[screen_x] = priority;
+  }
+
+  if (is_higher_priority) {
+    auto& priorities = pixel_priorities[screen_x];
+    if (layer != Dispcnt::BackgroundLayer::Obj &&
+        (priorities.size() == 0 || priorities.back().layer != layer)) {
+      priorities.emplace_back(layer, static_cast<int>(priority));
+    }
+    this->priorities[screen_x] = new_priority;
+    top_pixels[screen_x] = color;
+  }
 }
 
 static void render_tile_pixel_4bpp(nonstd::span<Color> framebuffer,
@@ -246,8 +266,6 @@ static void render_tile_pixel_4bpp(nonstd::span<Color> framebuffer,
                                    unsigned int tile_x
 
 ) {
-  const auto new_priority =
-      layer == Dispcnt::BackgroundLayer::Obj ? -1 : priority;
   const auto tile_offset = 32 * (tile_x / TileSize);
   const u8 pixel = (tile_pixels[tile_offset + ((tile_x % TileSize) / 2)] >>
                     (4 * (tile_x & 1))) &
@@ -257,95 +275,9 @@ static void render_tile_pixel_4bpp(nonstd::span<Color> framebuffer,
       palette_bank[pixel * 2] | (palette_bank[pixel * 2 + 1] << 8);
 
   if (pixel != 0 && screen_x < Gpu::ScreenWidth) {
-    const bool is_higher_priority =
-        priority <= per_pixel_context.priorities[screen_x];
-    draw_color(framebuffer, screen_x, 0, color);
-
-    if (layer == Dispcnt::BackgroundLayer::Obj) {
-      per_pixel_context.sprite_priorities[screen_x] = priority;
-    }
-
-    if (is_higher_priority) {
-      auto& priorities = per_pixel_context.pixel_priorities[screen_x];
-      if (layer != Dispcnt::BackgroundLayer::Obj &&
-          (priorities.size() == 0 || priorities.back().layer != layer)) {
-        priorities.emplace_back(layer, static_cast<int>(priority));
-      }
-      per_pixel_context.priorities[screen_x] = new_priority;
-      per_pixel_context.top_pixels[screen_x] = framebuffer[screen_x];
-    }
-    // draw_color(framebuffer, screen_x, 0, color);
-  }
-}
-
-void Gpu::render_tile_row_4bpp(nonstd::span<Color> framebuffer,
-                               nonstd::span<const u8> palette_bank,
-                               Vec2<unsigned int> position,
-                               unsigned int priority,
-                               Gpu::PerPixelContext& per_pixel_context,
-                               nonstd::span<const u8> tile_pixels,
-                               Dispcnt::BackgroundLayer layer,
-                               PriorityInfo priority_info,
-                               bool horizontal_flip
-
-) {
-  const auto [base_index, scanline] = position;
-
-  const int pixel_two_offset = horizontal_flip ? -1 : 1;
-  const unsigned int flip_target_offset = horizontal_flip ? 1 : 0;
-
-  const auto render_pixel =
-      [framebuffer, priority, priority_info, layer, &per_pixel_context,
-       new_priority =
-           /*layer == Dispcnt::BackgroundLayer::Obj ? -1 : */ priority](
-          u16 color, unsigned int x) {
-        if (x < Gpu::ScreenWidth) {
-          const bool is_higher_priority =
-              priority <= per_pixel_context.priorities[x];
-          draw_color(framebuffer, x, 0, color);
-
-#if 0
-          if (layer == Dispcnt::BackgroundLayer::Obj) {
-            per_pixel_context.sprite_priorities[x] = priority;
-          }
-#endif
-
-          if (is_higher_priority) {
-            auto& priorities = per_pixel_context.pixel_priorities[x];
-            if (/*layer != Dispcnt::BackgroundLayer::Obj &&*/
-                (priorities.size() == 0 || priorities.back().layer != layer)) {
-              priorities.push_back(priority_info);
-            }
-            per_pixel_context.priorities[x] = new_priority;
-            per_pixel_context.top_pixels[x] = framebuffer[x];
-          }
-        }
-      };
-
-  for (unsigned int x = 0; x < 4; ++x) {
-    const u8 tile_group = tile_pixels[x];
-    const unsigned int pixel_x = horizontal_flip ? 4 - x - 1 : x;
-
-    const u8 pixel_one = tile_group & 0xf;
-    const u8 pixel_two = (tile_group >> 4) & 0xf;
-
-    const u16 color_one =
-        (palette_bank[pixel_one * 2] | (palette_bank[pixel_one * 2 + 1] << 8));
-    const u16 color_two =
-        (palette_bank[pixel_two * 2] | (palette_bank[pixel_two * 2 + 1] << 8));
-
-    // Target 0..7 or 7..0 when flipped
-    const auto target_pixel_x = pixel_x * 2 + flip_target_offset;
-
-    if (pixel_one != 0) {
-      const auto pixel_one_x = base_index + target_pixel_x;
-      render_pixel(color_one, pixel_one_x);
-    }
-
-    if (pixel_two != 0) {
-      const auto pixel_two_x = base_index + pixel_two_offset + target_pixel_x;
-      render_pixel(color_two, pixel_two_x);
-    }
+    const Color rendered_color = draw_color(color);
+    framebuffer[screen_x] = rendered_color;
+    per_pixel_context.put_pixel(screen_x, rendered_color, layer, priority);
   }
 }
 
@@ -560,7 +492,11 @@ void Gpu::render_mode2(Background& background) {
       const auto color_index = pixel_index * 2;
       const u16 color =
           m_palette_ram[color_index] | (m_palette_ram[color_index + 1] << 8);
-      draw_color(m_per_pixel_context.top_pixels, x, 0, color);
+      const Color converted_color = draw_color(color);
+      background.scanline[x] = converted_color;
+      m_per_pixel_context.put_pixel(x, converted_color, background.layer,
+                                    background.control.priority());
+      // draw_color(m_per_pixel_context.top_pixels, x, 0, color);
     }
   }
 

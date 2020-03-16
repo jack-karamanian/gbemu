@@ -302,11 +302,13 @@ class Gpu {
   struct PerPixelContext {
     std::array<unsigned int, ScreenWidth> priorities;
     std::array<Color, ScreenWidth> top_pixels;
-    std::array<StaticVector<Dispcnt::BackgroundLayer, 5>, ScreenWidth>
-        pixel_layers;
     std::array<int, ScreenWidth> sprite_priorities;
     std::array<StaticVector<PriorityInfo, 5>, ScreenWidth> pixel_priorities;
-    Dispcnt::BackgroundLayer blend_layer = Dispcnt::BackgroundLayer::Window0;
+
+    void put_pixel(unsigned int x,
+                   Color color,
+                   Dispcnt::BackgroundLayer layer,
+                   unsigned int priority);
   };
 
   struct Background {
