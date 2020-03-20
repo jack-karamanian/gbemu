@@ -286,6 +286,9 @@ class Mmu {
 
   template <typename T>
   void set(u32 addr, T value) {
+    if (memory_region(addr) == 0) {
+      return;
+    }
     const auto converted = to_bytes(value);
     if constexpr (std::is_same_v<T, u8>) {
       if (memory_region(addr) == 0x0e000000) {
