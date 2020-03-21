@@ -17,6 +17,9 @@ void cpu_set(Mmu& mmu, u32 source, u32 dest, u32 control) {
 
   const bool fixed_source = gb::test_bit(control, 24);
 
+  source &= ~(type_size - 1);
+  dest &= ~(type_size - 1);
+
   mmu.copy_memory(
       {source, fixed_source ? Mmu::AddrOp::Fixed : Mmu::AddrOp::Increment},
       {dest, Mmu::AddrOp::Increment}, count, type_size);
@@ -25,6 +28,9 @@ void cpu_set(Mmu& mmu, u32 source, u32 dest, u32 control) {
 void cpu_fast_set(Mmu& mmu, u32 source, u32 dest, u32 control) {
   const u32 count = control & 0x1fffff;
   const bool fixed_source = gb::test_bit(control, 24);
+
+  source &= ~0b11;
+  dest &= ~0b11;
 
   mmu.copy_memory(
       {source, fixed_source ? Mmu::AddrOp::Fixed : Mmu::AddrOp::Increment},
