@@ -8,8 +8,14 @@ namespace gb::advance {
 void Lcd::increment_vcount() {
   ++vcount;
 
-  if (dispstat.enable_lyc_interrupt() && vcount == dispstat.lyc()) {
-    m_cpu->interrupts_requested.set_interrupt(Interrupt::VCountMatch, true);
+  if (vcount == dispstat.lyc()) {
+    dispstat.set_vcount_equals_lyc(true);
+
+    if (dispstat.enable_lyc_interrupt()) {
+      m_cpu->interrupts_requested.set_interrupt(Interrupt::VCountMatch, true);
+    }
+  } else {
+    dispstat.set_vcount_equals_lyc(false);
   }
 }
 
