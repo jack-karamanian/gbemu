@@ -10,7 +10,6 @@ constexpr u32 TileSize = 8;
 enum class BgMode : u32 { Zero = 0, One, Two, Three, Four, Five };
 
 class Gpu;
-
 class Dispcnt : public Integer<u16> {
  public:
   Dispcnt(Gpu& gpu) : Integer::Integer{0x0080}, m_gpu{&gpu} {}
@@ -31,11 +30,15 @@ class Dispcnt : public Integer<u16> {
     return static_cast<DisplayFrame>((m_value >> 4) & 0b1);
   }
 
+  [[nodiscard]] bool hblank_interval_free() const { return test_bit(5); }
+
   enum class ObjVramMapping : u32 { TwoDimensional = 0, OneDimensional };
 
   [[nodiscard]] ObjVramMapping obj_vram_mapping() const {
     return static_cast<ObjVramMapping>((m_value >> 6) & 0b1);
   }
+
+  [[nodiscard]] bool forced_blank() const { return test_bit(7); }
 
   enum class BackgroundLayer : u16 {
     Zero = 1 << 8,
@@ -46,6 +49,7 @@ class Dispcnt : public Integer<u16> {
     Window0 = 1 << 13,
     Window1 = 1 << 14,
     ObjWindow = 1 << 15,
+    Backdrop,
     None = 0,
   };
 
@@ -172,6 +176,8 @@ class Bldcnt : public Integer<u16> {
         return BlendLayer::Background3;
       case Dispcnt::BackgroundLayer::Obj:
         return BlendLayer::Obj;
+      case Dispcnt::BackgroundLayer::Backdrop:
+        return BlendLayer::Backdrop;
       default:
 #ifndef NDEBUG
         fmt::print("WARNING: BlendLayer::None reached\n");
@@ -276,6 +282,15 @@ class ObjAttribute2 : public Integer<u16> {
   }
 };
 
+class Bldy : public Integer<u16> {
+ public:
+  using Integer::Integer;
+
+  [[nodiscard]] float coefficient() const {
+    return std::clamp(m_value & 0b11111, 0, 16) / 16.0F;
+  }
+};
+
 struct Sprite {
   ObjAttribute0 attrib0;
   ObjAttribute1 attrib1;
@@ -304,11 +319,13 @@ class Gpu {
     std::array<Color, ScreenWidth> top_pixels;
     std::array<int, ScreenWidth> sprite_priorities;
     std::array<StaticVector<PriorityInfo, 5>, ScreenWidth> pixel_priorities;
+    std::array<Color, ScreenWidth> backdrop_scanline;
 
     void put_pixel(unsigned int x,
                    Color color,
                    Dispcnt::BackgroundLayer layer,
-                   unsigned int priority);
+                   unsigned int priority,
+                   bool is_backdrop = false);
   };
 
   struct Background {
@@ -339,8 +356,10 @@ class Gpu {
 
   Dispcnt dispcnt{*this};
 
+ private:
   std::array<std::array<Color, ScreenWidth>, 4> m_scanlines;
 
+ public:
   Background bg0{*this, Dispcnt::BackgroundLayer::Zero, m_scanlines[0]};
   Background bg1{*this, Dispcnt::BackgroundLayer::One, m_scanlines[1]};
   Background bg2{*this, Dispcnt::BackgroundLayer::Two, m_scanlines[2]};
@@ -348,6 +367,7 @@ class Gpu {
 
   Bldcnt bldcnt{0};
   Bldalpha bldalpha{0};
+  Bldy bldy{0};
 
   void sort_backgrounds();
 
@@ -391,6 +411,8 @@ class Gpu {
         return bg3.scanline;
       case Dispcnt::BackgroundLayer::Obj:
         return sprite_scanline;
+      case Dispcnt::BackgroundLayer::Backdrop:
+        return m_per_pixel_context.backdrop_scanline;
       default:
         throw std::runtime_error("invalid layer");
     }

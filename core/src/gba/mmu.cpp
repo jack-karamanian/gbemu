@@ -353,7 +353,7 @@ IntegerRef Mmu::select_hardware(u32 addr, DataOperation op) {
     case hardware::BLDALPHA:
       return hardware.gpu->bldalpha;
     case hardware::BLDY:
-      STUB_ADDR(bldy);
+      return hardware.gpu->bldy;
     case hardware::SOUND1CNT_L:
       STUB_ADDR(sound1cnt_l);
     case hardware::SOUND1CNT_H:
