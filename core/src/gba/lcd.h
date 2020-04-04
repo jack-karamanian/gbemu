@@ -23,6 +23,8 @@ class DispStat : public Integer<u16> {
 
   void set_hblank(bool set) { set_bit(1, set); }
 
+  void set_vcount_equals_lyc(bool set) { set_bit(2, set); }
+
   [[nodiscard]] bool enable_vblank_interrupt() const { return test_bit(3); }
 
   [[nodiscard]] bool enable_hblank_interrupt() const { return test_bit(4); }
