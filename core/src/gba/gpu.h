@@ -26,8 +26,8 @@ class Dispcnt : public Integer<u16> {
     Front,
   };
 
-  [[nodiscard]] DisplayFrame display_frame() const {
-    return static_cast<DisplayFrame>((m_value >> 4) & 0b1);
+  [[nodiscard]] bool display_front() const {
+    return ((m_value >> 4) & 0b1) != 0;
   }
 
   [[nodiscard]] bool hblank_interval_free() const { return test_bit(5); }
