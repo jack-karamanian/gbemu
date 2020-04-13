@@ -21,10 +21,6 @@ class Dispcnt : public Integer<u16> {
   }
 
   [[nodiscard]] bool cgb_mode() const { return test_bit(3); }
-  enum class DisplayFrame : u32 {
-    Back = 0,
-    Front,
-  };
 
   [[nodiscard]] bool display_front() const {
     return ((m_value >> 4) & 0b1) != 0;
