@@ -18,7 +18,7 @@ class StaticVector {
   }
 
   [[nodiscard]] constexpr iterator end() noexcept {
-    return std::launder(reinterpret_cast<T*>(&m_data[m_size]));
+    return reinterpret_cast<T*>(&m_data[m_size]);
   }
 
   [[nodiscard]] constexpr const_iterator begin() const noexcept {
@@ -26,7 +26,7 @@ class StaticVector {
   }
 
   [[nodiscard]] constexpr const_iterator end() const noexcept {
-    return std::launder(reinterpret_cast<const T*>(&m_data[m_size]));
+    return reinterpret_cast<const T*>(&m_data[m_size]);
   }
 
   [[nodiscard]] constexpr reverse_iterator rbegin() {
