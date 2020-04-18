@@ -21,6 +21,14 @@ class StaticVector {
     return std::launder(reinterpret_cast<T*>(&m_data[m_size]));
   }
 
+  [[nodiscard]] constexpr const_iterator begin() const noexcept {
+    return std::launder(reinterpret_cast<const T*>(&m_data[0]));
+  }
+
+  [[nodiscard]] constexpr const_iterator end() const noexcept {
+    return std::launder(reinterpret_cast<const T*>(&m_data[m_size]));
+  }
+
   [[nodiscard]] constexpr reverse_iterator rbegin() {
     return std::make_reverse_iterator(end());
   }
@@ -30,12 +38,10 @@ class StaticVector {
   }
 
   [[nodiscard]] constexpr const_iterator cbegin() const noexcept {
-    return std::launder(reinterpret_cast<const T*>(&m_data[0]));
+    return begin();
   }
 
-  [[nodiscard]] constexpr const_iterator cend() const noexcept {
-    return std::launder(reinterpret_cast<const T*>(&m_data[m_size]));
-  }
+  [[nodiscard]] constexpr const_iterator cend() const noexcept { return end(); }
 
   constexpr void push_back(const T& item) {
     if (m_size >= Capacity) {
