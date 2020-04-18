@@ -296,13 +296,13 @@ class IntegerRef {
 
       const auto size = bytes.size() & 0x7;
 
-      for (long i = offset; i < size; ++i) {
+      for (long i = 0; i < size; ++i) {
         if constexpr (is_integer) {
-          integer_self->write_byte(i, bytes[i]);
+          integer_self->write_byte(offset + i, bytes[i]);
         } else {
           static_assert(std::is_integral_v<DecayedT>);
           static_assert(!std::is_pointer_v<DecayedT>);
-          *integer_self = gb::write_byte(*integer_self, i, bytes[i]);
+          *integer_self = gb::write_byte(*integer_self, offset + i, bytes[i]);
         }
       }
       if constexpr (is_integer) {
