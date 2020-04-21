@@ -1,6 +1,7 @@
 #pragma once
 #include <algorithm>
 #include <cassert>
+#include <cstring>
 #include <functional>
 #include <iostream>
 #include <nonstd/span.hpp>
@@ -160,13 +161,9 @@ class Memory {
       assert(normalized_addr < storage.size());
       return storage[normalized_addr];
     } else {
-      std::array<u8, sizeof(T)> bytes;
-      std::generate(
-          bytes.begin(), bytes.end(),
-          [storage, normalized_addr, offset = sizeof(T) - 1]() mutable {
-            return storage[normalized_addr + offset--];
-          });
-      return convert_bytes<T>(bytes);
+      T res;
+      std::memcpy(&res, &storage[normalized_addr], sizeof(T));
+      return res;
     }
   }
 
