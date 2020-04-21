@@ -36,15 +36,18 @@ static constexpr auto gen_table() {
        {IME, 2},         {POSTFLG, 1},     {HALTCNT, 1}}};
 
   std::array<u32, 0x410> res{};
-  constexpr_fill(res, 0xffffffff);
 
-  constexpr_for_each(io_register_sizes_, [&res](auto pair) {
+  for (auto& element : res) {
+    element = 0xffffffff;
+  }
+
+  for (auto pair : io_register_sizes_) {
     const auto [io_addr, size] = pair;
     const auto addr = io_addr & ~0xff000000;
     for (auto i = addr; i < addr + size; ++i) {
       res[i] = io_addr;
     }
-  });
+  };
 
   return res;
 }

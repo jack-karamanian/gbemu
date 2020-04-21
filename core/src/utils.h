@@ -303,18 +303,4 @@ class IntegerRef {
   nonstd::span<u8> m_byte_span;
 };
 
-template <typename Container, typename Func>
-constexpr void constexpr_for_each(Container& container, Func&& func) {
-  for (auto& element : container) {
-    func(element);
-  }
-}
-
-template <typename Container, typename T>
-constexpr void constexpr_fill(Container& container, const T& value) {
-  for (auto& element : container) {
-    element = value;
-  }
-}
-
 }  // namespace gb
