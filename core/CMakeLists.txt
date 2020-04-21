@@ -111,6 +111,7 @@ set(SRCS
   src/gba/interrupts.h
   src/gba/assembler.h
   src/gba/assembler.cpp
+  src/algorithm.h
 )
 
 add_library(${PROJECT_NAME} ${SRCS})
