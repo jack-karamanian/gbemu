@@ -120,7 +120,7 @@ template <int from, int to, typename T>
 }
 
 template <typename T>
-T write_byte(T value, unsigned int byte, u8 byte_value) {
+[[nodiscard]] T write_byte(T value, unsigned int byte, u8 byte_value) {
   const unsigned int shift = byte * 8;
   return (value & ~(0xff << shift)) | (byte_value << shift);
 }
@@ -185,19 +185,6 @@ class Integer {
  protected:
   T m_value;
 };
-
-template <typename Itr, typename Func>
-constexpr void constexpr_sort(Itr begin, Itr end, Func func) {
-  constexpr auto swap = [](auto a, auto b) {
-    auto tmp = *a;
-    *a = *b;
-    *b = tmp;
-  };
-
-  for (auto i = begin; i != end; ++i) {
-    swap(i, std::min_element(i, end, func));
-  }
-}
 
 template <typename... Funcs>
 struct Overloaded : Funcs... {

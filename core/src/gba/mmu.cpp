@@ -335,17 +335,17 @@ IntegerRef Mmu::select_hardware(u32 addr, DataOperation op) {
     case hardware::BG3Y:
       return hardware.gpu->bg3.affine_scroll.y;
     case hardware::WIN0H:
-      STUB_ADDR(win0h);
+      return hardware.gpu->window0.x_bounds;
     case hardware::WIN1H:
-      STUB_ADDR(win1h);
+      return hardware.gpu->window1.x_bounds;
     case hardware::WIN0V:
-      STUB_ADDR(win0v);
+      return hardware.gpu->window0.y_bounds;
     case hardware::WIN1V:
-      STUB_ADDR(win1v);
+      return hardware.gpu->window1.y_bounds;
     case hardware::WININ:
-      STUB_ADDR(winin);
+      return hardware.gpu->window_in;
     case hardware::WINOUT:
-      STUB_ADDR(winout);
+      return hardware.gpu->window_out;
     case hardware::MOSAIC:
       STUB_ADDR(mosaic);
     case hardware::BLDCNT:

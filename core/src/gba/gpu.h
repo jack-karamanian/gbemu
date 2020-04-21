@@ -10,6 +10,12 @@ constexpr u32 TileSize = 8;
 enum class BgMode : u32 { Zero = 0, One, Two, Three, Four, Five };
 
 class Gpu;
+
+enum class WindowId : u32 {
+  Zero = 0,
+  One = 1,
+};
+
 class Dispcnt : public Integer<u16> {
  public:
   Dispcnt(Gpu& gpu) : Integer::Integer{0x0080}, m_gpu{&gpu} {}
@@ -37,20 +43,24 @@ class Dispcnt : public Integer<u16> {
   [[nodiscard]] bool forced_blank() const { return test_bit(7); }
 
   enum class BackgroundLayer : u16 {
-    Zero = 1 << 8,
-    One = 1 << 9,
-    Two = 1 << 10,
-    Three = 1 << 11,
-    Obj = 1 << 12,
-    Window0 = 1 << 13,
-    Window1 = 1 << 14,
-    ObjWindow = 1 << 15,
+    Zero = 0,  // 1 << 8,
+    One = 1,
+    Two = 2,
+    Three = 3,
+    Obj = 4,
+    Window0 = 5,
+    Window1 = 6,
+    ObjWindow = 7,
     Backdrop,
-    None = 0,
+    None = 0xffff,
   };
 
   [[nodiscard]] bool layer_enabled(BackgroundLayer layer) const {
-    return (static_cast<u16>(layer) & m_value) != 0;
+    return test_bit(8 + static_cast<u16>(layer));
+  }
+
+  [[nodiscard]] bool layer_enabled(WindowId layer) const {
+    return test_bit(13 + static_cast<u16>(layer));
   }
 
  private:
@@ -285,6 +295,10 @@ class Bldy : public Integer<u16> {
   [[nodiscard]] float coefficient() const {
     return std::clamp(m_value & 0b11111, 0, 16) / 16.0F;
   }
+
+  [[nodiscard]] bool is_one() const { return m_value >= 0x10; }
+
+  [[nodiscard]] bool is_zero() const { return m_value == 0; }
 };
 
 struct Sprite {
@@ -300,9 +314,82 @@ struct Sprite {
   Sprite() : attrib0{0}, attrib1{0}, attrib2{0} {}
 };
 
-struct Sprites {
-  std::array<Sprite, 128> sprites{};
-  unsigned int num_active_sprites = 0;
+class WindowIn : public Integer<u16> {
+ public:
+  WindowIn() : Integer::Integer{0} {}
+
+  [[nodiscard]] bool should_display_layer(
+      WindowId window,
+      Dispcnt::BackgroundLayer layer) const {
+    return test_bit(static_cast<u16>(layer) + static_cast<u32>(window) * 8);
+  }
+
+  [[nodiscard]] bool enable_blend_effects(WindowId window) const {
+    return test_bit(5 + (window == WindowId::One ? 8 : 0));
+  }
+};
+
+class WindowOut : public Integer<u16> {
+ public:
+  WindowOut() : Integer::Integer{0} {}
+
+  [[nodiscard]] bool should_display_layer(
+      Dispcnt::BackgroundLayer layer) const {
+    return test_bit(static_cast<u16>(layer));
+  }
+
+  [[nodiscard]] bool enable_blend_effects(WindowId window) const {
+    return test_bit(5 + (window == WindowId::One ? 8 : 0));
+  }
+};
+
+class WindowBounds : public Integer<u16> {
+ public:
+  WindowBounds() : Integer::Integer{0} {}
+
+  void write_byte(unsigned int byte, u8 value) {
+    Integer::write_byte(byte, value);
+
+    switch (byte) {
+      case 0:
+        m_max = value;
+        break;
+      case 1:
+        m_min = value;
+        break;
+    }
+  }
+
+  [[nodiscard]] unsigned int min() const { return m_min; }
+  [[nodiscard]] unsigned int max() const { return m_max; }
+
+ private:
+  unsigned int m_min = 0;
+  unsigned int m_max = 0;
+};
+
+struct Window {
+  WindowId id;
+
+  WindowBounds x_bounds;
+  WindowBounds y_bounds;
+
+  explicit Window(WindowId window_id) : id{window_id} {}
+
+  [[nodiscard]] bool contains(Vec2<unsigned int> coord) const {
+    const auto min = min_bounds();
+    const auto max = max_bounds();
+    return (coord.x >= min.x && coord.y >= min.y && coord.x < max.x &&
+            coord.y < max.y);
+  }
+
+  [[nodiscard]] Vec2<unsigned int> min_bounds() const {
+    return {x_bounds.min(), y_bounds.min()};
+  }
+
+  [[nodiscard]] Vec2<unsigned int> max_bounds() const {
+    return {x_bounds.max(), y_bounds.max()};
+  }
 };
 
 class Gpu {
@@ -311,17 +398,20 @@ class Gpu {
   static constexpr u32 ScreenHeight = 160;
 
   struct PerPixelContext {
-    std::array<unsigned int, ScreenWidth> priorities;
-    std::array<Color, ScreenWidth> top_pixels;
-    std::array<int, ScreenWidth> sprite_priorities;
-    std::array<StaticVector<PriorityInfo, 5>, ScreenWidth> pixel_priorities;
-    std::array<Color, ScreenWidth> backdrop_scanline;
+    Gpu* gpu;
+    std::array<unsigned int, ScreenWidth> priorities{};
+    std::array<Color, ScreenWidth> top_pixels{};
+    std::array<int, ScreenWidth> sprite_priorities{};
+    std::array<StaticVector<PriorityInfo, 6>, ScreenWidth> pixel_priorities{};
+    std::array<Color, ScreenWidth> backdrop_scanline{};
+    unsigned int scanline = 0;
 
     void put_pixel(unsigned int x,
                    Color color,
                    Dispcnt::BackgroundLayer layer,
-                   unsigned int priority,
-                   bool is_backdrop = false);
+                   unsigned int priority);
+
+    void put_sprite_pixel(unsigned int x, Color color, unsigned int priority);
   };
 
   struct Background {
@@ -365,17 +455,22 @@ class Gpu {
   Bldalpha bldalpha{0};
   Bldy bldy{0};
 
-  void sort_backgrounds();
+  Window window0{WindowId::Zero};
+  Window window1{WindowId::One};
+  WindowIn window_in;
+  WindowOut window_out;
 
-  void clear() {
-    std::fill(m_framebuffer.begin(), m_framebuffer.end(), Color{0, 0, 0, 255});
-  }
+  void sort_backgrounds();
 
   void render_scanline(unsigned int scanline);
 
   [[nodiscard]] nonstd::span<const Color> framebuffer() const {
     return {m_framebuffer};
   }
+
+  [[nodiscard]] bool window_excludes_layer(Dispcnt::BackgroundLayer layer,
+                                           Vec2<unsigned int> point,
+                                           bool blend_effects = false) const;
 
  private:
   void render_mode2(Background& background);
@@ -388,14 +483,14 @@ class Gpu {
                             unsigned int priority,
                             Gpu::PerPixelContext& per_pixel_context,
                             nonstd::span<const u8> tile_pixels,
-                            // bool is_sprite,
                             Dispcnt::BackgroundLayer layer,
                             PriorityInfo priority_info,
                             bool horizontal_flip = false);
   void render_background(Background background, unsigned int scanline);
   void render_sprites(unsigned int scanline);
 
-  nonstd::span<Color> framebuffer_from_layer(Dispcnt::BackgroundLayer layer) {
+  nonstd::span<const Color> framebuffer_from_layer(
+      Dispcnt::BackgroundLayer layer) const {
     switch (layer) {
       case Dispcnt::BackgroundLayer::Zero:
         return bg0.scanline;
@@ -413,6 +508,7 @@ class Gpu {
         throw std::runtime_error("invalid layer");
     }
   }
+  StaticVector<Window, 3> m_active_windows;
 
   std::array<Background*, 4> m_backgrounds{&bg0, &bg1, &bg2, &bg3};
   decltype(m_backgrounds)::iterator m_backgrounds_end = m_backgrounds.begin();
@@ -423,7 +519,7 @@ class Gpu {
   nonstd::span<u8> m_palette_ram;
   nonstd::span<u8> m_oam_ram;
 
-  PerPixelContext m_per_pixel_context;
+  PerPixelContext m_per_pixel_context{this};
   std::vector<Color> m_framebuffer;
 };
 }  // namespace gb::advance
