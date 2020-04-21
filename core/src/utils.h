@@ -167,6 +167,22 @@ T write_byte(T value, unsigned int byte, u8 byte_value) {
   return (value & ~(0xff << shift)) | (byte_value << shift);
 }
 
+template <typename Callback>
+class ScopeGuard {
+ public:
+  ScopeGuard(Callback callback) : m_callback{std::move(callback)} {}
+  ~ScopeGuard() { m_callback(); }
+
+  ScopeGuard(ScopeGuard<Callback>&&) = delete;
+  ScopeGuard<Callback>& operator=(ScopeGuard<Callback>&&) = delete;
+
+  ScopeGuard(const ScopeGuard<Callback>&) = delete;
+  ScopeGuard<Callback>& operator=(const ScopeGuard<Callback>&) = delete;
+
+ private:
+  Callback m_callback;
+};
+
 template <typename T>
 class Integer {
   static_assert(std::is_integral_v<T>);
