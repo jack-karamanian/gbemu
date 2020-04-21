@@ -1,5 +1,6 @@
 #pragma once
 #include <array>
+#include <cassert>
 #include <nonstd/span.hpp>
 #include <optional>
 #include <type_traits>
@@ -21,35 +22,6 @@ template <typename... Args>
     --shift;
   }
 
-  return res;
-}
-
-template <typename T>
-[[nodiscard]] constexpr T convert_bytes(
-    nonstd::span<const u8, sizeof(T)> bytes) {
-  T res{0};
-
-  int shift = (sizeof(T) * 8) - 8;
-
-  for (u8 byte : bytes) {
-    res |= (byte << shift);
-    shift -= 8;
-  }
-
-  return res;
-}
-
-template <typename T>
-[[nodiscard]] constexpr T convert_bytes_endian(
-    nonstd::span<const u8, sizeof(T)> bytes) {
-  T res{0};
-#if __BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__
-  for (int i = sizeof(T) - 1; i >= 0; --i) {
-    res |= bytes[i] << (i * 8);
-  }
-#else
-#error "Big endian is not implemented"
-#endif
   return res;
 }
 
@@ -96,14 +68,14 @@ struct Rect {
 };
 
 template <typename T, typename Func>
-void visit_optional(std::optional<T>& value, Func&& func) {
+void visit_optional(std::optional<T>& value, Func func) {
   if (value) {
     func(*value);
   }
 }
 
 template <typename T, typename Func>
-void visit_optional(const std::optional<T>& value, Func&& func) {
+void visit_optional(const std::optional<T>& value, Func func) {
   if (value) {
     func(*value);
   }
@@ -111,6 +83,7 @@ void visit_optional(const std::optional<T>& value, Func&& func) {
 
 template <typename T>
 [[nodiscard]] constexpr bool test_bit(T value, unsigned int bit) noexcept {
+  assert(bit < sizeof(T) * 8);
   const T mask = static_cast<T>(1) << bit;
   return (value & mask) != 0;
 }
@@ -125,21 +98,6 @@ template <typename T, T I>
 template <typename T, typename U>
 [[nodiscard]] constexpr T increment_bits(T value, U mask) {
   return (value & ~mask) | (((value & mask) + 1) & mask);
-}
-
-template <typename T, typename... Args>
-[[nodiscard]] constexpr T set_bits(const Args... bits) {
-  return ((1 << bits) | ...);
-}
-
-template <typename Itr, typename Func>
-[[nodiscard]] constexpr Itr constexpr_find(Itr begin, Itr end, Func func) {
-  for (; begin != end; ++begin) {
-    if (func(*begin)) {
-      return begin;
-    }
-  }
-  return end;
 }
 
 [[nodiscard]] constexpr u32 rotate_right(u32 val, u32 amount) {
