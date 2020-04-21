@@ -385,7 +385,7 @@ class Mmu {
     u32 resolved_addr;
   };
 
-  [[nodiscard]] SelectStorageResult select_storage(u32 addr) {
+  [[nodiscard]] inline SelectStorageResult select_storage(u32 addr) {
     if (addr >= 0x03ffff00 && addr < 0x04000000) {
       const u32 offset = addr & 0xff;
       return {m_iwram, 0x7f00 + offset};
