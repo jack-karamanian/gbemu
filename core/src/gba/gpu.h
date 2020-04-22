@@ -327,6 +327,10 @@ class WindowIn : public Integer<u16> {
   [[nodiscard]] bool enable_blend_effects(WindowId window) const {
     return test_bit(5 + (window == WindowId::One ? 8 : 0));
   }
+
+  [[nodiscard]] u8 enabled_layer_bits(WindowId window) const {
+    return (m_value >> (window == WindowId::One ? 8 : 0)) & 0xFF;
+  }
 };
 
 class WindowOut : public Integer<u16> {
@@ -341,6 +345,8 @@ class WindowOut : public Integer<u16> {
   [[nodiscard]] bool enable_blend_effects(WindowId window) const {
     return test_bit(5 + (window == WindowId::One ? 8 : 0));
   }
+
+  [[nodiscard]] u8 enabled_layer_bits() const { return m_value & 0xFF; }
 };
 
 class WindowBounds : public Integer<u16> {
@@ -398,12 +404,33 @@ class Gpu {
   static constexpr u32 ScreenHeight = 160;
 
   struct PerPixelContext {
+    class EnabledLayerMap {
+     public:
+      [[nodiscard]] bool layer_visible(Dispcnt::BackgroundLayer layer) const {
+        return test_bit(m_enabled_layer_bits, static_cast<u32>(layer));
+      }
+
+      [[nodiscard]] bool enable_special_effects() const {
+        return test_bit(m_enabled_layer_bits, 5);
+      }
+
+      void set_enabled_layer_bits(u8 enabled_layer_bits) {
+        m_enabled_layer_bits = enabled_layer_bits;
+      }
+
+      void reset() { m_enabled_layer_bits = 0xff; }
+
+     private:
+      u8 m_enabled_layer_bits = 0xff;
+    };
+
     Gpu* gpu;
     std::array<unsigned int, ScreenWidth> priorities{};
     std::array<Color, ScreenWidth> top_pixels{};
     std::array<int, ScreenWidth> sprite_priorities{};
     std::array<StaticVector<PriorityInfo, 6>, ScreenWidth> pixel_priorities{};
     std::array<Color, ScreenWidth> backdrop_scanline{};
+    std::array<EnabledLayerMap, ScreenWidth> window_layers_enabled{};
     unsigned int scanline = 0;
 
     void put_pixel(unsigned int x,

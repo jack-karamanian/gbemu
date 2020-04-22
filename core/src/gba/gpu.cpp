@@ -103,7 +103,45 @@ void Gpu::render_scanline(unsigned int scanline) {
     m_active_windows.push_back(window1);
   }
 
-  ScopeGuard guard{[this] { m_active_windows.clear(); }};
+  if (!m_active_windows.is_empty()) {
+    for (unsigned x = 0; x < ScreenWidth; ++x) {
+      Vec2<unsigned int> point{x, scanline};
+
+      const auto* is_inside = algorithm::find_if(
+          m_active_windows.begin(), m_active_windows.end(),
+          [point](const Window& window) { return window.contains(point); });
+      const auto* is_outside =
+          is_inside != m_active_windows.end()
+              ? m_active_windows.end()
+              : algorithm::find_if(
+                    m_active_windows.begin(), m_active_windows.end(),
+                    [point, this](const Window& window) {
+                      return !window.contains(point) &&
+                             !algorithm::any_of(m_active_windows.begin(),
+                                                m_active_windows.end(),
+                                                [point](const Window& window) {
+                                                  return window.contains(point);
+                                                });
+                    });
+
+      if (is_outside != m_active_windows.end()) {
+        m_per_pixel_context.window_layers_enabled[x].set_enabled_layer_bits(
+            window_out.enabled_layer_bits());
+      }
+
+      if (is_inside != m_active_windows.end()) {
+        m_per_pixel_context.window_layers_enabled[x].set_enabled_layer_bits(
+            window_in.enabled_layer_bits(is_inside->id));
+      }
+    }
+  }
+
+  ScopeGuard grapics_state_reset{[this] {
+    m_active_windows.clear();
+    for (auto& map : m_per_pixel_context.window_layers_enabled) {
+      map.reset();
+    }
+  }};
 
   const Color backdrop_color =
       draw_color(m_palette_ram[0] | (m_palette_ram[1] << 8));
@@ -193,8 +231,8 @@ void Gpu::render_scanline(unsigned int scanline) {
     for (unsigned int x = 0; x < ScreenWidth; ++x) {
       auto& pixel_layers = m_per_pixel_context.pixel_priorities[x];
 
-      if (window_excludes_layer(Dispcnt::BackgroundLayer::None,
-                                {unsigned(x), scanline}, true)) {
+      if (!m_per_pixel_context.window_layers_enabled[x]
+               .enable_special_effects()) {
         use_top_pixel(x);
         continue;
       }
@@ -323,7 +361,7 @@ void Gpu::PerPixelContext::put_pixel(unsigned int screen_x,
                                      Color color,
                                      Dispcnt::BackgroundLayer layer,
                                      unsigned int priority) {
-  if (gpu->window_excludes_layer(layer, {screen_x, scanline})) {
+  if (!window_layers_enabled[screen_x].layer_visible(layer)) {
     return;
   }
 
@@ -344,12 +382,11 @@ void Gpu::PerPixelContext::put_pixel(unsigned int screen_x,
 void Gpu::PerPixelContext::put_sprite_pixel(unsigned int screen_x,
                                             Color color,
                                             unsigned int priority) {
-  if (gpu->window_excludes_layer(Dispcnt::BackgroundLayer::Obj,
-                                 {screen_x, scanline})) {
+  if (!window_layers_enabled[screen_x].layer_visible(
+          Dispcnt::BackgroundLayer::Obj)) {
     return;
   }
 
-  // const auto new_priority = -1;
   const bool is_higher_priority = priority <= priorities[screen_x];
 
   sprite_priorities[screen_x] = priority;
@@ -372,6 +409,10 @@ static void render_tile_pixel_4bpp(nonstd::span<Color> framebuffer,
 
 ) {
   if (screen_x < Gpu::ScreenWidth) {
+    if (!per_pixel_context.window_layers_enabled[screen_x].layer_visible(
+            layer)) {
+      return;
+    }
     const auto tile_offset = 32 * (tile_x / TileSize);
     const u8 pixel = (tile_pixels[tile_offset + ((tile_x % TileSize) / 2)] >>
                       (4 * (tile_x & 1))) &
