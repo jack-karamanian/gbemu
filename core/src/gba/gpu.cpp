@@ -320,43 +320,6 @@ void Gpu::sort_backgrounds() {
   m_backgrounds_end = i;
 }
 
-bool Gpu::window_excludes_layer(const Dispcnt::BackgroundLayer layer,
-                                const Vec2<unsigned int> point,
-                                const bool blend_effects) const {
-  if (m_active_windows.is_empty()) {
-    return false;
-  }
-
-  const auto* is_inside = algorithm::find_if(
-      m_active_windows.begin(), m_active_windows.end(),
-      [point](const Window& window) { return window.contains(point); });
-  const auto* is_outside =
-      is_inside != m_active_windows.end()
-          ? m_active_windows.end()
-          : algorithm::find_if(m_active_windows.begin(), m_active_windows.end(),
-                               [point, this](const Window& window) {
-                                 return !window.contains(point) &&
-                                        !algorithm::any_of(
-                                            m_active_windows.begin(),
-                                            m_active_windows.end(),
-                                            [point](const Window& window) {
-                                              return window.contains(point);
-                                            });
-                               });
-
-  if (is_outside != m_active_windows.end()) {
-    return blend_effects ? !window_out.enable_blend_effects(is_outside->id)
-                         : !window_out.should_display_layer(layer);
-  }
-  if (is_inside != m_active_windows.end()) {
-    return blend_effects
-               ? !window_in.enable_blend_effects(is_inside->id)
-               : !window_in.should_display_layer(is_inside->id, layer);
-  }
-
-  return false;
-}
-
 void Gpu::PerPixelContext::put_pixel(unsigned int screen_x,
                                      Color color,
                                      Dispcnt::BackgroundLayer layer,

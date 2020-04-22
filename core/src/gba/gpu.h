@@ -495,10 +495,6 @@ class Gpu {
     return {m_framebuffer};
   }
 
-  [[nodiscard]] bool window_excludes_layer(Dispcnt::BackgroundLayer layer,
-                                           Vec2<unsigned int> point,
-                                           bool blend_effects = false) const;
-
  private:
   void render_mode2(Background& background);
   void render_mode3(unsigned int scanline);
