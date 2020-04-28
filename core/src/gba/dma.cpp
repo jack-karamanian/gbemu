@@ -41,9 +41,8 @@ void Dma::run() {
   if (m_control.dest_addr_control() !=
       Control::AddrControl::IncrementAndReload) {
     m_internal_dest += final_count * (type_size * static_cast<int>(dest_op));
-    m_internal_source +=
-        final_count * (type_size * static_cast<int>(source_op));
   }
+  m_internal_source += final_count * (type_size * static_cast<int>(source_op));
 
   if (!m_control.repeat()) {
     m_control.set_enabled(false);
