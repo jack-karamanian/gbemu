@@ -441,15 +441,46 @@ class Gpu {
     void put_sprite_pixel(unsigned int x, Color color, unsigned int priority);
   };
 
+  class AffineScrollProxy {
+   public:
+    // Internal affine scroll registers should be updated when the real register
+    // is written.
+    AffineScrollProxy(int& reg, int& internal_reg)
+        : m_register{&reg}, m_internal_register{&internal_reg} {}
+
+    void write_byte(unsigned int byte, u8 value) {
+      *m_register = gb::write_byte(*m_register, byte, value);
+    }
+
+    void on_after_write() const noexcept { *m_internal_register = *m_register; }
+
+    [[nodiscard]] std::size_t size_bytes() const { return 4; }
+
+    [[nodiscard]] nonstd::span<u8> byte_span() const noexcept {
+      return nonstd::span<u8>{nullptr,
+                              static_cast<nonstd::span<u8>::index_type>(0)};
+    }
+
+   private:
+    int* m_register;
+    int* m_internal_register;
+  };
+
   struct Background {
     Bgcnt control;
     Dispcnt::BackgroundLayer layer;
     Vec2<int> affine_scroll{0, 0};
     Vec2<int> internal_affine_scroll{0, 0};
+
     Vec2<u16> scroll{0, 0};
     nonstd::span<Color> scanline;
 
-    std::array<s16, 4> affine_matrix{0, 0, 0, 0};
+    std::array<s16, 4> affine_matrix{1 << 8, 0, 0, 1 << 8};
+
+    AffineScrollProxy affine_scroll_x_proxy{affine_scroll.x,
+                                            internal_affine_scroll.x};
+    AffineScrollProxy affine_scroll_y_proxy{affine_scroll.y,
+                                            internal_affine_scroll.y};
 
     [[nodiscard]] int priority() const {
       return (static_cast<int>(layer) >> 8) + control.priority();

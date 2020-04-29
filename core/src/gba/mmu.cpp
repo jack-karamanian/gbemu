@@ -319,9 +319,9 @@ IntegerRef Mmu::select_hardware(u32 addr, DataOperation op) {
     case hardware::BG2PD:
       return hardware.gpu->bg2.affine_matrix[3];
     case hardware::BG2X:
-      return hardware.gpu->bg2.affine_scroll.x;
+      return hardware.gpu->bg2.affine_scroll_x_proxy;
     case hardware::BG2Y:
-      return hardware.gpu->bg2.affine_scroll.y;
+      return hardware.gpu->bg2.affine_scroll_y_proxy;
     case hardware::BG3PA:
       return hardware.gpu->bg3.affine_matrix[0];
     case hardware::BG3PB:
@@ -331,9 +331,9 @@ IntegerRef Mmu::select_hardware(u32 addr, DataOperation op) {
     case hardware::BG3PD:
       return hardware.gpu->bg3.affine_matrix[3];
     case hardware::BG3X:
-      return hardware.gpu->bg3.affine_scroll.x;
+      return hardware.gpu->bg3.affine_scroll_x_proxy;
     case hardware::BG3Y:
-      return hardware.gpu->bg3.affine_scroll.y;
+      return hardware.gpu->bg3.affine_scroll_y_proxy;
     case hardware::WIN0H:
       return hardware.gpu->window0.x_bounds;
     case hardware::WIN1H:
