@@ -105,7 +105,7 @@ void Gpu::render_scanline(unsigned int scanline) {
 
   if (!m_active_windows.is_empty()) {
     for (unsigned x = 0; x < ScreenWidth; ++x) {
-      Vec2<unsigned int> point{x, scanline};
+      const Vec2<unsigned int> point{x, scanline};
 
       const auto* is_inside = algorithm::find_if(
           m_active_windows.begin(), m_active_windows.end(),
@@ -536,8 +536,8 @@ void Gpu::render_mode2(Background& background) {
   const int dy = background.affine_matrix[2];
   const Vec2<int> target_delta{dx, dy};
 
-  Vec2<int> target{background.internal_affine_scroll.x,
-                   background.internal_affine_scroll.y};
+  Vec2<int> target = {background.internal_affine_scroll.x,
+                      background.internal_affine_scroll.y};
 
   for (u32 x = 0; x < ScreenWidth; ++x, target += target_delta) {
     const Vec2<u32> transformed_coords{u32(target.x >> 8), u32(target.y >> 8)};
@@ -551,10 +551,10 @@ void Gpu::render_mode2(Background& background) {
       continue;
     }
 
-    const auto tile_row =
-        tile_map.subspan(tile_map_offset, ScreenWidth / TileSize);
+    const auto tile_row = tile_map.subspan(
+        tile_map_offset, screen_size.rotation_scaling_size.width);
 
-    if (transformed_coords.x / TileSize >= tile_row.size()) {
+    if (transformed_coords.x >= screen_size.rotation_scaling_size.width) {
       continue;
     }
 
