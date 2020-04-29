@@ -77,12 +77,12 @@ bool Lcd::update(u32 cycles, int& next_event_cycles) {
       break;
     case Mode::VBlank:
       if (m_cycles >= 1232) {
-        m_gpu->bg2.internal_affine_scroll = m_gpu->bg2.affine_scroll;
-        m_gpu->bg3.internal_affine_scroll = m_gpu->bg3.affine_scroll;
         m_cycles -= 1232;
         increment_vcount();
 
         if (vcount > 227) {
+          m_gpu->bg2.internal_affine_scroll = m_gpu->bg2.affine_scroll;
+          m_gpu->bg3.internal_affine_scroll = m_gpu->bg3.affine_scroll;
           dispstat.set_hblank(false);
           dispstat.set_vblank(false);
           m_mode = Mode::Draw;
