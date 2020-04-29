@@ -14,7 +14,7 @@ bool execute_hardware(const Hardware& hardware) {
 
   u32 total_cycles = 0;
   while (g_next_event_cycles > 0) {
-    if (hardware.cpu->halted || hardware.cpu->interrupts_waiting.data() > 0) {
+    if (hardware.cpu->halted) {
       total_cycles = g_next_event_cycles;
       break;
     }

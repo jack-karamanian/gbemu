@@ -336,7 +336,7 @@ class Cpu {
     std::array<u32, 7> system_and_user{{0, 0, 0, 0, 0, 0, 0}};
     std::array<u32, 7> fiq{{0, 0, 0, 0, 0, 0, 0}};
     // R13-R14
-    std::array<u32, 2> supervisor{{0, 0}};
+    std::array<u32, 2> supervisor{{0x03007FE0, 0}};
     std::array<u32, 2> abort{{0, 0}};
     std::array<u32, 2> irq{{0, 0}};
     std::array<u32, 2> undefined{{0, 0}};

@@ -198,9 +198,17 @@ static u32 execute_software_interrupt(Cpu& cpu, u32 instruction) {
     case SoftwareInterruptType::Halt:
       cpu.halted = true;
       break;
-    case SoftwareInterruptType::VBlankIntrWait:
-      intr_wait(cpu, 1, 1);
+    case SoftwareInterruptType::VBlankIntrWait: {
+      const u32 next_pc = cpu.reg(Register::R15) - cpu.prefetch_offset();
+      cpu.set_saved_program_status_for_mode(Mode::Supervisor,
+                                            cpu.program_status());
+
+      cpu.change_mode(Mode::Supervisor);
+      cpu.set_reg(Register::R14, next_pc);
+      cpu.set_thumb(false);
+      cpu.set_reg(Register::R15, Mmu::VBlankIntrWaitAddr);
       break;
+    }
     case SoftwareInterruptType::Div: {
       const auto [div, mod, abs_div] =
           divide(cpu.reg(Register::R0), cpu.reg(Register::R1));
