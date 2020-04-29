@@ -237,6 +237,8 @@ static u32 execute_software_interrupt(Cpu& cpu, u32 instruction) {
                    cpu.reg(Register::R2));
       break;
     case SoftwareInterruptType::BgAffineSet:
+      bg_affine_set(*cpu.mmu(), cpu.reg(Register::R0), cpu.reg(Register::R1),
+                    cpu.reg(Register::R2));
       break;
     case SoftwareInterruptType::ObjAffineSet: {
       const u32 src = cpu.reg(Register::R0);

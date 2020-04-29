@@ -28,5 +28,6 @@ void lz77_decompress(nonstd::span<const u8> src,
                      u32 type_size);
 
 void obj_affine_set(Mmu& mmu, u32 src, u32 dest, u32 count, u32 stride);
+void bg_affine_set(Mmu& mmu, u32 src, u32 dest, u32 count);
 }  // namespace hle::bios
 }  // namespace gb::advance

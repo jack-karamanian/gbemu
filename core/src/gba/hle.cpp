@@ -130,6 +130,54 @@ void obj_affine_set(Mmu& mmu, u32 src, u32 dest, u32 count, u32 stride) {
   }
 }
 
+void bg_affine_set(Mmu& mmu, u32 src, u32 dest, u32 count) {
+  for (u32 i = 0; i < count; ++i) {
+    struct InputParams {
+      s32 tile_center_x;
+      s32 tile_center_y;
+      s16 display_center_x;
+      s16 display_center_y;
+      s16 sx;
+      s16 sy;
+      u16 theta;
+    } input = mmu.at<InputParams>(src);
+
+    const s32 tile_center_x = mmu.at<s32>(src);
+    const s32 tile_center_y = mmu.at<s32>(src + 4);
+    const s16 display_center_x = mmu.at<s16>(src + 8);
+    const s16 display_center_y = mmu.at<s16>(src + 10);
+    const s16 sx_fixed = mmu.at<s16>(src + 12);
+    const s16 sy_fixed = mmu.at<s16>(src + 14);
+    const s16 theta_fixed = mmu.at<u16>(src + 16);
+
+    src += 20;
+    static_assert(sizeof(InputParams) == 20);
+
+    const float sx = static_cast<float>(sx_fixed) / (1 << 8);
+    const float sy = static_cast<float>(sy_fixed) / (1 << 8);
+    const float theta = static_cast<float>(theta_fixed) / (1 << 8);
+
+    const float cos_theta = std::cos(theta);
+    const float sin_theta = std::sin(theta);
+    const s16 pa = static_cast<s16>((cos_theta * sx) * (1 << 8));
+    const s16 pb = static_cast<s16>((sin_theta * sx) * (1 << 8));
+    const s16 pc = static_cast<s16>((sin_theta * sy) * (1 << 8));
+    const s16 pd = static_cast<s16>((cos_theta * sy) * (1 << 8));
+    mmu.set(dest + 0, pa);
+    mmu.set(dest + 2, static_cast<s16>(-pb));
+    mmu.set(dest + 4, pc);
+    mmu.set(dest + 6, pd);
+
+    const s32 dx =
+        tile_center_x - pa * display_center_x + pb * display_center_y;
+    const s32 dy =
+        tile_center_y - pc * display_center_x - pd * display_center_y;
+    mmu.set<s32>(dest + 8, dx);
+    mmu.set<s32>(dest + 12, dy);
+    dest += 16;
+  }
+}
+
 TEST_CASE("lz77_decompress should work") {
   using namespace std::literals;
   constexpr auto expected = "abracadabra"sv;
