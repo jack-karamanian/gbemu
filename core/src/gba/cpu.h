@@ -364,4 +364,6 @@ class Cpu {
   std::array<u8, 4> m_prefetched_opcode = {0, 0, 0, 0};
 };
 
+u32 execute_software_interrupt(Cpu& cpu, u32 instruction);
+
 }  // namespace gb::advance

@@ -112,6 +112,11 @@ set(SRCS
   src/gba/assembler.h
   src/gba/assembler.cpp
   src/algorithm.h
+  src/gba/jit.h
+  src/gba/jit.cpp
+  src/gba/thumb_instructions.h
+  src/gba/thumb_instructions.cpp
+  src/gba/common_instructions.h
 )
 
 add_library(${PROJECT_NAME} ${SRCS})
